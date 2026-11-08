@@ -3,6 +3,7 @@ import {
   RecordStatus,
   HousekeepingState,
   RoomOperationalState,
+  GuestDocumentType,
 } from '@prisma/client';
 import { createHash, scryptSync } from 'node:crypto';
 
@@ -51,6 +52,14 @@ const IDS = {
   permissionOrganizationRolesRead: '00000000-0000-4000-8000-000000000040',
   permissionOrganizationRolesManage: '00000000-0000-4000-8000-000000000041',
   permissionSecurityEventsRead: '00000000-0000-4000-8000-000000000042',
+  permissionGuestsRead: '00000000-0000-4000-8000-000000000043',
+  permissionGuestsManage: '00000000-0000-4000-8000-000000000044',
+  permissionReservationsRead: '00000000-0000-4000-8000-000000000045',
+  permissionReservationsManage: '00000000-0000-4000-8000-000000000046',
+
+  guestAna: '00000000-0000-4000-8000-000000000061',
+  guestBruno: '00000000-0000-4000-8000-000000000062',
+  guestCarla: '00000000-0000-4000-8000-000000000063',
 
   roomTypeCentroStandard: '00000000-0000-4000-8000-000000000041',
   roomTypeCentroDeluxe: '00000000-0000-4000-8000-000000000042',
@@ -125,6 +134,26 @@ const PERMISSIONS = [
     key: 'security.events.read',
     description: 'Read authentication and authorization security events',
   },
+  {
+    id: IDS.permissionGuestsRead,
+    key: 'guests.read',
+    description: 'Read guest profiles and reservations guest data',
+  },
+  {
+    id: IDS.permissionGuestsManage,
+    key: 'guests.manage',
+    description: 'Create and update guest profiles',
+  },
+  {
+    id: IDS.permissionReservationsRead,
+    key: 'reservations.read',
+    description: 'Read reservations, availability and reservation history',
+  },
+  {
+    id: IDS.permissionReservationsManage,
+    key: 'reservations.manage',
+    description: 'Create, modify, assign and cancel reservations',
+  },
 ] as const;
 
 const ALL_PERMISSION_IDS = PERMISSIONS.map((permission) => permission.id);
@@ -156,6 +185,10 @@ const ROLES = [
       IDS.permissionInventoryRead,
       IDS.permissionInventoryManage,
       IDS.permissionHousekeepingManage,
+      IDS.permissionGuestsRead,
+      IDS.permissionGuestsManage,
+      IDS.permissionReservationsRead,
+      IDS.permissionReservationsManage,
     ],
   },
   {
@@ -168,6 +201,10 @@ const ROLES = [
       IDS.permissionPropertyRead,
       IDS.permissionInventoryRead,
       IDS.permissionHousekeepingManage,
+      IDS.permissionGuestsRead,
+      IDS.permissionGuestsManage,
+      IDS.permissionReservationsRead,
+      IDS.permissionReservationsManage,
     ],
   },
   {
@@ -176,7 +213,13 @@ const ROLES = [
     key: 'AUDITOR',
     name: 'Auditor / finance',
     system: true,
-    permissions: [IDS.permissionPropertyRead, IDS.permissionAuditRead, IDS.permissionInventoryRead],
+    permissions: [
+      IDS.permissionPropertyRead,
+      IDS.permissionAuditRead,
+      IDS.permissionInventoryRead,
+      IDS.permissionGuestsRead,
+      IDS.permissionReservationsRead,
+    ],
   },
   {
     id: IDS.roleHousekeeperA,
@@ -636,7 +679,59 @@ async function seed(): Promise<void> {
     });
   }
 
-  const [organizations, properties, usersCount, roles, roomTypesCount, roomsCount] =
+  const guests = [
+    {
+      id: IDS.guestAna,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      fullName: 'Ana Souza (demo)',
+      email: 'ana.souza@demo.nova.local',
+      phone: '+55 11 90000-0001',
+      documentType: GuestDocumentType.PASSPORT,
+      documentNumber: 'DEMO-P-0001',
+      notes: 'Synthetic demo guest. No real personal data.',
+    },
+    {
+      id: IDS.guestBruno,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      fullName: 'Bruno Lima (demo)',
+      email: 'bruno.lima@demo.nova.local',
+      phone: '+55 11 90000-0002',
+      documentType: null,
+      documentNumber: null,
+      notes: 'Synthetic demo guest. No real personal data.',
+    },
+    {
+      id: IDS.guestCarla,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyPraia,
+      fullName: 'Carla Mendes (demo)',
+      email: 'carla.mendes@demo.nova.local',
+      phone: '+55 21 90000-0003',
+      documentType: GuestDocumentType.NATIONAL_ID,
+      documentNumber: 'DEMO-RG-0003',
+      notes: 'Synthetic demo guest. No real personal data.',
+    },
+  ];
+
+  for (const guest of guests) {
+    await prisma.guest.upsert({
+      where: { id: guest.id },
+      update: {
+        fullName: guest.fullName,
+        email: guest.email,
+        phone: guest.phone,
+        documentType: guest.documentType,
+        documentNumber: guest.documentNumber,
+        notes: guest.notes,
+        status: RecordStatus.ACTIVE,
+      },
+      create: { ...guest, status: RecordStatus.ACTIVE },
+    });
+  }
+
+  const [organizations, properties, usersCount, roles, roomTypesCount, roomsCount, guestsCount] =
     await Promise.all([
       prisma.organization.count(),
       prisma.property.count(),
@@ -644,10 +739,11 @@ async function seed(): Promise<void> {
       prisma.role.count(),
       prisma.roomType.count(),
       prisma.room.count(),
+      prisma.guest.count(),
     ]);
 
   console.log(
-    `Seed complete: ${organizations} organizations, ${properties} properties, ${usersCount} users, ${roles} roles, ${roomTypesCount} room types, ${roomsCount} rooms.`,
+    `Seed complete: ${organizations} organizations, ${properties} properties, ${usersCount} users, ${roles} roles, ${roomTypesCount} room types, ${roomsCount} rooms, ${guestsCount} guests.`,
   );
   console.log(`Demo password for every synthetic user: ${DEMO_PASSWORD}`);
   console.log('Development users:');

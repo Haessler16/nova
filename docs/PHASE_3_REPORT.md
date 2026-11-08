@@ -11,24 +11,20 @@ Selected by the user (Phase 3 reservations not selected):
 
 ## Verified commands/results (executed in this workspace)
 
-| Command                                                | Result                                                                               |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `pnpm db:generate`                                     | pass                                                                                 |
-| `pnpm db:migrate:deploy`                               | pass (applied `20261108180000_phase3_security_admin_runtime`)                        |
-| `pnpm db:seed`                                         | pass (synthetic data; 2 orgs, 3 properties, 6 users, 6 roles, 3 room types, 6 rooms) |
-| `pnpm db:verify`                                       | pass — `50 constraints, 6 triggers, 3 functions, 2 indexes and btree_gist`           |
-| `pnpm format`                                          | pass                                                                                 |
-| `pnpm --filter @nova/api typecheck`                    | pass (after fixes)                                                                   |
-| `pnpm typecheck`                                       | pass (API + web)                                                                     |
-| `pnpm lint`                                            | pass (API + web)                                                                     |
-| `pnpm --filter @nova/api test -- totp password-policy` | pass — 2 suites / 10 tests                                                           |
-| `pnpm test`                                            | pass before new specs — 8 suites / 32 tests (see notes)                              |
-| `pnpm --filter @nova/api build`                        | pass                                                                                 |
-| `pnpm test:e2e:auth:isolated`                          | pass — 1 suite / 5 tests (`schema=e2e_mw82yuhg_558dddc9`, dropped)                   |
-| `pnpm test:e2e:isolated`                               | pass — 2 suites / 30 tests (`schema=e2e_mw82z4f5_e13a61ea`, dropped)                 |
-| `pnpm test:e2e:auth:isolated` (after test-env changes) | pass — 1 suite / 5 tests (`schema=e2e_mw830m22_7703dfc8`, dropped)                   |
-
-> I also added `apps/api/src/auth/totp.service.spec.ts` and `password-policy.spec.ts` (10 tests). They passed in targeted runs; run `pnpm test` again for the full unit count after this report if you need a single consolidated number.
+| Command                                                | Result                                                                                                                                            |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm db:generate`                                     | pass                                                                                                                                              |
+| `pnpm db:migrate:deploy`                               | pass (applied `20261108180000_phase3_security_admin_runtime`)                                                                                     |
+| `pnpm db:seed`                                         | pass (synthetic data; 2 orgs, 3 properties, 6 users, 6 roles, 3 room types, 6 rooms)                                                              |
+| `pnpm db:verify`                                       | pass — `50 constraints, 6 triggers, 3 functions, 2 indexes and btree_gist`                                                                        |
+| `pnpm format`                                          | pass                                                                                                                                              |
+| `pnpm --filter @nova/api typecheck`                    | pass (after fixes)                                                                                                                                |
+| `pnpm typecheck`                                       | pass (API + web)                                                                                                                                  |
+| `pnpm lint`                                            | pass (API + web)                                                                                                                                  |
+| `pnpm --filter @nova/api test -- totp password-policy` | pass — 2 suites / 10 tests                                                                                                                        |
+| `pnpm test`                                            | pass — **10 suites / 42 tests**                                                                                                                   |
+| `pnpm --filter @nova/api build`                        | pass                                                                                                                                              |
+| `pnpm test:e2e:all:isolated`                           | pass — **5 suites / 51 E2E tests** (default: 4 suites/40 tests; auth: 1 suite/11 tests), per-run isolated schemas created/migrated/seeded/dropped |
 
 ## Key implementation details
 
@@ -84,10 +80,17 @@ Selected by the user (Phase 3 reservations not selected):
 - Admin endpoints enforce organization permissions and subset/last-admin guards.
 - Raw IPs are hashed before storage in session/security metadata.
 
+## E2E coverage added (isolated schemas)
+
+- `apps/api/test/auth-session.e2e-spec.ts` (local-session): CSRF, login/logout/session, invalid credentials, rate limit, **account lockout**, **session listing/revocation**, **password change + policy + session revocation**, **password reset with one-time token** (`AUTH_TOKEN_DELIVERY=response`), **email verification with one-time token**, **MFA setup/enable/challenge login/disable**.
+- `apps/api/test/admin.e2e-spec.ts` (dev-header): membership list/create/update/deactivate, audit coverage, role create/immutability, last-admin guard, property membership CRUD/scope, cross-org denial, security event listing/permission denial, metrics endpoint.
+- `apps/api/test/resilience.e2e-spec.ts` (dev-header): **scheduler `runOnce()` idempotent reconciliation** of expired active blocks, `SecurityEvent` append-only DB trigger, readiness/metrics.
+- Existing `inventory.e2e-spec.ts` and `tenant-isolation.e2e-spec.ts` still pass under isolation.
+
 ## Remaining gaps / not fully completed
 
-- **New-feature E2E coverage is partial**: existing E2E suites pass; dedicated E2E for MFA, password reset/verification, lockout, admin membership/role flows, scheduler behavior, and metrics/auth-protected security events should be added.
-- **Docs not fully refreshed**: `docs/API.md`, `docs/DATABASE.md`, `docs/SECURITY.md`, `docs/BACKLOG.md`, `docs/IMPLEMENTATION_PLAN.md`, `README.md` still need comprehensive updates for all new endpoints/flows/limits.
+- **E2E depth still has edges**: positive privilege-escalation path with a limited-but-authorized actor (seeded ORG_ADMIN holds all permissions), `METRICS_TOKEN` protection path, some negative admin/role/membership branches, and UI flows (no UI tests).
+- **Docs not fully refreshed**: `docs/API.md`, `docs/DATABASE.md`, `docs/SECURITY.md`, `docs/BACKLOG.md`, `docs/IMPLEMENTATION_PLAN.md` need comprehensive endpoint/table/contract updates.
 - **Email delivery**: no provider integration; production token delivery is intentionally disabled.
 - **MFA recovery**: no recovery codes/admin reset workflow.
 - **Admin UI**: API-only.
@@ -102,3 +105,50 @@ pnpm test          # full unit suite including new specs
 pnpm test:e2e:all:isolated
 pnpm build
 ```
+
+---
+
+# Phase 3 (continued) — Guests and reservations
+
+Implemented on 2026-11-08 as the remaining Phase 3 scope from `docs/IMPLEMENTATION_PLAN.md` (GST-001/002; RSV-001/002/003/005). The auth/admin/runtime scope above is preserved.
+
+## Scope
+
+- Guest CRUD per property with data minimization, assisted search and no hard delete.
+- Reservation lifecycle: create (optional room), modify, assign/reassign room, cancel, list/get, append-only history.
+- Availability search by hotel date range, room type, active blocks and active reservations.
+- Transactional room assignment (`SELECT ... FOR UPDATE` on `Room`) plus a PostgreSQL exclusion constraint as the final double-booking authority.
+- Optional per-property idempotency key for reservation creation.
+- Permissions `guests.read/manage`, `reservations.read/manage`; seed roles updated; 3 synthetic guests added.
+
+## Verified commands/results (executed after the disconnect)
+
+| Command                         | Result                                                                                              |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `pnpm db:generate`              | pass                                                                                                |
+| `pnpm db:migrate:deploy`        | pass (applied `20261108210000_phase3_guests_reservations`)                                          |
+| `pnpm db:seed`                  | pass (2 orgs, 3 properties, 6 users, 6 roles, 3 room types, 6 rooms, 3 guests)                      |
+| `pnpm db:verify`                | pass — 77 constraints, 8 triggers, 4 functions, 2 indexes and `btree_gist`                          |
+| `pnpm test`                     | pass — **11 suites / 46 tests** (new `reservation-dates.spec.ts`)                                   |
+| `pnpm lint`                     | pass (API + web; removed 3 pre-existing unused-symbol lint errors)                                  |
+| `pnpm typecheck`                | pass (API + web)                                                                                    |
+| `pnpm format` / `format:check`  | pass                                                                                                |
+| `pnpm --filter @nova/api build` | pass                                                                                                |
+| `pnpm test:e2e:all:isolated`    | pass — **6 suites / 62 E2E tests** (default 5 suites/51; auth 1 suite/11), isolated schemas dropped |
+
+## Files added/changed
+
+- `prisma/schema.prisma`, `prisma/migrations/20261108210000_phase3_guests_reservations/migration.sql`: `Guest`, `Reservation`, `ReservationHistory`, enums, composite tenant FKs, checks, `Reservation_room_date_no_overlap`, append-only trigger.
+- `apps/api/src/guests/*`, `apps/api/src/reservations/*`: controllers, services, DTOs, calendar-date helpers, module wiring.
+- `apps/api/src/access/permissions.ts`, `prisma/seed.ts`, `scripts/verify-db-integrity.ts`.
+- `apps/api/test/guests-reservations.e2e-spec.ts`, `apps/api/src/reservations/reservation-dates.spec.ts`.
+- Docs: `README.md`, `docs/API.md`, `docs/DATABASE.md`, `docs/SECURITY.md`, `docs/DECISIONS.md` (ADR-022/023/024), `docs/BACKLOG.md`, `docs/IMPLEMENTATION_PLAN.md`.
+
+## Remaining Phase 3 gaps
+
+- Calendar UI (RSV-006) and guest UI are not implemented; the API is the only surface.
+- One room per reservation; no multi-room/multi-guest reservation model.
+- Check-in/check-out, room moves, stay statuses and instants belong to Front Office (Phase 4).
+- Reservation↔room-block conflicts rely on the `Room` row lock; there is no single cross-table database constraint.
+- No rates/pricing, deposits, folios or payments.
+- Remote GitHub Actions execution still not observed.

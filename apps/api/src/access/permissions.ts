@@ -15,6 +15,10 @@ export const PERMISSIONS = {
   INVENTORY_READ: 'inventory.read',
   INVENTORY_MANAGE: 'inventory.manage',
   HOUSEKEEPING_MANAGE: 'housekeeping.manage',
+  GUESTS_READ: 'guests.read',
+  GUESTS_MANAGE: 'guests.manage',
+  RESERVATIONS_READ: 'reservations.read',
+  RESERVATIONS_MANAGE: 'reservations.manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

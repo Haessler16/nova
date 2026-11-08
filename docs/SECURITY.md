@@ -71,16 +71,27 @@
 
 ### Audit and history
 
-- `AuditEvent` and `RoomStatusHistory` are append-only; PostgreSQL triggers reject `UPDATE`, `DELETE` and `TRUNCATE`.
-- All Phase 2 write endpoints write audit in the same transaction as the mutation.
-- Operational and housekeeping transitions also write `RoomStatusHistory`.
+- `AuditEvent`, `RoomStatusHistory`, `SecurityEvent` and `ReservationHistory` are append-only; PostgreSQL triggers reject `UPDATE`, `DELETE` and `TRUNCATE`.
+- All Phase 2/Phase 3 write endpoints write audit in the same transaction as the mutation.
+- Operational and housekeeping transitions also write `RoomStatusHistory`; reservation changes write `ReservationHistory`.
 - Audit metadata is capped at 8 KiB in API and DB.
+
+### Guests and reservations (Phase 3)
+
+- Guest profiles are property-scoped and minimized: no birth date, address, financial data or document images. Identity document type/number are optional and must be sent together.
+- Guest audit events (`guest.created`, `guest.updated`) record only status and changed field names; contact and document values are never copied to `AuditEvent` or logs.
+- Guest search does not auto-merge profiles; deduplication stays a human decision.
+- Reservation writes are authorized by `reservations.manage` and scoped by `organizationId` + `propertyId`; cross-property guests and rooms are rejected (`guest_not_found`, `room_not_found`).
+- Room assignment locks the `Room` row (`SELECT ... FOR UPDATE`) and validates blocks and overlapping reservations; PostgreSQL's `Reservation_room_date_no_overlap` exclusion constraint is the final authority against double booking.
+- Reservation creation supports an idempotency key unique per property; reusing it with a different payload returns `409 idempotency_key_reuse`.
+- Cancellation is soft (status + timestamps) and preserves the historical room assignment and append-only history.
+- Reservation dates are hotel calendar dates (`date`), not instants; check-in/out times and instant-level availability remain Front Office scope.
 
 ### Database integrity
 
 - `pnpm db:verify` asserts that manual constraints, triggers, functions and `btree_gist` are present after migrations.
 - Composite tenant FKs and CHECK constraints are documented in `docs/DATABASE.md`.
-- Reservation non-overlap and payment idempotency are still out of scope.
+- Reservation non-overlap is enforced by an exclusion constraint (Phase 3); payment idempotency and financial records are still out of scope.
 
 ## Multi-tenant security tests
 
@@ -96,18 +107,22 @@ Current automated coverage:
 
 - `apps/api/test/tenant-isolation.e2e-spec.ts` (identity, properties, audit, cross-org denial);
 - `apps/api/test/inventory.e2e-spec.ts` (room types, rooms, housekeeping history immutability, blocks/overlap, property settings, cross-tenant denial);
-- `apps/api/test/auth-session.e2e-spec.ts` (CSRF, invalid credentials, session cookie flags, logout revocation, rate limiting).
+- `apps/api/test/auth-session.e2e-spec.ts` (CSRF, invalid credentials, session cookie flags, logout revocation, rate limiting, lockout, password reset/verification, MFA, session revocation);
+- `apps/api/test/admin.e2e-spec.ts` and `apps/api/test/resilience.e2e-spec.ts` (membership/role administration, security events, scheduler, metrics);
+- `apps/api/test/guests-reservations.e2e-spec.ts` (guest CRUD/audit minimization, availability, overlapping and concurrent reservations, block conflicts, idempotency, cancellation history, cross-tenant denial).
+
+Registered E2E suites run on per-run isolated PostgreSQL schemas (`pnpm test:e2e:all:isolated`); they never share the seeded development schema.
 
 ## Known security limitations
 
-- Local credentials are a transitional mechanism; no MFA, password reset, email verification or account lockout.
-- Login rate limiting is fixed-window, Redis-dependent and fail-open on Redis outage.
-- Sessions are not rotated periodically and there is no administrative session/device listing.
-- No membership, invitation or role-administration endpoints, so role changes are currently seed/database operations.
+- Local credentials are a transitional mechanism: TOTP MFA, password reset/email verification (hashed one-time tokens), lockout and session administration exist, but there is no email delivery provider, no MFA recovery codes and no final identity provider.
+- Login rate limiting is fixed-window, Redis-dependent and fail-open on Redis outage; account lockout in PostgreSQL is the authoritative throttle.
+- Sessions are not rotated periodically; self-service and admin revocation exist, but no device labeling or suspicious-session heuristics.
+- Membership and role administration are API-only (no UI) and rely on subset/last-admin guards.
 - Swagger is enabled whenever `NODE_ENV != production`; do not expose development instances publicly.
-- E2E suites run against the local seeded database and must never target real environments.
+- E2E suites require a local/CI PostgreSQL with schema creation privileges and must never target real environments.
 - No external penetration test, dependency scanning job or WAF has been observed yet.
-- Reservation concurrency, payment tokenization and LGPD data-subject workflows are not implemented.
+- Payment tokenization, financial data, LGPD data-subject workflows and guest-document retention automation are not implemented.
 
 ## LGPD design checklist
 
@@ -124,7 +139,7 @@ This document is an engineering baseline, not legal advice.
 - Keep demo/sandbox data synthetic and isolated.
 - Never use production guest data to train or test AI features by default.
 
-Phase 2 stores only synthetic hotel configuration. No guest or document data is collected yet.
+Phase 3 stores synthetic guest profiles and reservations in development. Production guest retention, anonymization and data-subject workflows still require product/legal validation; guest documents are minimized and optional.
 
 ## Payment safety
 

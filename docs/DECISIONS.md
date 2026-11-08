@@ -387,6 +387,69 @@ These choices should be confirmed against the existing repository and current st
 - Validation required:
   - run restore drills against approved staging snapshots and integrate logs/metrics with the chosen platform.
 
+## Phase 3 decisions — guests and reservations (implemented 2026-11-08)
+
+### ADR-022 — Reservations use hotel calendar dates and a PostgreSQL exclusion constraint
+
+- Status: accepted for the transitional phase.
+- Date: 2026-11-08.
+- Context: confirmed reservations must never allow two stays to occupy the same room on the same night, including under concurrent requests. Check-in/out hour handling does not exist yet.
+- Options:
+  1. instants for stays now (implies check-in/out times and timezone conversion before Front Office);
+  2. hotel calendar dates (`date`) with a `daterange` exclusion constraint (chosen);
+  3. application-only validation (rejected: not a guarantee).
+- Decision:
+  - `checkInDate`/`checkOutDate` are PostgreSQL `date` values in the property timezone; the stay occupies `[checkInDate, checkOutDate)`.
+  - Active inventory statuses are `CONFIRMED` and `CHECKED_IN`; cancelled/checked-out/no-show stays free the interval.
+  - `Reservation_room_date_no_overlap` (`EXCLUDE USING gist` on `roomId` + `daterange`) is the final authority. The application additionally locks the `Room` row and validates before writing, returning `409 room_not_available` deterministically.
+  - `RoomBlock` remains instant-based; reservation↔block comparison uses the UTC ends of the reservation dates, so a block covering a night is detected at date granularity.
+  - One room assignment per reservation in this phase; unassigned reservations are allowed.
+- Consequences:
+  - Room type changes require unassigning the room first (`409 room_type_change_requires_unassigned_room`).
+  - Overbooking is not representable.
+  - A reservation can start today or later, never in the past.
+  - Instant-precision block conflicts near midnight need refinement when check-in/out times arrive.
+- Validation required:
+  - confirm with the pilot whether day-use/early check-in/late checkout need sub-day intervals;
+  - decide overbooking policy and whether it must be modeled explicitly;
+  - extend the exclusion predicate deliberately if new occupying statuses are added.
+
+### ADR-023 — Reservation creation is idempotent per property
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: reception clients may retry creation after a timeout; duplicates must not become two stays.
+- Options:
+  1. no idempotency, rely on unique codes (rejected: client-generated retries duplicate real stays);
+  2. generic idempotency record table for every endpoint (over-engineering now);
+  3. optional `idempotencyKey` column unique per property (chosen).
+- Decision:
+  - `POST /reservations` accepts an optional `idempotencyKey` (8–64 chars), unique per `propertyId`.
+  - Repeating the same key with the same stay payload returns the original reservation; a different payload returns `409 idempotency_key_reuse`.
+  - The unique constraint, reservation row, history row and audit row are written in one transaction.
+- Consequences:
+  - Only reservation creation is idempotent; other writes still rely on constraints/state checks.
+  - Keys are scoped per property, never global.
+- Validation required:
+  - extend to imports, payments and night audit with a normalized idempotency record when those exist.
+
+### ADR-024 — Guest data is minimized, property-scoped and never hard-deleted
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: guest PII is the most sensitive data introduced so far, and Phase 3 does not yet need addresses, birth dates or document images.
+- Decision:
+  - Only `fullName`, optional `email`, `phone`, `documentType`/`documentNumber` and `notes` are stored.
+  - Document type and number must be provided together; documents are optional.
+  - Guests are property-scoped with composite tenant foreign keys.
+  - No physical delete; lifecycle is `status = ACTIVE | DISABLED`.
+  - Guest audit events never copy contact/document data; search never merges profiles automatically.
+- Consequences:
+  - Operational deduplication is manual and duplicates are possible by design.
+  - Email is not unique; the same person may exist in multiple properties.
+- Validation required:
+  - define retention/anonymization and purpose of identity documents with the pilot and legal review; then implement erasure/anonymization and access auditing for sensitive fields.
+
 ### ADR-NNN — Title
 
 - Status: proposed / accepted / superseded

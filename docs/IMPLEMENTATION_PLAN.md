@@ -88,19 +88,30 @@ Known Phase 2 gaps:
 
 ## Phase 3 — Guests and reservations (approx. 4–6 weeks)
 
-- guest CRUD with privacy minimization.
-- reservation lifecycle.
-- availability search.
-- room assignment and conflict handling.
-- concurrent booking tests.
-- idempotency for creation/update commands where needed.
-- calendar UI.
+Status: **backend implemented locally on 2026-11-08**; calendar UI and remote CI pending.
+
+- [x] guest CRUD with privacy minimization and assisted (non-merging) search.
+- [x] reservation lifecycle (create, modify, cancel; `CONFIRMED` → `CANCELLED`).
+- [x] availability search by property date range, room type, blocks and active reservations.
+- [x] room assignment/reassignment with transactional conflict handling.
+- [x] concurrent booking tests and PostgreSQL exclusion constraint.
+- [x] idempotent reservation creation (`idempotencyKey` per property).
+- [x] append-only reservation history and audit coverage.
+- [ ] calendar UI (RSV-006).
 
 Exit:
 
-- simultaneous attempts cannot confirm incompatible assignments;
-- cancellations and modifications preserve history;
-- tenant isolation passes.
+- [x] simultaneous attempts cannot confirm incompatible assignments;
+- [x] cancellations and modifications preserve history;
+- [x] tenant isolation passes.
+
+Known Phase 3 gaps (guests/reservations):
+
+- one room per reservation; no multi-room or multi-guest reservation model yet;
+- stays use calendar-date granularity; check-in/out times, room moves and stay statuses belong to Front Office;
+- reservation↔room-block conflicts are serialized by the `Room` row lock but not by a single cross-table database constraint;
+- no rates, pricing, deposits or folio yet;
+- no calendar UI and no remote CI observation.
 
 ## Phase 4 — Front Office (approx. 3–5 weeks)
 

@@ -43,6 +43,21 @@ enum RoomStatusCategory {
   HOUSEKEEPING
 }
 
+enum GuestDocumentType {
+  PASSPORT
+  NATIONAL_ID
+  DRIVER_LICENSE
+  OTHER
+}
+
+enum ReservationStatus {
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
 model Organization {
   id                  String               @id @default(uuid()) @db.Uuid
   name                String
@@ -58,6 +73,9 @@ model Organization {
   rooms               Room[]
   roomBlocks          RoomBlock[]
   roomStatusHistory   RoomStatusHistory[]
+  guests              Guest[]
+  reservations        Reservation[]
+  reservationHistory  ReservationHistory[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -80,6 +98,9 @@ model Property {
   rooms               Room[]
   roomBlocks          RoomBlock[]
   roomStatusHistory   RoomStatusHistory[]
+  guests              Guest[]
+  reservations        Reservation[]
+  reservationHistory  ReservationHistory[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -112,6 +133,8 @@ model User {
   securityActions         SecurityEvent[]          @relation("SecurityEventActor")
   roomBlocksCreated       RoomBlock[]              @relation("RoomBlockCreatedBy")
   roomStatusHistory       RoomStatusHistory[]      @relation("RoomStatusHistoryActor")
+  reservationsCreated     Reservation[]            @relation("ReservationCreatedBy")
+  reservationHistory      ReservationHistory[]     @relation("ReservationHistoryActor")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -242,6 +265,7 @@ model RoomType {
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property         Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   rooms            Room[]
+  reservations     Reservation[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -267,6 +291,7 @@ model Room {
   roomType          RoomType             @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
   blocks            RoomBlock[]
   statusHistory     RoomStatusHistory[]
+  reservations      Reservation[]
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
@@ -327,6 +352,93 @@ model RoomStatusHistory {
   @@index([organizationId, propertyId, occurredAt])
   @@index([roomId, occurredAt])
   @@index([organizationId, propertyId, roomId])
+}
+
+model Guest {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  propertyId     String            @db.Uuid
+  fullName       String
+  email          String?
+  phone          String?
+  documentType   GuestDocumentType?
+  documentNumber String?
+  notes          String?
+  status         RecordStatus      @default(ACTIVE)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property       Property          @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservations   Reservation[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status])
+  @@index([organizationId, propertyId, fullName])
+  @@index([organizationId, propertyId, email])
+}
+
+/// A stay for one or more guests. `checkInDate`/`checkOutDate` are hotel
+/// calendar dates (property timezone) and the stay occupies
+/// [checkInDate, checkOutDate). One room per reservation in this phase.
+model Reservation {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  propertyId         String              @db.Uuid
+  code               String              @db.VarChar(32)
+  status             ReservationStatus   @default(CONFIRMED)
+  source             String?             @db.VarChar(32)
+  checkInDate        DateTime            @db.Date
+  checkOutDate       DateTime            @db.Date
+  adults             Int                 @default(1)
+  children           Int                 @default(0)
+  guestId            String              @db.Uuid
+  roomTypeId         String              @db.Uuid
+  roomId             String?             @db.Uuid
+  notes              String?
+  idempotencyKey     String?             @db.VarChar(64)
+  createdByUserId    String?             @db.Uuid
+  cancelledAt        DateTime?
+  cancellationReason String?
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  guest              Guest               @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  roomType           RoomType            @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  room               Room?               @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  createdBy          User?               @relation("ReservationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  history            ReservationHistory[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([propertyId, code])
+  @@unique([propertyId, idempotencyKey])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status, checkInDate])
+  @@index([organizationId, propertyId, roomId, checkInDate, checkOutDate])
+  @@index([organizationId, propertyId, guestId])
+}
+
+/// Append-only trail for reservation creation, modification, room assignment
+/// and cancellation. The database trigger rejects UPDATE/DELETE/TRUNCATE.
+model ReservationHistory {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  propertyId     String             @db.Uuid
+  reservationId  String             @db.Uuid
+  action         String
+  fromStatus     ReservationStatus?
+  toStatus       ReservationStatus?
+  fromRoomId     String?            @db.Uuid
+  toRoomId       String?            @db.Uuid
+  reason         String?
+  actorUserId    String?            @db.Uuid
+  correlationId  String?
+  occurredAt     DateTime           @default(now())
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property       Property           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservation    Reservation        @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  actor          User?              @relation("ReservationHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, propertyId, reservationId, occurredAt])
 }
 
 model PasswordResetToken {

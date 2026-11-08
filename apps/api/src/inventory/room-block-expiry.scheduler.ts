@@ -139,14 +139,14 @@ export class RoomBlockExpiryScheduler implements OnModuleInit, OnModuleDestroy {
 
   private async tryAdvisoryLock(): Promise<boolean> {
     const rows = await this.prisma.$queryRaw<Array<{ locked: boolean }>>`
-      SELECT pg_try_advisory_lock(${ADVISORY_LOCK_KEY_1}, ${ADVISORY_LOCK_KEY_2}) AS locked
+      SELECT pg_try_advisory_lock(${ADVISORY_LOCK_KEY_1}::int, ${ADVISORY_LOCK_KEY_2}::int) AS locked
     `;
     return rows[0]?.locked === true;
   }
 
   private async releaseAdvisoryLock(): Promise<void> {
     await this.prisma.$queryRaw`
-      SELECT pg_advisory_unlock(${ADVISORY_LOCK_KEY_1}, ${ADVISORY_LOCK_KEY_2})
+      SELECT pg_advisory_unlock(${ADVISORY_LOCK_KEY_1}::int, ${ADVISORY_LOCK_KEY_2}::int)
     `;
   }
 }

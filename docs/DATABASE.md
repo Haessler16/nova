@@ -149,11 +149,49 @@
 
 Append-only. No tiene `updatedAt`; un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE`.
 
+### Guest
+
+- id
+- organizationId / propertyId
+- fullName
+- email / phone (opcionales, normalizados)
+- documentType (`PASSPORT`, `NATIONAL_ID`, `DRIVER_LICENSE`, `OTHER`) / documentNumber (opcionales y solo juntos)
+- notes (≤ 2000)
+- status (`ACTIVE`, `DISABLED`; sin borrado físico)
+- createdAt / updatedAt
+
+Perfil minimizado por propiedad. Sin fecha de nacimiento, dirección ni historial de documentos. No hay unicidad de email/documento: la deduplicación es asistida y nunca automática.
+
+### Reservation
+
+- id
+- organizationId / propertyId
+- code (único por propiedad, `^[A-Z0-9-]{4,32}$`)
+- status (`CONFIRMED`, `CHECKED_IN`, `CHECKED_OUT`, `CANCELLED`, `NO_SHOW`; Phase 3 solo crea `CONFIRMED` y cancela)
+- source nullable
+- checkInDate / checkOutDate (`date`, calendario hotelero)
+- adults / children
+- guestId / roomTypeId / roomId (roomId nullable)
+- notes, idempotencyKey (único por propiedad)
+- createdByUserId, cancelledAt, cancellationReason
+- createdAt / updatedAt
+
+### ReservationHistory
+
+- id
+- organizationId / propertyId / reservationId
+- action (`reservation.created`, `reservation.updated`, `reservation.room_assigned`, `reservation.cancelled`)
+- fromStatus / toStatus
+- fromRoomId / toRoomId
+- reason, actorUserId, correlationId, occurredAt
+
+Append-only. Un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE`.
+
 ## Modelo de dominio futuro
 
 - RatePlan, Rate
-- Guest, GuestContact, GuestDocument (documento separado y con protección reforzada si se aprueba)
-- Reservation, ReservationGuest, ReservationRoomAssignment
+- GuestContact, GuestDocument (documento separado y con protección reforzada si se aprueba)
+- ReservationGuest, ReservationRoomAssignment múltiple
 - AvailabilityHold / RoomLease
 - Stay
 - Folio, FolioLine, PaymentRecord, CashSession, CashMovement
@@ -172,12 +210,15 @@ Para entidades relacionadas, preferir claves únicas compuestas:
 
 ## Concurrencia de habitación
 
-La implementación de no-solapamiento de bloqueos ya existe para `RoomBlock` (ver Phase 2). Antes de reservas confirmadas hay que definir:
+Estado implementado en Phase 3:
 
-- límites de reservas por habitación y estados que ocupan inventario;
-- tratamiento de checkout date como extremo exclusivo;
-- reservas sin habitación asignada;
-- overbooking autorizado y permisos, si el producto lo requiere.
+- Los estados que ocupan inventario son `CONFIRMED` y `CHECKED_IN`. `CANCELLED`, `CHECKED_OUT` y `NO_SHOW` liberan el intervalo.
+- La estancia es `[checkInDate, checkOutDate)`; un checkout puede coincidir con el checkin de otra reserva.
+- Las reservas pueden crearse sin habitación asignada; la asignación se valida y se puede cambiar mientras la reserva siga `CONFIRMED`.
+- No hay overbooking autorizado en esta fase.
+- Una habitación no puede pertenecer a dos room types; asignar una reserva a otra tipología responde `409 room_type_mismatch`.
+- La aplicación bloquea la fila `Room` y valida solapamiento; PostgreSQL impone la garantía final con `Reservation_room_date_no_overlap`.
+- Los bloqueos de inventario (`RoomBlock`) y las reservas se serializan por el lock de la fila `Room`; todavía no hay una constraint única que relacione ambas tablas.
 
 La capa Redis/lease es auxiliar. La constraint/transacción PostgreSQL es la garantía final.
 
@@ -285,7 +326,7 @@ Propiedades:
 
 ### Verificación de integridad
 
-`scripts/verify-db-integrity.ts` consulta `pg_constraint`, `pg_trigger`, `pg_proc` y `pg_extension` y falla si falta cualquiera de los objetos manuales esperados (37 constraints, 4 triggers, 2 funciones, `btree_gist`).
+`scripts/verify-db-integrity.ts` consulta `pg_constraint`, `pg_trigger`, `pg_proc`, `pg_indexes` y `pg_extension` y falla si falta cualquiera de los objetos manuales esperados (77 constraints, 8 triggers, 4 funciones, 2 índices parciales, `btree_gist`).
 
 ```bash
 pnpm db:verify
@@ -293,9 +334,53 @@ pnpm db:verify
 
 CI lo ejecuta después de migrar y sembrar. Esto cierra la limitación de que una migración futura elimine silenciosamente reglas manuales.
 
+## Phase 3 implementation notes — guests and reservations
+
+Applied in `prisma/migrations/20261108210000_phase3_guests_reservations/migration.sql`.
+
+### Composite tenant foreign keys
+
+- `Guest (organizationId, propertyId) → Property (organizationId, id)`;
+- `Reservation (organizationId, propertyId) → Property (organizationId, id)`;
+- `Reservation (organizationId, propertyId, guestId) → Guest (organizationId, propertyId, id)`;
+- `Reservation (organizationId, propertyId, roomTypeId) → RoomType (organizationId, propertyId, id)`;
+- `Reservation (organizationId, propertyId, roomId) → Room (organizationId, propertyId, id)`;
+- `Reservation (organizationId, createdByUserId) → Membership (organizationId, userId)`;
+- `ReservationHistory (organizationId, propertyId) → Property (organizationId, id)`;
+- `ReservationHistory (organizationId, propertyId, reservationId) → Reservation (organizationId, propertyId, id)`;
+- `ReservationHistory (organizationId, actorUserId) → Membership (organizationId, userId)`.
+
+### No-solapamiento de reservas
+
+```sql
+ALTER TABLE "Reservation"
+    ADD CONSTRAINT "Reservation_room_date_no_overlap"
+    EXCLUDE USING gist (
+        "roomId" WITH =,
+        daterange("checkInDate", "checkOutDate", '[)') WITH &&
+    )
+    WHERE ("roomId" IS NOT NULL AND "status" IN ('CONFIRMED', 'CHECKED_IN'));
+```
+
+- Es la garantía final: dos transacciones concurrentes no pueden confirmar la misma habitación en fechas solapadas, incluso si la validación de aplicación fallara.
+- El servicio además bloquea la fila `Room` con `SELECT ... FOR UPDATE` y devuelve `409 room_not_available` de forma determinista.
+- `checkInDate`/`checkOutDate` son `date`, no instantes. La granularidad es de noche hotelera; las horas de check-in/out pertenecen a Front Office.
+- `RoomBlock` sigue usando `tsrange` con instantes. La comparación reserva↔bloqueo usa los extremos UTC de las fechas de reserva; revisar si se introduce precisión horaria.
+
+### Checks principales
+
+- `Guest_full_name_check`, `Guest_email_check`, `Guest_phone_check`, `Guest_document_check`, `Guest_document_number_check`, `Guest_notes_check`.
+- `Reservation_code_check`, `Reservation_date_order_check`, `Reservation_occupancy_check`, `Reservation_idempotency_key_check`, `Reservation_cancellation_fields_check`.
+- `ReservationHistory_action_check`, `ReservationHistory_reason_check`, `ReservationHistory_room_change_check`.
+
+### Historial append-only
+
+- `nova_reservation_history_append_only()` lanza excepción en `UPDATE`/`DELETE`/`TRUNCATE`.
+- Triggers `ReservationHistory_append_only_row` y `ReservationHistory_append_only_truncate`.
+
 ## Prisma
 
-`prisma/schema.prisma` modela la foundation y el inventario. Las constraints avanzadas de PostgreSQL se agregan como SQL manual en las migraciones; documentarlas y probarlas. No simular una constraint compleja solo en TypeScript.
+`prisma/schema.prisma` modela la foundation, el inventario y las reservas. Las constraints avanzadas de PostgreSQL se agregan como SQL manual en las migraciones; documentarlas y probarlas. No simular una constraint compleja solo en TypeScript.
 
 Reglas para futuras migraciones:
 

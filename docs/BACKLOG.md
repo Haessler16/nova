@@ -2,7 +2,9 @@
 
 Estimaciones relativas para planificación, no compromisos. `S` = pequeño, `M` = medio, `L` = grande, `XL` = investigación/alto riesgo. La estimación debe revisarse tras inspeccionar el repositorio.
 
-> **Estado 2026-11-08:** FND-001 a FND-012 e INV-001 a INV-005 implementados localmente y verificados (lint, typecheck, format, build, 32 unit tests, 30 E2E de tenant/inventario, 5 E2E de sesión/CSRF/rate limit y `pnpm db:verify`). INV-006 (UI de inventario) queda pendiente. El CI remoto está definido en `.github/workflows/ci.yml` pero aún no se ejecutó en GitHub. Ver `docs/PHASE_1_REPORT.md` y `docs/PHASE_2_REPORT.md`.
+> **Estado 2026-11-08:** FND-001 a FND-012, INV-001 a INV-005, GST-001/002 y RSV-001/002/003/005 implementados localmente y verificados (lint, typecheck, format, build, unit tests, E2E aislados y `pnpm db:verify`). Quedan pendientes INV-006 (UI de inventario), RSV-004 (lease temporal; la exclusión PostgreSQL ya existe y RSV-004 no es requisito de integridad), RSV-006 (calendario UI) y las fases posteriores. El CI remoto está definido en `.github/workflows/ci.yml` pero aún no se ejecutó en GitHub. Ver `docs/PHASE_1_REPORT.md`, `docs/PHASE_2_REPORT.md` y `docs/PHASE_3_REPORT.md`.
+
+**Phase 3 — guests y reservas (backend):** CRUD de huéspedes con minimización, búsqueda asistida, ciclo de vida de reserva (`CONFIRMED`/`CANCELLED`), disponibilidad por fechas, asignación de habitación transaccional, idempotencia de creación, historial append-only y garantía de no-solapamiento con exclusion constraint PostgreSQL. Check-in/check-out pertenecen a Phase 4 (Front Office).
 
 ## P0 — Foundation (bloquea todo)
 
@@ -44,6 +46,8 @@ Estimaciones relativas para planificación, no compromisos. `S` = pequeño, `M` 
 | RSV-004 | Concurrency  | Lease temporal de selección                     | Should    | M    | RSV-003         | Expira automáticamente y no sustituye DB            |
 | RSV-005 | Reservations | Modificar/cancelar con historial                | Must      | M    | RSV-001         | Historial preservado y auditado                     |
 | RSV-006 | UI           | Calendario de reservas                          | Must      | XL   | RSV-001..005    | Refleja conflictos y estados del backend            |
+
+Estado P2: GST-001, GST-002, RSV-001, RSV-002, RSV-003 y RSV-005 implementados en backend con tests. RSV-004 no se implementó (Redis/lease no sustituye PostgreSQL) y RSV-006 (UI) queda pendiente.
 
 ## P3 — Front Office
 

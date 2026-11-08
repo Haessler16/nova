@@ -1,6 +1,6 @@
 # NOVA PMS
 
-SaaS hotelero multi-tenant. Este repositorio contiene la **Phase 1 — Foundation** y la **Phase 2 — Configuración de propiedad e inventario** ejecutables: monorepo, API NestJS, web Next.js, PostgreSQL/Redis, Prisma, autenticación local con sesiones, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, seeds sintéticos y pruebas de aislamiento.
+SaaS hotelero multi-tenant. Este repositorio contiene la **Phase 1 — Foundation**, la **Phase 2 — Configuración de propiedad e inventario** y el backend de la **Phase 3 — Huéspedes y reservas** ejecutables: monorepo, API NestJS, web Next.js, PostgreSQL/Redis, Prisma, autenticación local con sesiones/MFA/recuperación, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, huéspedes minimizados, reservas con disponibilidad y asignación transaccional, historial append-only de reservas, seeds sintéticos y pruebas de aislamiento.
 
 > La autenticación local con usuario/contraseña es una transición controlada, no un proveedor de identidad definitivo. No es producción-ready sin revisión de seguridad, MFA/recuperación de cuenta y secretos gestionados. Ver [Limitaciones](#limitaciones).
 
@@ -152,8 +152,29 @@ Todos usan la contraseña `NovaDemo!2026`.
 | POST   | `/api/v1/inventory/rooms/:id/blocks`                   | auth + tenant | `inventory.manage`               |
 | POST   | `/api/v1/inventory/rooms/:id/blocks/:blockId/release`  | auth + tenant | `inventory.manage`               |
 | GET    | `/api/v1/inventory/rooms/:id/history`                  | auth + tenant | `inventory.read`                 |
+| GET    | `/api/v1/guests`                                       | auth + tenant | `guests.read`                    |
+| POST   | `/api/v1/guests`                                       | auth + tenant | `guests.manage`                  |
+| GET    | `/api/v1/guests/:id`                                   | auth + tenant | `guests.read`                    |
+| PATCH  | `/api/v1/guests/:id`                                   | auth + tenant | `guests.manage`                  |
+| GET    | `/api/v1/reservations/availability`                    | auth + tenant | `reservations.read`              |
+| GET    | `/api/v1/reservations`                                 | auth + tenant | `reservations.read`              |
+| POST   | `/api/v1/reservations`                                 | auth + tenant | `reservations.manage`            |
+| GET    | `/api/v1/reservations/:id`                             | auth + tenant | `reservations.read`              |
+| PATCH  | `/api/v1/reservations/:id`                             | auth + tenant | `reservations.manage`            |
+| POST   | `/api/v1/reservations/:id/room-assignment`             | auth + tenant | `reservations.manage`            |
+| POST   | `/api/v1/reservations/:id/cancel`                      | auth + tenant | `reservations.manage`            |
+| GET    | `/api/v1/reservations/:id/history`                     | auth + tenant | `reservations.read`              |
 
-Todas las mutaciones de propiedades e inventario escriben `AuditEvent` en la misma transacción. No existe ruta HTTP para modificar o borrar auditoría ni historial de estado.
+Todas las mutaciones de propiedades, inventario, huéspedes y reservas escriben `AuditEvent` en la misma transacción. No existe ruta HTTP para modificar o borrar auditoría, historial de estado ni historial de reservas.
+
+## Huéspedes y reservas
+
+- `Guest` es property-scoped y minimizado: nombre, email/teléfono opcionales, documento opcional (tipo + número juntos) y notas. Sin borrado físico; `status = DISABLED`.
+- `Reservation` usa fechas calendario de la propiedad `[checkInDate, checkOutDate)`, una habitación opcional y estados `CONFIRMED`/`CANCELLED` en esta fase (check-in/out pertenece a Front Office).
+- `POST /reservations` acepta `idempotencyKey`; repetir la misma clave devuelve la reserva original y una clave reutilizada con otro payload responde `409 idempotency_key_reuse`.
+- `GET /reservations/availability` excluye habitaciones inactivas, bloqueadas o ya reservadas en el rango solicitado.
+- La asignación de habitación valida room type, bloqueos y solapamiento bajo lock de la fila `Room`. La garantía final es la exclusion constraint PostgreSQL `Reservation_room_date_no_overlap`.
+- `ReservationHistory` es append-only; las modificaciones y cancelaciones preservan historial y auditoría.
 
 ## Inventario y estados
 
@@ -190,23 +211,24 @@ Esto cierra la limitación de que una migración futura pueda borrar silenciosam
 
 ## Comandos
 
-| Comando                        | Descripción                           |
-| ------------------------------ | ------------------------------------- |
-| `pnpm dev`                     | API + web en watch                    |
-| `pnpm build`                   | build de todos los workspaces         |
-| `pnpm lint`                    | ESLint API + Next                     |
-| `pnpm typecheck`               | `tsc --noEmit` en API y web           |
-| `pnpm test`                    | tests unitarios de API                |
-| `pnpm test:e2e`                | E2E tenant/inventory con `dev-header` |
-| `pnpm test:e2e:auth`           | E2E de sesiones/CSRF/rate limit       |
-| `pnpm format` / `format:check` | Prettier                              |
-| `pnpm db:generate`             | genera Prisma Client                  |
-| `pnpm db:migrate`              | crea/aplica migración en desarrollo   |
-| `pnpm db:migrate:deploy`       | aplica migraciones existentes         |
-| `pnpm db:seed`                 | datos sintéticos idempotentes         |
-| `pnpm db:verify`               | valida constraints/triggers manuales  |
-| `pnpm db:reset`                | reset destructivo local + seed        |
-| `pnpm infra:up` / `infra:down` | Docker Compose                        |
+| Comando                        | Descripción                                    |
+| ------------------------------ | ---------------------------------------------- |
+| `pnpm dev`                     | API + web en watch                             |
+| `pnpm build`                   | build de todos los workspaces                  |
+| `pnpm lint`                    | ESLint API + Next                              |
+| `pnpm typecheck`               | `tsc --noEmit` en API y web                    |
+| `pnpm test`                    | tests unitarios de API                         |
+| `pnpm test:e2e`                | E2E tenant/inventory/reservas con `dev-header` |
+| `pnpm test:e2e:auth`           | E2E de sesiones/CSRF/rate limit                |
+| `pnpm test:e2e:all:isolated`   | Todos los E2E en schemas PostgreSQL aislados   |
+| `pnpm format` / `format:check` | Prettier                                       |
+| `pnpm db:generate`             | genera Prisma Client                           |
+| `pnpm db:migrate`              | crea/aplica migración en desarrollo            |
+| `pnpm db:migrate:deploy`       | aplica migraciones existentes                  |
+| `pnpm db:seed`                 | datos sintéticos idempotentes                  |
+| `pnpm db:verify`               | valida constraints/triggers manuales           |
+| `pnpm db:reset`                | reset destructivo local + seed                 |
+| `pnpm infra:up` / `infra:down` | Docker Compose                                 |
 
 Los E2E requieren infraestructura levantada, migración aplicada, seed ejecutado y `db:verify`:
 
@@ -246,15 +268,18 @@ pnpm test:e2e:auth
 - Los tokens de reset/verificación solo se registran/devuelven fuera de producción según `AUTH_TOKEN_DELIVERY`; en producción se requiere proveedor de correo.
 - Los permisos de administración son API-only (sin UI) y aplican reglas conservadoras (subset de permisos del actor y protección del último administrador).
 - El estado operativo se reconcilia en lecturas y mediante un scheduler in-process con advisory lock PostgreSQL; no sustituye observabilidad/alertas operativas.
-- No hay reservas, huéspedes, front office, folios, caja, night audit, OCR, offline ni Edge.
-- No hay estrategia final de no-solapamiento de reservas. Antes de confirmar reservas debe definirse y probarse contra PostgreSQL.
+- El backend de huéspedes y reservas existe, pero no hay calendario UI ni front office (check-in/out, room rack, room move), folios, caja, night audit, OCR, offline ni Edge.
+- Una reserva admite una sola habitación y las estancias usan granularidad de fecha calendario; las horas de check-in/out y los conflictos con bloqueos a nivel de instante necesitan revisión en Front Office.
+- El conflicto reserva↔bloqueo se serializa por el lock de la fila `Room`, pero no existe una constraint única que relacione ambas tablas.
 - Los E2E aislados crean/drolean esquemas por ejecución y requieren PostgreSQL local/CI con permisos adecuados.
 - El workflow CI está actualizado para E2E aislado, pero no se ha observado una ejecución remota en GitHub desde este entorno.
 - Backups/restore drill y métricas/logs son baseline local/operador; no hay backups administrados, agregación de logs/métricas, revisión de seguridad externa ni hardening perimetral completo.
 
 ## Siguiente paso recomendado
 
-Phase 3 — huéspedes y reservas: CRUD con minimización de datos, ciclo de vida de reserva, búsqueda de disponibilidad, asignación de habitación y pruebas de concurrencia. Antes de confirmar reservas, definir y validar la estrategia de no-solapamiento en PostgreSQL.
+Phase 4 — Front Office: room rack, listas de llegadas/salidas/in-house, check-in/check-out como máquina de estados idempotente, cambio de habitación y notas/incidencias. Antes de check-in, definir la relación entre reserva, estancia y estado de ocupación de la habitación.
+
+Pendiente inmediato de Phase 3: calendario de reservas (RSV-006) y UI de huéspedes; el backend y sus garantías de concurrencia ya están implementados.
 
 ## Documentación
 

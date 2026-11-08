@@ -65,6 +65,34 @@ const EXPECTED_CONSTRAINTS = [
   'SecurityEvent_type_check',
   'SecurityEvent_severity_check',
   'SecurityEvent_metadata_size_check',
+  // Phase 3 guests and reservations hardening.
+  'Guest_property_tenant_fkey',
+  'Guest_full_name_check',
+  'Guest_email_check',
+  'Guest_phone_check',
+  'Guest_document_check',
+  'Guest_document_number_check',
+  'Guest_notes_check',
+  'Reservation_property_tenant_fkey',
+  'Reservation_guest_tenant_fkey',
+  'Reservation_room_type_tenant_fkey',
+  'Reservation_room_tenant_fkey',
+  'Reservation_creator_membership_fkey',
+  'Reservation_code_check',
+  'Reservation_date_order_check',
+  'Reservation_occupancy_check',
+  'Reservation_source_check',
+  'Reservation_notes_check',
+  'Reservation_idempotency_key_check',
+  'Reservation_cancellation_fields_check',
+  'Reservation_cancellation_reason_check',
+  'Reservation_room_date_no_overlap',
+  'ReservationHistory_property_tenant_fkey',
+  'ReservationHistory_reservation_tenant_fkey',
+  'ReservationHistory_actor_membership_fkey',
+  'ReservationHistory_action_check',
+  'ReservationHistory_reason_check',
+  'ReservationHistory_room_change_check',
 ] as const;
 
 const EXPECTED_TRIGGERS = [
@@ -74,12 +102,15 @@ const EXPECTED_TRIGGERS = [
   'RoomStatusHistory_append_only_truncate',
   'SecurityEvent_append_only_row',
   'SecurityEvent_append_only_truncate',
+  'ReservationHistory_append_only_row',
+  'ReservationHistory_append_only_truncate',
 ] as const;
 
 const EXPECTED_FUNCTIONS = [
   'nova_audit_event_append_only',
   'nova_room_status_history_append_only',
   'nova_security_event_append_only',
+  'nova_reservation_history_append_only',
 ] as const;
 
 const EXPECTED_INDEXES = [
