@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecordStatus {
+  ACTIVE
+  SUSPENDED
+  INVITED
+  DISABLED
+}
+
+model Organization {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String       @unique
+  status      RecordStatus @default(ACTIVE)
+  properties  Property[]
+  memberships Membership[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status])
+}
+
+model Property {
+  id                    String       @id @default(uuid()) @db.Uuid
+  organizationId        String       @db.Uuid
+  name                  String
+  code                  String
+  timezone              String       @default("America/Sao_Paulo")
+  currencyCode          String       @default("BRL") @db.VarChar(3)
+  operationalDayStart   String       @default("06:00")
+  status                RecordStatus @default(ACTIVE)
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  propertyMemberships   PropertyMembership[]
+  auditEvents           AuditEvent[]
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@unique([organizationId, code])
+  @@unique([organizationId, id])
+  @@index([organizationId, status])
+}
+
+model User {
+  id                    String       @id @default(uuid()) @db.Uuid
+  email                 String       @unique
+  name                  String
+  passwordHash          String?
+  status                RecordStatus @default(INVITED)
+  memberships           Membership[]
+  propertyMemberships   PropertyMembership[]
+  auditEvents           AuditEvent[] @relation("AuditActor")
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@index([status])
+}
+
+model Membership {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  userId          String       @db.Uuid
+  status          RecordStatus @default(ACTIVE)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+}
+
+model Role {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  name            String
+  key             String
+  propertyRoles   PropertyMembership[]
+  permissions     RolePermission[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+  @@unique([organizationId, id])
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
+  description String
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String    @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+}
+
+model PropertyMembership {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  propertyId      String       @db.Uuid
+  userId          String       @db.Uuid
+  roleId          String       @db.Uuid
+  status          RecordStatus @default(ACTIVE)
+  property        Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role            Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([propertyId, userId])
+  @@index([organizationId, userId, status])
+  @@index([propertyId, status])
+}
+
+model AuditEvent {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  propertyId      String?   @db.Uuid
+  actorUserId     String?   @db.Uuid
+  action          String
+  entityType      String
+  entityId        String
+  occurredAt      DateTime  @default(now())
+  correlationId   String?
+  reason          String?
+  metadata        Json?
+  property        Property? @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  actor           User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([propertyId, occurredAt])
+  @@index([entityType, entityId])
+}
