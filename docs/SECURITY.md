@@ -18,6 +18,7 @@
 ## Multi-tenant security tests
 
 For every resource type:
+
 - user from Organization A cannot read Organization B resource;
 - user from Property A cannot access Property B if membership absent;
 - forged organizationId/propertyId in body/query is ignored or rejected;
@@ -27,6 +28,7 @@ For every resource type:
 ## LGPD design checklist
 
 This document is an engineering baseline, not legal advice.
+
 - Define purpose and lawful basis with the controller/customer.
 - Collect only data needed for hotel operations and applicable obligations.
 - Define retention and deletion/anonymization policy.

@@ -16,6 +16,7 @@
 ## Entidades iniciales
 
 ### Organization
+
 - id
 - name
 - slug
@@ -23,6 +24,7 @@
 - createdAt / updatedAt
 
 ### Property
+
 - id
 - organizationId
 - name
@@ -34,6 +36,7 @@
 - createdAt / updatedAt
 
 ### User
+
 - id
 - email normalizado y único global
 - name
@@ -42,6 +45,7 @@
 - createdAt / updatedAt
 
 ### Membership
+
 - id
 - organizationId
 - userId
@@ -49,6 +53,7 @@
 - createdAt / updatedAt
 
 ### PropertyMembership
+
 - id
 - organizationId
 - propertyId
@@ -57,9 +62,11 @@
 - status
 
 ### Role / Permission
+
 - roles y permisos configurables, con permisos atómicos y asignación acotada por organización/propiedad.
 
 ### AuditEvent
+
 - id
 - organizationId
 - propertyId nullable
@@ -89,6 +96,7 @@
 ## Integridad multi-tenant
 
 Para entidades relacionadas, preferir claves únicas compuestas:
+
 - `@@unique([organizationId, id])` en tablas padre cuando sea necesario.
 - Relaciones compuestas que incluyan organizationId/propertyId.
 - Nunca permitir Reservation.propertyId que pertenezca a otra Organization.
@@ -97,6 +105,7 @@ Para entidades relacionadas, preferir claves únicas compuestas:
 ## Concurrencia de habitación
 
 La implementación concreta de no-solapamiento debe definirse antes de reservas confirmadas. Investigar:
+
 - PostgreSQL range types + exclusion constraint;
 - `btree_gist`;
 - límites de reservas por habitación y estados que ocupan inventario;
@@ -105,6 +114,29 @@ La implementación concreta de no-solapamiento debe definirse antes de reservas 
 - overbooking autorizado y permisos, si el producto lo requiere.
 
 La capa Redis/lease es auxiliar. La constraint/transacción PostgreSQL es la garantía final.
+
+## Phase 1 implementation notes
+
+Applied in `prisma/migrations/20261108000000_init/migration.sql`:
+
+- Composite tenant foreign keys:
+  - `PropertyMembership (organizationId, propertyId) → Property (organizationId, id)`;
+  - `PropertyMembership (organizationId, roleId) → Role (organizationId, id)`;
+  - `PropertyMembership (organizationId, userId) → Membership (organizationId, userId)`;
+  - `AuditEvent (organizationId, propertyId) → Property (organizationId, id)`.
+- `User.email` must be lowercase, trimmed and contain `@`.
+- `Property.currencyCode` must match `^[A-Z]{3}$`.
+- `Property.operationalDayStart` must match `HH:mm`.
+- `AuditEvent.metadata` is capped at 8 KiB.
+- Trigger `AuditEvent_append_only_row` rejects `UPDATE`/`DELETE`; trigger `AuditEvent_append_only_truncate` rejects `TRUNCATE`.
+
+Audit semantics for Phase 1:
+
+- `propertyId` is the **authorization scope** in which the action occurred.
+- The affected record is identified by `entityType` + `entityId`.
+- Example: creating a property from Centro writes `entityType=Property`, `entityId=<new id>`, `propertyId=<Centro id>`.
+
+These constraints are manual SQL. Prisma does not model them, so future migrations must preserve them and reviews must check for drift.
 
 ## Prisma
 

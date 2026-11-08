@@ -13,30 +13,41 @@ Build a vertical slice foundation first. Do not ask the coding agent to implemen
 - No feature code until the current state is understood.
 
 Exit:
+
 - reproducible setup plan;
 - no unreviewed destructive changes;
 - documented decisions and risks.
 
 ## Phase 1 — Foundation (approx. 2–4 weeks)
 
-- pnpm monorepo.
-- Next.js web app and NestJS API.
-- Docker Compose PostgreSQL + Redis.
-- Prisma and first migration.
-- lint, format, typecheck, unit tests, E2E test skeleton.
-- health endpoints.
-- Organization, Property, User, Membership, PropertyMembership, Role/Permission baseline.
-- authentication/session strategy (select only after documenting decision).
-- tenant context and authorization guard/service.
-- audit event foundation.
-- seed local development data.
+Status: **implemented locally on 2026-11-08**; remote CI not yet observed.
+
+- [x] pnpm monorepo.
+- [x] Next.js web app and NestJS API.
+- [x] Docker Compose PostgreSQL + Redis.
+- [x] Prisma and first migration.
+- [x] lint, format, typecheck, unit tests, E2E test skeleton.
+- [x] health endpoints (liveness + readiness with real DB/Redis checks).
+- [x] Organization, Property, User, Membership, PropertyMembership, Role/Permission baseline.
+- [x] authentication/session strategy documented; development header auth isolated and non-production.
+- [x] tenant context and authorization guard/service.
+- [x] audit event foundation (append-only API + DB trigger).
+- [x] seed local development data (synthetic, deterministic, idempotent).
 
 Exit:
-- fresh clone starts using documented commands;
-- migrations apply cleanly;
-- cross-tenant access tests pass;
-- health/readiness checks work;
-- CI commands documented and green.
+
+- [x] fresh clone starts using documented commands (verified locally).
+- [x] migrations apply cleanly (verified from empty DB).
+- [x] cross-tenant access tests pass (18 E2E tests).
+- [x] health/readiness checks work (verified live).
+- [x] CI commands documented and green locally; workflow added, remote run pending.
+
+Known Phase 1 gaps:
+
+- real identity provider, sessions, CSRF, rate limiting;
+- org-level RBAC and membership administration endpoints;
+- remote CI execution and migration drift checks;
+- E2E isolation from the local seeded database.
 
 ## Phase 2 — Hotel configuration and inventory (approx. 2–3 weeks)
 
@@ -47,6 +58,7 @@ Exit:
 - history and audit.
 
 Exit:
+
 - authorized staff can configure inventory;
 - invalid/cross-property relations rejected;
 - room state transitions tested.
@@ -62,6 +74,7 @@ Exit:
 - calendar UI.
 
 Exit:
+
 - simultaneous attempts cannot confirm incompatible assignments;
 - cancellations and modifications preserve history;
 - tenant isolation passes.
@@ -76,6 +89,7 @@ Exit:
 - keyboard-friendly desktop UX.
 
 Exit:
+
 - complete reception flows E2E;
 - state transitions and audit events verified.
 
@@ -88,6 +102,7 @@ Exit:
 - basic operational dashboard/reports.
 
 Exit:
+
 - financial invariants and reconciliation tests;
 - closeout replay does not duplicate entries;
 - audit trail complete.
@@ -101,6 +116,7 @@ Exit:
 - pilot instrumentation and feedback workflow.
 
 Exit:
+
 - pilot checklist signed off;
 - support/runbook prepared;
 - restore test successful.
@@ -115,6 +131,7 @@ Exit:
 - security/retention review.
 
 Exit:
+
 - simulated disconnections do not duplicate operations;
 - conflicts are visible and recoverable;
 - no critical operation is falsely shown as committed offline.

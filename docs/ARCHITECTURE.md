@@ -75,12 +75,14 @@ Cada módulo expone servicios de aplicación y contratos internos. Evitar que un
 ## 5. Multi-tenancy
 
 Jerarquía:
+
 - Organization: cliente/empresa que contrata NOVA.
 - Property: hotel individual.
 - User: identidad global.
 - Membership: acceso de usuario a una organización y roles por propiedad.
 
 Resolución de contexto:
+
 1. autenticar usuario;
 2. validar membership activa;
 3. resolver organization/property desde ruta o contexto seleccionado;
@@ -91,6 +93,7 @@ Resolución de contexto:
 No confiar en organizationId/propertyId de body/query para autorizar. Si se aceptan como selector, verificar pertenencia contra la sesión autenticada.
 
 Defensa en profundidad:
+
 - filtros tenant-scoped obligatorios en repositorios;
 - constraints compuestas cuando aplique;
 - pruebas negativas cross-tenant;
@@ -100,6 +103,7 @@ Defensa en profundidad:
 ## 6. Prevención de doble asignación
 
 La disponibilidad puede cambiar entre lectura y escritura. El flujo definitivo:
+
 1. frontend solicita disponibilidad;
 2. usuario selecciona opción;
 3. frontend puede obtener lease temporal para mejorar UX;
@@ -113,6 +117,7 @@ La disponibilidad puede cambiar entre lectura y escritura. El flujo definitivo:
 Para PostgreSQL, estudiar `EXCLUDE USING gist` con rangos temporales y extensión `btree_gist` para evitar solapamientos por habitación, o estrategia de bloqueo por habitación/intervalo con constraint complementaria. La elección debe probarse con concurrencia real y documentarse. No confiar en Redis lock como única protección.
 
 Leases:
+
 - expiración corta y configurable;
 - token opaco;
 - vinculado a usuario/property/recurso;

@@ -1,0 +1,42 @@
+{
+  "name": "nova-pms",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NOVA PMS — hotel operations SaaS. Phase 1 foundation.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@8.15.1",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=8.15.1"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @nova/api --filter @nova/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @nova/api test",
+    "test:e2e": "pnpm --filter @nova/api test:e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:reset": "prisma migrate reset --force",
+    "db:studio": "prisma studio",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f"
+  },
+  "prisma": {
+    "seed": "ts-node --project tsconfig.seed.json prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@prisma/client": "5.22.0",
+    "@types/node": "22.7.4",
+    "prettier": "3.3.3",
+    "prisma": "5.22.0",
+    "ts-node": "10.9.2",
+    "typescript": "5.6.3"
+  }
+}

@@ -50,12 +50,14 @@ NOVA PMS es una plataforma SaaS para gestionar la operación hotelera desde una 
 ## 6. Módulos y alcance funcional
 
 ### Foundation
+
 - Organization, Property, usuarios, membresías, roles/permisos.
 - Preferencias por propiedad: timezone, moneda, hotel day, datos de contacto.
 - Auditoría de acciones relevantes.
 - Gestión de sesiones y seguridad.
 
 ### Inventory
+
 - Tipos de habitación.
 - Habitaciones físicas y atributos.
 - Estados separados: ocupación/operación y housekeeping.
@@ -63,12 +65,14 @@ NOVA PMS es una plataforma SaaS para gestionar la operación hotelera desde una 
 - Historial de cambios.
 
 ### Guests
+
 - Perfil de huésped con datos mínimos necesarios.
 - Datos de contacto y documentos solo cuando la operación y la normativa lo justifiquen.
 - Deduplicación asistida, merge controlado y auditado.
 - No usar documento personal como único identificador interno.
 
 ### Reservations
+
 - Crear, consultar, modificar y cancelar reserva.
 - Huéspedes asociados, ocupación, fechas, tipo de habitación, tarifa y origen.
 - Estados claros y transiciones validadas.
@@ -77,6 +81,7 @@ NOVA PMS es una plataforma SaaS para gestionar la operación hotelera desde una 
 - Bloqueos temporales de selección para UX y confirmación transaccional definitiva.
 
 ### Front Office
+
 - Room rack.
 - Llegadas, salidas, huéspedes in-house, no-shows.
 - Check-in y check-out con validaciones.
@@ -84,6 +89,7 @@ NOVA PMS es una plataforma SaaS para gestionar la operación hotelera desde una 
 - Notas e incidencias.
 
 ### Folio / caja
+
 - Folios por estancia/reserva.
 - Cargos y ajustes auditados.
 - Registro de pagos por método y referencia externa.
@@ -92,6 +98,7 @@ NOVA PMS es una plataforma SaaS para gestionar la operación hotelera desde una 
 - No almacenar datos de tarjeta.
 
 ### Hotel day / Night audit
+
 - Día operativo configurable por propiedad.
 - Validaciones previas al cierre.
 - Operaciones pendientes y excepciones visibles.
@@ -99,6 +106,7 @@ NOVA PMS es una plataforma SaaS para gestionar la operación hotelera desde una 
 - Reapertura solo con permiso elevado, motivo y auditoría.
 
 ### Reporting
+
 - Ocupación, llegadas, salidas, huéspedes in-house, habitaciones fuera de servicio.
 - Reportes derivados de datos operativos con filtros y timezone de propiedad.
 - Exportaciones protegidas por permisos.
@@ -125,17 +133,19 @@ Aplicar límites de tamaño, antivirus/validación de archivos, permisos, cifrad
 ## 9. Onboarding y NOVA Academy
 
 MVP de aprendizaje:
+
 - tour guiado corto;
 - sandbox aislado con hotel, habitaciones, huéspedes, reservas y pagos ficticios;
 - ejercicios guiados de reserva, check-in, folio y check-out;
 - avanzar, retroceder, omitir, retomar y reiniciar.
 - indicador permanente de modo demo.
 - aislamiento estricto de producción: credenciales, datos, storage, colas y proveedores separados.
-Nunca permitir cobros ni envío de documentos reales desde sandbox.
+  Nunca permitir cobros ni envío de documentos reales desde sandbox.
 
 ## 10. Resiliencia: estrategia por etapas
 
 ### Cloud-first con capacidad offline limitada
+
 - PWA instalable.
 - Service Worker para shell y assets estáticos.
 - IndexedDB solo para subconjunto mínimo, con política explícita de datos y protección.
@@ -145,24 +155,26 @@ Nunca permitir cobros ni envío de documentos reales desde sandbox.
 
 ### Matriz inicial de capacidades
 
-| Capacidad | Online | Offline inicial |
-|---|---:|---:|
-| Abrir shell de aplicación | Sí | Sí, si ya fue cacheado |
-| Consultar datos sincronizados recientemente | Sí | Sí, solo lectura y con marca de antigüedad |
-| Crear nota local no crítica | Sí | Sí, en cola |
-| Ver disponibilidad actualizada | Sí | No garantizada |
-| Confirmar asignación definitiva | Sí | No |
-| Check-in / check-out | Sí | No inicialmente |
-| Registrar pago | Sí | No |
-| Cierre de caja / night audit | Sí | No |
-| Modificar datos compartidos críticos | Sí | No |
+| Capacidad                                   | Online |                            Offline inicial |
+| ------------------------------------------- | -----: | -----------------------------------------: |
+| Abrir shell de aplicación                   |     Sí |                     Sí, si ya fue cacheado |
+| Consultar datos sincronizados recientemente |     Sí | Sí, solo lectura y con marca de antigüedad |
+| Crear nota local no crítica                 |     Sí |                                Sí, en cola |
+| Ver disponibilidad actualizada              |     Sí |                             No garantizada |
+| Confirmar asignación definitiva             |     Sí |                                         No |
+| Check-in / check-out                        |     Sí |                            No inicialmente |
+| Registrar pago                              |     Sí |                                         No |
+| Cierre de caja / night audit                |     Sí |                                         No |
+| Modificar datos compartidos críticos        |     Sí |                                         No |
 
 La PWA no mantiene un PC, router o switch encendido cuando se corta la electricidad. La autonomía eléctrica requiere UPS para equipos de red y terminales críticos.
 
 ### NOVA Edge (fase futura)
+
 Un coordinador/servidor local en LAN podría permitir que varias terminales sigan operando durante una caída WAN y sincronizar después con cloud. No es parte del MVP. Requiere discovery de hardware, seguridad, conflictos, backups, soporte y actualización. No resuelve un apagón si el Edge/router/terminal no tienen alimentación.
 
 ### Contexto de validación
+
 Se observó en un hotel piloto potencial un escenario donde un corte eléctrico apaga el router y, al volver la energía, las terminales presentan errores que requieren reinicios. Es una observación puntual, no una afirmación universal sobre Auto.Sky ni sobre todos los hoteles. Investigar por separado pérdida de energía, WAN, LAN/router/switch, terminal y proveedor cloud.
 
 ## 11. Brasil: temas que requieren validación

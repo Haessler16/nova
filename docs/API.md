@@ -20,14 +20,37 @@
 ## Idempotencia
 
 Para endpoints que crean efectos no repetibles, aceptar `Idempotency-Key`.
+
 - Persistir key, scope tenant, actor, request hash, estado y resultado.
 - Misma key + mismo request: devolver resultado previo.
 - Misma key + request distinto: `409 idempotency_key_reused`.
 - La creación de la operación y su idempotency record deben ser atómicas.
 
+## Phase 1 implementation (development only)
+
+No production identity provider exists yet. Outside `NODE_ENV=production`, with `AUTH_MODE=dev-header`:
+
+- `X-Dev-User-Id` identifies an ACTIVE user. It is validated against PostgreSQL and never trusted in production.
+- `X-Organization-Id` selects an organization and requires an ACTIVE `Membership`.
+- `X-Property-Id` optionally selects a property and requires an ACTIVE `PropertyMembership` plus ownership by the selected organization.
+- Body/query tenant ids are rejected by DTO whitelists (`forbidNonWhitelisted`).
+
+Implemented endpoints:
+
+- `GET /health/live`
+- `GET /health/ready` (PostgreSQL + Redis)
+- `GET /api/v1/me`
+- `GET /api/v1/organizations`
+- `GET /api/v1/properties`
+- `POST /api/v1/properties` (`property.manage`)
+- `GET /api/v1/audit-events` (`audit.read`, requires property context)
+
+`POST /api/v1/properties` writes its audit event in the same transaction. Audit events are append-only; there are no update/delete routes.
+
 ## Endpoints previstos (no implementar todos en Foundation)
 
 ### Foundation
+
 - `GET /health/live`
 - `GET /health/ready`
 - `GET /api/v1/me`
@@ -38,18 +61,21 @@ Para endpoints que crean efectos no repetibles, aceptar `Idempotency-Key`.
 - `GET /api/v1/audit-events` (permiso requerido)
 
 ### Inventory
+
 - `GET /api/v1/room-types`
 - `POST /api/v1/room-types`
 - `GET /api/v1/rooms`
 - `POST /api/v1/rooms`
 
 ### Guests
+
 - `GET /api/v1/guests`
 - `POST /api/v1/guests`
 - `GET /api/v1/guests/:id`
 - `PATCH /api/v1/guests/:id`
 
 ### Reservations
+
 - `GET /api/v1/availability`
 - `GET /api/v1/reservations`
 - `POST /api/v1/reservations`
@@ -59,11 +85,13 @@ Para endpoints que crean efectos no repetibles, aceptar `Idempotency-Key`.
 - `POST /api/v1/reservations/:id/assign-room`
 
 ### Front Office
+
 - `GET /api/v1/front-office/room-rack`
 - `POST /api/v1/stays/:id/check-in`
 - `POST /api/v1/stays/:id/check-out`
 
 ### Folio / Cash / Night audit
+
 - `GET /api/v1/folios/:id`
 - `POST /api/v1/folios/:id/charges`
 - `POST /api/v1/folios/:id/payments`
