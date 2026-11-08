@@ -46,6 +46,11 @@ const IDS = {
   permissionInventoryRead: '00000000-0000-4000-8000-000000000035',
   permissionInventoryManage: '00000000-0000-4000-8000-000000000036',
   permissionHousekeepingManage: '00000000-0000-4000-8000-000000000037',
+  permissionOrganizationMembersRead: '00000000-0000-4000-8000-000000000038',
+  permissionOrganizationMembersManage: '00000000-0000-4000-8000-000000000039',
+  permissionOrganizationRolesRead: '00000000-0000-4000-8000-000000000040',
+  permissionOrganizationRolesManage: '00000000-0000-4000-8000-000000000041',
+  permissionSecurityEventsRead: '00000000-0000-4000-8000-000000000042',
 
   roomTypeCentroStandard: '00000000-0000-4000-8000-000000000041',
   roomTypeCentroDeluxe: '00000000-0000-4000-8000-000000000042',
@@ -95,6 +100,31 @@ const PERMISSIONS = [
     key: 'housekeeping.manage',
     description: 'Transition room housekeeping state',
   },
+  {
+    id: IDS.permissionOrganizationMembersRead,
+    key: 'organization.members.read',
+    description: 'List organization and property memberships',
+  },
+  {
+    id: IDS.permissionOrganizationMembersManage,
+    key: 'organization.members.manage',
+    description: 'Invite, update and deactivate organization memberships',
+  },
+  {
+    id: IDS.permissionOrganizationRolesRead,
+    key: 'organization.roles.read',
+    description: 'List organization roles and their permissions',
+  },
+  {
+    id: IDS.permissionOrganizationRolesManage,
+    key: 'organization.roles.manage',
+    description: 'Create and update custom organization roles',
+  },
+  {
+    id: IDS.permissionSecurityEventsRead,
+    key: 'security.events.read',
+    description: 'Read authentication and authorization security events',
+  },
 ] as const;
 
 const ALL_PERMISSION_IDS = PERMISSIONS.map((permission) => permission.id);
@@ -105,6 +135,7 @@ const ROLES = [
     organizationId: IDS.organizationA,
     key: 'ORG_ADMIN',
     name: 'Organization administrator',
+    system: true,
     permissions: ALL_PERMISSION_IDS,
   },
   {
@@ -112,11 +143,16 @@ const ROLES = [
     organizationId: IDS.organizationA,
     key: 'PROPERTY_MANAGER',
     name: 'Property manager',
+    system: true,
     permissions: [
       IDS.permissionPropertyRead,
       IDS.permissionPropertyManage,
       IDS.permissionOrganizationPropertiesManage,
+      IDS.permissionOrganizationMembersRead,
+      IDS.permissionOrganizationMembersManage,
+      IDS.permissionOrganizationRolesRead,
       IDS.permissionAuditRead,
+      IDS.permissionSecurityEventsRead,
       IDS.permissionInventoryRead,
       IDS.permissionInventoryManage,
       IDS.permissionHousekeepingManage,
@@ -127,6 +163,7 @@ const ROLES = [
     organizationId: IDS.organizationA,
     key: 'RECEPTIONIST',
     name: 'Receptionist',
+    system: true,
     permissions: [
       IDS.permissionPropertyRead,
       IDS.permissionInventoryRead,
@@ -138,6 +175,7 @@ const ROLES = [
     organizationId: IDS.organizationA,
     key: 'AUDITOR',
     name: 'Auditor / finance',
+    system: true,
     permissions: [IDS.permissionPropertyRead, IDS.permissionAuditRead, IDS.permissionInventoryRead],
   },
   {
@@ -145,6 +183,7 @@ const ROLES = [
     organizationId: IDS.organizationA,
     key: 'HOUSEKEEPER',
     name: 'Housekeeper',
+    system: true,
     permissions: [
       IDS.permissionPropertyRead,
       IDS.permissionInventoryRead,
@@ -156,6 +195,7 @@ const ROLES = [
     organizationId: IDS.organizationB,
     key: 'ORG_ADMIN',
     name: 'Organization administrator',
+    system: true,
     permissions: ALL_PERMISSION_IDS,
   },
 ] as const;
@@ -297,10 +337,20 @@ async function seed(): Promise<void> {
         name: user.name,
         status: user.status,
         passwordHash: demoPasswordHash(user.email),
+        emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+        passwordChangedAt: new Date('2026-01-01T00:00:00.000Z'),
+        mfaEnabled: false,
+        mfaSecret: null,
+        mfaEnrolledAt: null,
+        mfaLastUsedStep: null,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
       },
       create: {
         ...user,
         passwordHash: demoPasswordHash(user.email),
+        emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+        passwordChangedAt: new Date('2026-01-01T00:00:00.000Z'),
       },
     });
   }
@@ -308,12 +358,13 @@ async function seed(): Promise<void> {
   for (const role of ROLES) {
     await prisma.role.upsert({
       where: { organizationId_key: { organizationId: role.organizationId, key: role.key } },
-      update: { name: role.name },
+      update: { name: role.name, system: role.system },
       create: {
         id: role.id,
         organizationId: role.organizationId,
         key: role.key,
         name: role.name,
+        system: role.system,
       },
     });
 

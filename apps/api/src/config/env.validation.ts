@@ -1,4 +1,4 @@
-import { plainToInstance, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -10,6 +10,9 @@ import {
   MinLength,
   validateSync,
 } from 'class-validator';
+
+const toBoolean = ({ value }: { value: unknown }): boolean =>
+  value === true || value === 'true' || value === '1';
 
 export class EnvironmentVariables {
   @IsIn(['development', 'test', 'production'])
@@ -81,6 +84,74 @@ export class EnvironmentVariables {
   @Min(10)
   @Max(86400)
   LOGIN_RATE_LIMIT_WINDOW_SECONDS = 900;
+
+  /**
+   * Key material for encrypting TOTP shared secrets at rest and signing the
+   * short-lived MFA challenge token. Required to enroll/enable MFA.
+   */
+  @IsString()
+  @IsOptional()
+  @MinLength(32)
+  MFA_ENCRYPTION_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  MFA_ISSUER = 'NOVA PMS';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  ACCOUNT_LOCKOUT_THRESHOLD = 5;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1440)
+  ACCOUNT_LOCKOUT_MINUTES = 15;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(5)
+  @Max(1440)
+  PASSWORD_RESET_TTL_MINUTES = 30;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  EMAIL_VERIFICATION_TTL_HOURS = 24;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(60)
+  @Max(3600)
+  MFA_CHALLENGE_TTL_SECONDS = 300;
+
+  /**
+   * `log` writes development tokens to the API log; `response` returns them
+   * in JSON for automated tests. Both are rejected in production, where an
+   * email provider must deliver the one-time link.
+   */
+  @IsIn(['log', 'response', 'none'])
+  AUTH_TOKEN_DELIVERY: 'log' | 'response' | 'none' = 'log';
+
+  @Transform(toBoolean)
+  ROOM_BLOCK_EXPIRY_ENABLED = true;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(5)
+  @Max(3600)
+  ROOM_BLOCK_EXPIRY_INTERVAL_SECONDS = 60;
+
+  @Transform(toBoolean)
+  METRICS_ENABLED = true;
+
+  @IsString()
+  @IsOptional()
+  @MinLength(16)
+  METRICS_TOKEN?: string;
 }
 
 /**
@@ -111,6 +182,12 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
 
   if (validated.AUTH_MODE === 'local-session' && validated.CSRF_SECRET === undefined) {
     throw new Error('CSRF_SECRET is required when AUTH_MODE=local-session.');
+  }
+
+  if (validated.NODE_ENV === 'production' && validated.AUTH_TOKEN_DELIVERY !== 'none') {
+    throw new Error(
+      'AUTH_TOKEN_DELIVERY must be none in production until an email provider is configured. One-time tokens must never be logged or returned in production.',
+    );
   }
 
   return validated;

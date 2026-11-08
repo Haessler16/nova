@@ -10,6 +10,7 @@ const DEFAULT_CODES: Record<number, string> = {
   405: 'method_not_allowed',
   409: 'conflict',
   422: 'business_rule_violation',
+  423: 'account_locked',
   429: 'rate_limited',
   500: 'internal_error',
   503: 'service_unavailable',

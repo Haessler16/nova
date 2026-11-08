@@ -1,39 +1,44 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
-  HttpException,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
   Req,
   Res,
   ServiceUnavailableException,
-  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApiTags } from '@nestjs/swagger';
-import { RecordStatus } from '@prisma/client';
+import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import type { CookieOptions, Response } from 'express';
-import { AuthenticatedRequest, SESSION_COOKIE_NAME } from '../common/http/request-context';
-import { PrismaService } from '../prisma/prisma.service';
+import {
+  AuthenticatedRequest,
+  DEV_USER_HEADER,
+  SESSION_COOKIE_NAME,
+} from '../common/http/request-context';
 import { AuthenticationGuard } from './authentication.guard';
+import { AuthService } from './auth.service';
+import { authRequestMetadata } from './request-metadata';
 import { CsrfService } from './csrf.service';
-import { LoginDto } from './dto/login.dto';
-import { LoginRateLimiter } from './login-rate-limiter.service';
-import { PasswordService } from './password.service';
-import { SessionService } from './session.service';
-
-/**
- * A valid scrypt hash for a password that is not issued to any user. It keeps
- * the failed-login path doing real work even when the email is unknown.
- */
-const DUMMY_PASSWORD_HASH =
-  'scrypt$16384$8$1$_LHEVNMERXnKSJ59B37E4g$vxl8wF1ZxOrTKptLz1M6f13ECXXX6h0xLGhRUylUwjjFFrZxMHC9tob6nBE0NXPkHmSeT_GCq-6-JbOnRZ2VnQ';
+import {
+  ChangePasswordDto,
+  DisableMfaDto,
+  ForgotPasswordDto,
+  LoginDto,
+  MfaCodeDto,
+  MfaLoginDto,
+  ResetPasswordDto,
+  VerifyEmailDto,
+} from './dto/login.dto';
 
 @ApiTags('auth')
+@ApiHeader({ name: DEV_USER_HEADER, required: false })
 @Controller('auth')
 export class AuthController {
   private readonly sessionTtlMs: number;
@@ -41,11 +46,8 @@ export class AuthController {
 
   constructor(
     private readonly config: ConfigService,
-    private readonly prisma: PrismaService,
-    private readonly passwords: PasswordService,
-    private readonly sessions: SessionService,
+    private readonly auth: AuthService,
     private readonly csrf: CsrfService,
-    private readonly rateLimiter: LoginRateLimiter,
   ) {
     this.sessionTtlMs = this.config.get<number>('SESSION_TTL_HOURS', 8) * 60 * 60 * 1000;
     this.sessionCookieName = this.config.get<string>('SESSION_COOKIE_NAME', SESSION_COOKIE_NAME);
@@ -66,60 +68,47 @@ export class AuthController {
     @Req() request: AuthenticatedRequest,
     @Res({ passthrough: true }) response: Response,
     @Body() dto: LoginDto,
-  ): Promise<{
-    user: { id: string; email: string; name: string };
-    expiresAt: string;
-    csrfToken: string;
-  }> {
-    if (this.config.get<string>('AUTH_MODE', 'disabled') !== 'local-session') {
-      throw new ServiceUnavailableException({
-        code: 'auth_mode_unavailable',
-        message: 'Local session authentication is not enabled.',
-      });
-    }
-
-    const email = dto.email.trim().toLowerCase();
-    const clientIp = request.ip ?? request.socket.remoteAddress ?? 'unknown';
-    const decision = await this.rateLimiter.check(clientIp, email);
-    if (decision.limited) {
-      throw new HttpException(
-        {
-          code: 'rate_limited',
-          message: 'Too many sign-in attempts. Try again later.',
-          details: { retryAfterSeconds: decision.retryAfterSeconds },
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
-    const user = await this.prisma.user.findFirst({
-      where: { email, status: RecordStatus.ACTIVE },
-      select: { id: true, email: true, name: true, passwordHash: true },
-    });
-
-    const passwordMatches = await this.passwords.verify(
+  ) {
+    this.assertLocalSessionMode();
+    const result = await this.auth.login(
+      dto.email,
       dto.password,
-      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+      dto.mfaCode,
+      authRequestMetadata(request),
     );
 
-    if (user === null || !passwordMatches) {
-      throw new UnauthorizedException({
-        code: 'invalid_credentials',
-        message: 'Invalid email or password.',
-      });
+    if (result.kind === 'mfa_challenge') {
+      return {
+        mfaRequired: true,
+        challengeToken: result.challengeToken,
+        expiresAt: result.expiresAt.toISOString(),
+      };
     }
 
-    const session = await this.sessions.create(user.id);
-    const csrfToken = this.csrf.issue();
+    return this.finishLogin(response, result.user, result.session.token, result.session.expiresAt);
+  }
 
-    response.cookie(this.sessionCookieName, session.token, this.cookieOptions(true));
-    response.cookie(this.csrf.cookieName, csrfToken, this.cookieOptions(false));
-
-    return {
-      user: { id: user.id, email: user.email, name: user.name },
-      expiresAt: session.expiresAt.toISOString(),
-      csrfToken,
-    };
+  @Post('login/mfa')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  async completeMfaLogin(
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response,
+    @Body() dto: MfaLoginDto,
+  ) {
+    this.assertLocalSessionMode();
+    const result = await this.auth.completeMfaLogin(
+      dto.challengeToken,
+      dto.code,
+      authRequestMetadata(request),
+    );
+    if (result.kind !== 'session') {
+      throw new ServiceUnavailableException({
+        code: 'mfa_challenge_invalid',
+        message: 'The MFA challenge could not be completed.',
+      });
+    }
+    return this.finishLogin(response, result.user, result.session.token, result.session.expiresAt);
   }
 
   @Post('logout')
@@ -131,11 +120,9 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     if (request.sessionId !== undefined) {
-      await this.sessions.revoke(request.sessionId, 'user_logout');
+      await this.auth.revokeOwnSession(request.actor!.id, request.sessionId, authRequestMetadata(request));
     }
-
-    response.clearCookie(this.sessionCookieName, this.clearCookieOptions(true));
-    response.clearCookie(this.csrf.cookieName, this.clearCookieOptions(false));
+    this.clearCookies(response);
   }
 
   @Get('session')
@@ -152,6 +139,135 @@ export class AuthController {
           ? 'local-session'
           : 'dev-header',
     };
+  }
+
+  @Get('sessions')
+  @Header('Cache-Control', 'no-store')
+  @UseGuards(AuthenticationGuard)
+  listSessions(@Req() request: AuthenticatedRequest) {
+    return this.auth.listSessions(request.actor!.id, request.sessionId);
+  }
+
+  @Delete('sessions/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(AuthenticationGuard)
+  async revokeSession(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe()) sessionId: string,
+  ): Promise<void> {
+    await this.auth.revokeOwnSession(request.actor!.id, sessionId, authRequestMetadata(request));
+  }
+
+  @Post('password/change')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(AuthenticationGuard)
+  async changePassword(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    await this.auth.changePassword(
+      request.actor!.id,
+      dto.currentPassword,
+      dto.newPassword,
+      request.sessionId,
+      authRequestMetadata(request),
+    );
+  }
+
+  @Post('password/forgot')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Header('Cache-Control', 'no-store')
+  forgotPassword(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: ForgotPasswordDto,
+  ) {
+    return this.auth.requestPasswordReset(dto.email, authRequestMetadata(request));
+  }
+
+  @Post('password/reset')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetPassword(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: ResetPasswordDto,
+  ): Promise<void> {
+    await this.auth.resetPassword(dto.token, dto.newPassword, authRequestMetadata(request));
+  }
+
+  @Post('email/verification')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Header('Cache-Control', 'no-store')
+  @UseGuards(AuthenticationGuard)
+  requestEmailVerification(@Req() request: AuthenticatedRequest) {
+    return this.auth.requestEmailVerification(request.actor!.id, authRequestMetadata(request));
+  }
+
+  @Post('email/verify')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async verifyEmail(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: VerifyEmailDto,
+  ): Promise<void> {
+    await this.auth.verifyEmail(dto.token, authRequestMetadata(request));
+  }
+
+  @Post('mfa/setup')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  @UseGuards(AuthenticationGuard)
+  startMfaSetup(@Req() request: AuthenticatedRequest) {
+    return this.auth.startMfaSetup(request.actor!.id, authRequestMetadata(request));
+  }
+
+  @Post('mfa/enable')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(AuthenticationGuard)
+  async enableMfa(@Req() request: AuthenticatedRequest, @Body() dto: MfaCodeDto): Promise<void> {
+    await this.auth.enableMfa(request.actor!.id, dto.code, authRequestMetadata(request));
+  }
+
+  @Post('mfa/disable')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(AuthenticationGuard)
+  async disableMfa(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: DisableMfaDto,
+  ): Promise<void> {
+    await this.auth.disableMfa(
+      request.actor!.id,
+      dto.password,
+      dto.code,
+      authRequestMetadata(request),
+    );
+  }
+
+  private finishLogin(
+    response: Response,
+    user: { id: string; email: string; name: string },
+    sessionToken: string,
+    expiresAt: Date,
+  ): {
+    user: { id: string; email: string; name: string };
+    expiresAt: string;
+    csrfToken: string;
+  } {
+    const csrfToken = this.csrf.issue();
+    response.cookie(this.sessionCookieName, sessionToken, this.cookieOptions(true));
+    response.cookie(this.csrf.cookieName, csrfToken, this.cookieOptions(false));
+    return { user, expiresAt: expiresAt.toISOString(), csrfToken };
+  }
+
+  private assertLocalSessionMode(): void {
+    if (this.config.get<string>('AUTH_MODE', 'disabled') !== 'local-session') {
+      throw new ServiceUnavailableException({
+        code: 'auth_mode_unavailable',
+        message: 'Local session authentication is not enabled.',
+      });
+    }
+  }
+
+  private clearCookies(response: Response): void {
+    response.clearCookie(this.sessionCookieName, this.clearCookieOptions(true));
+    response.clearCookie(this.csrf.cookieName, this.clearCookieOptions(false));
   }
 
   private cookieOptions(httpOnly: boolean): CookieOptions {
@@ -173,3 +289,4 @@ export class AuthController {
     };
   }
 }
+

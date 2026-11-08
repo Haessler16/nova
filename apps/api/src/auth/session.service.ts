@@ -22,6 +22,19 @@ export interface CreatedSession {
   expiresAt: Date;
 }
 
+export interface SessionSummary {
+  id: string;
+  userAgent: string | null;
+  createdAt: Date;
+  lastSeenAt: Date;
+  expiresAt: Date;
+}
+
+export interface SessionCreateMetadata {
+  userAgent?: string;
+  ipHash?: string;
+}
+
 export function hashSessionToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
@@ -43,7 +56,7 @@ export class SessionService {
     this.ttlMs = hours * 60 * 60 * 1000;
   }
 
-  async create(userId: string): Promise<CreatedSession> {
+  async create(userId: string, metadata: SessionCreateMetadata = {}): Promise<CreatedSession> {
     const token = randomBytes(32).toString('base64url');
     const tokenHash = hashSessionToken(token);
     const expiresAt = new Date(Date.now() + this.ttlMs);
@@ -53,6 +66,8 @@ export class SessionService {
         userId,
         tokenHash,
         expiresAt,
+        userAgent: metadata.userAgent?.slice(0, 255),
+        ipHash: metadata.ipHash,
       },
       select: { id: true },
     });
@@ -130,5 +145,60 @@ export class SessionService {
       where: { id: sessionId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: reason },
     });
+  }
+
+  async listForUser(userId: string): Promise<SessionSummary[]> {
+    return this.prisma.session.findMany({
+      where: {
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: [{ lastSeenAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        userAgent: true,
+        createdAt: true,
+        lastSeenAt: true,
+        expiresAt: true,
+      },
+    });
+  }
+
+  async revokeForUser(
+    userId: string,
+    sessionId: string,
+    reason: string,
+  ): Promise<boolean> {
+    const updated = await this.prisma.session.updateMany({
+      where: { id: sessionId, userId, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: reason },
+    });
+    return updated.count === 1;
+  }
+
+  async revokeAllForUser(
+    userId: string,
+    reason: string,
+    exceptSessionId?: string,
+  ): Promise<number> {
+    const updated = await this.prisma.session.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+        ...(exceptSessionId !== undefined ? { id: { not: exceptSessionId } } : {}),
+      },
+      data: { revokedAt: new Date(), revokedReason: reason },
+    });
+    return updated.count;
+  }
+
+  /** Administrative revocation after verifying tenant-scoped membership. */
+  async revokeAnyForUser(
+    userId: string,
+    sessionId: string,
+    reason: string,
+  ): Promise<boolean> {
+    return this.revokeForUser(userId, sessionId, reason);
   }
 }
