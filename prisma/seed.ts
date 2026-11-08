@@ -1,11 +1,23 @@
-import { PrismaClient, RecordStatus } from '@prisma/client';
+import {
+  PrismaClient,
+  RecordStatus,
+  HousekeepingState,
+  RoomOperationalState,
+} from '@prisma/client';
+import { createHash, scryptSync } from 'node:crypto';
 
 const prisma = new PrismaClient();
 
 /**
  * Deterministic, synthetic development data. No real guest, employee or
  * document data is used. Safe to run repeatedly (`upsert` based).
+ *
+ * Every demo user signs in with the same password. The hash itself is
+ * deterministic per email so re-seeding does not unexpectedly change stored
+ * credentials, while still using a distinct salt per user.
  */
+const DEMO_PASSWORD = 'NovaDemo!2026';
+
 const IDS = {
   organizationA: '00000000-0000-4000-8000-000000000001',
   propertyCentro: '00000000-0000-4000-8000-000000000002',
@@ -18,16 +30,33 @@ const IDS = {
   userAuditor: '00000000-0000-4000-8000-000000000013',
   userAdminB: '00000000-0000-4000-8000-000000000014',
   userDisabled: '00000000-0000-4000-8000-000000000015',
+  userHousekeeper: '00000000-0000-4000-8000-000000000016',
 
   roleAdminA: '00000000-0000-4000-8000-000000000021',
   roleManagerA: '00000000-0000-4000-8000-000000000022',
   roleReceptionA: '00000000-0000-4000-8000-000000000023',
   roleAuditorA: '00000000-0000-4000-8000-000000000024',
   roleAdminB: '00000000-0000-4000-8000-000000000025',
+  roleHousekeeperA: '00000000-0000-4000-8000-000000000026',
 
   permissionPropertyRead: '00000000-0000-4000-8000-000000000031',
   permissionPropertyManage: '00000000-0000-4000-8000-000000000032',
   permissionAuditRead: '00000000-0000-4000-8000-000000000033',
+  permissionOrganizationPropertiesManage: '00000000-0000-4000-8000-000000000034',
+  permissionInventoryRead: '00000000-0000-4000-8000-000000000035',
+  permissionInventoryManage: '00000000-0000-4000-8000-000000000036',
+  permissionHousekeepingManage: '00000000-0000-4000-8000-000000000037',
+
+  roomTypeCentroStandard: '00000000-0000-4000-8000-000000000041',
+  roomTypeCentroDeluxe: '00000000-0000-4000-8000-000000000042',
+  roomTypePraiaStandard: '00000000-0000-4000-8000-000000000043',
+
+  roomCentro101: '00000000-0000-4000-8000-000000000051',
+  roomCentro102: '00000000-0000-4000-8000-000000000052',
+  roomCentro103: '00000000-0000-4000-8000-000000000053',
+  roomCentro201: '00000000-0000-4000-8000-000000000054',
+  roomPraia101: '00000000-0000-4000-8000-000000000055',
+  roomPraia102: '00000000-0000-4000-8000-000000000056',
 } as const;
 
 const PERMISSIONS = [
@@ -39,14 +68,36 @@ const PERMISSIONS = [
   {
     id: IDS.permissionPropertyManage,
     key: 'property.manage',
-    description: 'Create and manage properties within an organization',
+    description: 'Update property settings and manage property-scoped configuration',
+  },
+  {
+    id: IDS.permissionOrganizationPropertiesManage,
+    key: 'organization.properties.manage',
+    description: 'Create properties and administer them across the organization',
   },
   {
     id: IDS.permissionAuditRead,
     key: 'audit.read',
     description: 'Read append-only audit events for a property',
   },
+  {
+    id: IDS.permissionInventoryRead,
+    key: 'inventory.read',
+    description: 'Read room types, rooms, blocks and room state history',
+  },
+  {
+    id: IDS.permissionInventoryManage,
+    key: 'inventory.manage',
+    description: 'Create and update room types, rooms and operational blocks',
+  },
+  {
+    id: IDS.permissionHousekeepingManage,
+    key: 'housekeeping.manage',
+    description: 'Transition room housekeeping state',
+  },
 ] as const;
+
+const ALL_PERMISSION_IDS = PERMISSIONS.map((permission) => permission.id);
 
 const ROLES = [
   {
@@ -54,7 +105,7 @@ const ROLES = [
     organizationId: IDS.organizationA,
     key: 'ORG_ADMIN',
     name: 'Organization administrator',
-    permissions: PERMISSIONS.map((permission) => permission.id),
+    permissions: ALL_PERMISSION_IDS,
   },
   {
     id: IDS.roleManagerA,
@@ -64,7 +115,11 @@ const ROLES = [
     permissions: [
       IDS.permissionPropertyRead,
       IDS.permissionPropertyManage,
+      IDS.permissionOrganizationPropertiesManage,
       IDS.permissionAuditRead,
+      IDS.permissionInventoryRead,
+      IDS.permissionInventoryManage,
+      IDS.permissionHousekeepingManage,
     ],
   },
   {
@@ -72,23 +127,52 @@ const ROLES = [
     organizationId: IDS.organizationA,
     key: 'RECEPTIONIST',
     name: 'Receptionist',
-    permissions: [IDS.permissionPropertyRead],
+    permissions: [
+      IDS.permissionPropertyRead,
+      IDS.permissionInventoryRead,
+      IDS.permissionHousekeepingManage,
+    ],
   },
   {
     id: IDS.roleAuditorA,
     organizationId: IDS.organizationA,
     key: 'AUDITOR',
     name: 'Auditor / finance',
-    permissions: [IDS.permissionPropertyRead, IDS.permissionAuditRead],
+    permissions: [IDS.permissionPropertyRead, IDS.permissionAuditRead, IDS.permissionInventoryRead],
+  },
+  {
+    id: IDS.roleHousekeeperA,
+    organizationId: IDS.organizationA,
+    key: 'HOUSEKEEPER',
+    name: 'Housekeeper',
+    permissions: [
+      IDS.permissionPropertyRead,
+      IDS.permissionInventoryRead,
+      IDS.permissionHousekeepingManage,
+    ],
   },
   {
     id: IDS.roleAdminB,
     organizationId: IDS.organizationB,
     key: 'ORG_ADMIN',
     name: 'Organization administrator',
-    permissions: PERMISSIONS.map((permission) => permission.id),
+    permissions: ALL_PERMISSION_IDS,
   },
 ] as const;
+
+function demoPasswordHash(email: string): string {
+  const salt = createHash('sha256')
+    .update(`nova-demo-password:${email}`, 'utf8')
+    .digest()
+    .subarray(0, 16);
+  const derived = scryptSync(DEMO_PASSWORD, salt, 64, {
+    N: 16_384,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  });
+  return `scrypt$16384$8$1$${salt.toString('base64url')}$${derived.toString('base64url')}`;
+}
 
 async function seed(): Promise<void> {
   for (const permission of PERMISSIONS) {
@@ -197,6 +281,12 @@ async function seed(): Promise<void> {
       name: 'Usuario Deshabilitado Demo',
       status: RecordStatus.DISABLED,
     },
+    {
+      id: IDS.userHousekeeper,
+      email: 'housekeeper@demo.nova.local',
+      name: 'Housekeeping Demo Centro',
+      status: RecordStatus.ACTIVE,
+    },
   ];
 
   for (const user of users) {
@@ -206,9 +296,12 @@ async function seed(): Promise<void> {
         email: user.email,
         name: user.name,
         status: user.status,
-        passwordHash: null,
+        passwordHash: demoPasswordHash(user.email),
       },
-      create: user,
+      create: {
+        ...user,
+        passwordHash: demoPasswordHash(user.email),
+      },
     });
   }
 
@@ -224,6 +317,9 @@ async function seed(): Promise<void> {
       },
     });
 
+    // Seed-managed permissions are authoritative for demo roles; removing and
+    // recreating keeps re-runs exact instead of accumulating stale grants.
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     await prisma.rolePermission.createMany({
       data: role.permissions.map((permissionId) => ({
         roleId: role.id,
@@ -234,11 +330,42 @@ async function seed(): Promise<void> {
   }
 
   const memberships = [
-    { organizationId: IDS.organizationA, userId: IDS.userAdmin, status: RecordStatus.ACTIVE },
-    { organizationId: IDS.organizationA, userId: IDS.userReception, status: RecordStatus.ACTIVE },
-    { organizationId: IDS.organizationA, userId: IDS.userAuditor, status: RecordStatus.ACTIVE },
-    { organizationId: IDS.organizationA, userId: IDS.userDisabled, status: RecordStatus.SUSPENDED },
-    { organizationId: IDS.organizationB, userId: IDS.userAdminB, status: RecordStatus.ACTIVE },
+    {
+      organizationId: IDS.organizationA,
+      userId: IDS.userAdmin,
+      roleId: IDS.roleAdminA,
+      status: RecordStatus.ACTIVE,
+    },
+    {
+      organizationId: IDS.organizationA,
+      userId: IDS.userReception,
+      roleId: null,
+      status: RecordStatus.ACTIVE,
+    },
+    {
+      organizationId: IDS.organizationA,
+      userId: IDS.userAuditor,
+      roleId: null,
+      status: RecordStatus.ACTIVE,
+    },
+    {
+      organizationId: IDS.organizationA,
+      userId: IDS.userDisabled,
+      roleId: null,
+      status: RecordStatus.SUSPENDED,
+    },
+    {
+      organizationId: IDS.organizationA,
+      userId: IDS.userHousekeeper,
+      roleId: null,
+      status: RecordStatus.ACTIVE,
+    },
+    {
+      organizationId: IDS.organizationB,
+      userId: IDS.userAdminB,
+      roleId: IDS.roleAdminB,
+      status: RecordStatus.ACTIVE,
+    },
   ];
 
   for (const membership of memberships) {
@@ -249,7 +376,7 @@ async function seed(): Promise<void> {
           userId: membership.userId,
         },
       },
-      update: { status: membership.status },
+      update: { status: membership.status, roleId: membership.roleId },
       create: membership,
     });
   }
@@ -284,6 +411,13 @@ async function seed(): Promise<void> {
       status: RecordStatus.ACTIVE,
     },
     {
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      userId: IDS.userHousekeeper,
+      roleId: IDS.roleHousekeeperA,
+      status: RecordStatus.ACTIVE,
+    },
+    {
       organizationId: IDS.organizationB,
       propertyId: IDS.propertyBosque,
       userId: IDS.userAdminB,
@@ -309,22 +443,169 @@ async function seed(): Promise<void> {
     });
   }
 
-  const [organizations, properties, usersCount, roles] = await Promise.all([
-    prisma.organization.count(),
-    prisma.property.count(),
-    prisma.user.count(),
-    prisma.role.count(),
-  ]);
+  const roomTypes = [
+    {
+      id: IDS.roomTypeCentroStandard,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      name: 'Standard',
+      code: 'STD',
+      description: 'Synthetic standard room',
+      capacityAdults: 2,
+      capacityChildren: 1,
+      bedType: 'Queen',
+    },
+    {
+      id: IDS.roomTypeCentroDeluxe,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      name: 'Deluxe',
+      code: 'DLX',
+      description: 'Synthetic deluxe room',
+      capacityAdults: 3,
+      capacityChildren: 1,
+      bedType: 'King',
+    },
+    {
+      id: IDS.roomTypePraiaStandard,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyPraia,
+      name: 'Standard',
+      code: 'STD',
+      description: 'Synthetic beach standard room',
+      capacityAdults: 2,
+      capacityChildren: 1,
+      bedType: 'Queen',
+    },
+  ];
+
+  for (const roomType of roomTypes) {
+    await prisma.roomType.upsert({
+      where: {
+        propertyId_code: { propertyId: roomType.propertyId, code: roomType.code },
+      },
+      update: {
+        name: roomType.name,
+        description: roomType.description,
+        capacityAdults: roomType.capacityAdults,
+        capacityChildren: roomType.capacityChildren,
+        bedType: roomType.bedType,
+        status: RecordStatus.ACTIVE,
+      },
+      create: { ...roomType, status: RecordStatus.ACTIVE },
+    });
+  }
+
+  const rooms = [
+    {
+      id: IDS.roomCentro101,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      number: '101',
+      floor: '1',
+      building: 'Main',
+      attributes: ['balcony', 'accessible'],
+      housekeepingState: HousekeepingState.CLEAN,
+    },
+    {
+      id: IDS.roomCentro102,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      number: '102',
+      floor: '1',
+      building: 'Main',
+      attributes: ['quiet'],
+      housekeepingState: HousekeepingState.DIRTY,
+    },
+    {
+      id: IDS.roomCentro103,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      number: '103',
+      floor: '1',
+      building: 'Main',
+      attributes: [],
+      housekeepingState: HousekeepingState.INSPECTED,
+    },
+    {
+      id: IDS.roomCentro201,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      roomTypeId: IDS.roomTypeCentroDeluxe,
+      number: '201',
+      floor: '2',
+      building: 'Main',
+      attributes: ['balcony', 'corner'],
+      housekeepingState: HousekeepingState.CLEAN,
+    },
+    {
+      id: IDS.roomPraia101,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyPraia,
+      roomTypeId: IDS.roomTypePraiaStandard,
+      number: '101',
+      floor: '1',
+      building: 'Beach',
+      attributes: ['sea-view'],
+      housekeepingState: HousekeepingState.CLEAN,
+    },
+    {
+      id: IDS.roomPraia102,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyPraia,
+      roomTypeId: IDS.roomTypePraiaStandard,
+      number: '102',
+      floor: '1',
+      building: 'Beach',
+      attributes: ['sea-view'],
+      housekeepingState: HousekeepingState.DIRTY,
+    },
+  ];
+
+  for (const room of rooms) {
+    await prisma.room.upsert({
+      where: { propertyId_number: { propertyId: room.propertyId, number: room.number } },
+      update: {
+        roomTypeId: room.roomTypeId,
+        floor: room.floor,
+        building: room.building,
+        attributes: room.attributes,
+        housekeepingState: room.housekeepingState,
+        operationalState: RoomOperationalState.AVAILABLE,
+        status: RecordStatus.ACTIVE,
+      },
+      create: {
+        ...room,
+        operationalState: RoomOperationalState.AVAILABLE,
+        status: RecordStatus.ACTIVE,
+      },
+    });
+  }
+
+  const [organizations, properties, usersCount, roles, roomTypesCount, roomsCount] =
+    await Promise.all([
+      prisma.organization.count(),
+      prisma.property.count(),
+      prisma.user.count(),
+      prisma.role.count(),
+      prisma.roomType.count(),
+      prisma.room.count(),
+    ]);
 
   console.log(
-    `Seed complete: ${organizations} organizations, ${properties} properties, ${usersCount} users, ${roles} roles.`,
+    `Seed complete: ${organizations} organizations, ${properties} properties, ${usersCount} users, ${roles} roles, ${roomTypesCount} room types, ${roomsCount} rooms.`,
   );
+  console.log(`Demo password for every synthetic user: ${DEMO_PASSWORD}`);
   console.log('Development users:');
-  console.log(`  admin@demo.nova.local     -> ${IDS.userAdmin}`);
-  console.log(`  reception@demo.nova.local -> ${IDS.userReception}`);
-  console.log(`  auditor@demo.nova.local   -> ${IDS.userAuditor}`);
-  console.log(`  admin.b@demo.nova.local   -> ${IDS.userAdminB}`);
-  console.log(`  disabled@demo.nova.local  -> ${IDS.userDisabled} (DISABLED)`);
+  console.log(`  admin@demo.nova.local       -> ${IDS.userAdmin} (org admin; Centro + Praia)`);
+  console.log(`  reception@demo.nova.local   -> ${IDS.userReception} (Centro)`);
+  console.log(`  auditor@demo.nova.local     -> ${IDS.userAuditor} (Praia)`);
+  console.log(`  housekeeper@demo.nova.local -> ${IDS.userHousekeeper} (Centro)`);
+  console.log(`  admin.b@demo.nova.local     -> ${IDS.userAdminB} (Bosque)`);
+  console.log(`  disabled@demo.nova.local    -> ${IDS.userDisabled} (DISABLED)`);
 }
 
 seed()

@@ -16,6 +16,7 @@ const CONTEXT: TenantContext = Object.freeze({
     name: 'Admin Demo',
   }),
   permissions: new Set(['audit.read']),
+  organizationPermissions: new Set(['audit.read']),
   correlationId: 'test-correlation-1',
 });
 

@@ -9,5 +9,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["prisma/seed.ts"]
+  "include": ["prisma/seed.ts", "scripts/**/*.ts"]
 }

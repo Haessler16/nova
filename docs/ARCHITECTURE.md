@@ -72,6 +72,8 @@ No crear paquetes por cada módulo de dominio. `packages/contracts` contiene con
 
 Cada módulo expone servicios de aplicación y contratos internos. Evitar que un módulo escriba directamente tablas de otro módulo sin pasar por sus casos de uso/contratos.
 
+Implementación actual (Phase 1 + Phase 2): `auth` (sesiones locales, CSRF, rate limiting, dev-header aislado), `tenancy`, `identity`, `properties` + `operational-day`, `inventory` (room types, rooms, blocks, reconciliación de estado e historial) y `audit`, sobre `prisma`, `redis` y `health`. `guests`, `reservations`, `front-office`, `folio`, `cash`, `night-audit` y `reporting` todavía no existen.
+
 ## 5. Multi-tenancy
 
 Jerarquía:

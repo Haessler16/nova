@@ -42,26 +42,49 @@ Exit:
 - [x] health/readiness checks work (verified live).
 - [x] CI commands documented and green locally; workflow added, remote run pending.
 
-Known Phase 1 gaps:
+Known Phase 1 gaps (addressed or re-scoped in Phase 2 where noted):
 
-- real identity provider, sessions, CSRF, rate limiting;
-- org-level RBAC and membership administration endpoints;
-- remote CI execution and migration drift checks;
-- E2E isolation from the local seeded database.
+- real identity provider, sessions, CSRF, rate limiting — **partially addressed in Phase 2** with local credential sessions (ADR-008); external IdP still open;
+- org-level RBAC — **addressed in Phase 2** (ADR-009); membership administration endpoints still open;
+- remote CI execution and migration drift checks — **migration drift verification added in Phase 2** (`pnpm db:verify`); remote CI run still pending;
+- E2E isolation from the local seeded database — still open.
 
 ## Phase 2 — Hotel configuration and inventory (approx. 2–3 weeks)
 
-- property settings/timezone/currency/operational day.
-- room types, rooms, attributes.
-- room occupancy/operational state separated from housekeeping.
-- out-of-order/out-of-service.
-- history and audit.
+Status: **implemented locally on 2026-11-08**; remote CI not yet observed.
+
+- [x] property settings: timezone, currency, operational day start, name.
+- [x] operational day endpoint using property timezone and `operationalDayStart` (`Intl`, no new dependency).
+- [x] room types per property with capacity, bed type and status.
+- [x] rooms per property with number, floor, building, attributes.
+- [x] housekeeping state and operational state as separate dimensions.
+- [x] out-of-order / out-of-service blocks with reasons and release flow.
+- [x] non-overlapping active blocks enforced by PostgreSQL exclusion constraint (`btree_gist`).
+- [x] append-only room state history (operational + housekeeping) with DB triggers.
+- [x] audit coverage for every inventory/property mutation.
+- [x] lazy operational-state reconciliation on room reads.
+- [x] local credential sessions, CSRF, login rate limiting, session revocation.
+- [x] organization roles additive to property roles; creator membership on property creation.
+- [x] manual DB integrity verification (`pnpm db:verify`) wired into CI.
+- [x] seed extended with room types, rooms, housekeeper user and permissions.
+- [x] unit tests (8 suites / 32 tests), dev-header E2E (2 suites / 30 tests) and auth E2E (1 suite / 5 tests) pass locally.
 
 Exit:
 
-- authorized staff can configure inventory;
-- invalid/cross-property relations rejected;
-- room state transitions tested.
+- [x] authorized staff can configure inventory;
+- [x] invalid/cross-property relations rejected;
+- [x] room state transitions tested;
+- [x] cross-tenant inventory access denied;
+- [x] manual constraints/triggers preserved and verified.
+
+Known Phase 2 gaps:
+
+- no MFA, password recovery, email verification, account lockout or administrative session listing;
+- login rate limiting is fixed-window and fails open if Redis is down;
+- organization-wide access depends on a seeded `ORG_ADMIN` role; no membership/role administration endpoints;
+- room blocks do not yet interact with reservations or availability search;
+- operational-state expiry is reconciled lazily, not by a background scheduler;
+- E2E still shares the local seeded database.
 
 ## Phase 3 — Guests and reservations (approx. 4–6 weeks)
 

@@ -14,6 +14,35 @@ enum RecordStatus {
   DISABLED
 }
 
+enum HousekeepingState {
+  DIRTY
+  CLEANING
+  CLEAN
+  INSPECTED
+}
+
+enum RoomOperationalState {
+  AVAILABLE
+  OUT_OF_ORDER
+  OUT_OF_SERVICE
+}
+
+enum RoomBlockType {
+  OUT_OF_ORDER
+  OUT_OF_SERVICE
+}
+
+enum RoomBlockStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+}
+
+enum RoomStatusCategory {
+  OPERATIONAL
+  HOUSEKEEPING
+}
+
 model Organization {
   id                  String               @id @default(uuid()) @db.Uuid
   name                String
@@ -24,6 +53,10 @@ model Organization {
   roles               Role[]
   propertyMemberships PropertyMembership[]
   auditEvents         AuditEvent[]
+  roomTypes           RoomType[]
+  rooms               Room[]
+  roomBlocks          RoomBlock[]
+  roomStatusHistory   RoomStatusHistory[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -42,6 +75,10 @@ model Property {
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   propertyMemberships PropertyMembership[]
   auditEvents         AuditEvent[]
+  roomTypes           RoomType[]
+  rooms               Room[]
+  roomBlocks          RoomBlock[]
+  roomStatusHistory   RoomStatusHistory[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -59,6 +96,9 @@ model User {
   memberships         Membership[]
   propertyMemberships PropertyMembership[]
   auditEvents         AuditEvent[]         @relation("AuditActor")
+  sessions            Session[]
+  roomBlocksCreated   RoomBlock[]          @relation("RoomBlockCreatedBy")
+  roomStatusHistory   RoomStatusHistory[]  @relation("RoomStatusHistoryActor")
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -69,14 +109,17 @@ model Membership {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @db.Uuid
   userId         String       @db.Uuid
+  roleId         String?      @db.Uuid
   status         RecordStatus @default(ACTIVE)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   user           User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role           Role?        @relation("MembershipRole", fields: [roleId], references: [id], onDelete: Restrict)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   @@unique([organizationId, userId])
   @@index([userId, status])
+  @@index([organizationId, roleId])
 }
 
 model Role {
@@ -86,6 +129,7 @@ model Role {
   key            String
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   propertyRoles  PropertyMembership[]
+  memberships    Membership[]         @relation("MembershipRole")
   permissions    RolePermission[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
@@ -130,6 +174,22 @@ model PropertyMembership {
   @@index([propertyId, status])
 }
 
+model Session {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  tokenHash     String    @unique @db.VarChar(64)
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+  lastSeenAt    DateTime  @default(now())
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
 model AuditEvent {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @db.Uuid
@@ -149,4 +209,105 @@ model AuditEvent {
   @@index([organizationId, occurredAt])
   @@index([propertyId, occurredAt])
   @@index([entityType, entityId])
+}
+
+model RoomType {
+  id               String       @id @default(uuid()) @db.Uuid
+  organizationId   String       @db.Uuid
+  propertyId       String       @db.Uuid
+  name             String
+  code             String
+  description      String?
+  capacityAdults   Int          @default(1)
+  capacityChildren Int          @default(0)
+  bedType          String?
+  status           RecordStatus @default(ACTIVE)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property         Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  rooms            Room[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([propertyId, code])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status])
+}
+
+model Room {
+  id                String               @id @default(uuid()) @db.Uuid
+  organizationId    String               @db.Uuid
+  propertyId        String               @db.Uuid
+  roomTypeId        String               @db.Uuid
+  number            String
+  floor             String?
+  building          String?
+  attributes        String[]             @default([])
+  housekeepingState HousekeepingState    @default(DIRTY)
+  operationalState  RoomOperationalState @default(AVAILABLE)
+  status            RecordStatus         @default(ACTIVE)
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property          Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  roomType          RoomType             @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  blocks            RoomBlock[]
+  statusHistory     RoomStatusHistory[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@unique([propertyId, number])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status])
+  @@index([propertyId, roomTypeId])
+  @@index([propertyId, housekeepingState])
+  @@index([propertyId, operationalState])
+}
+
+model RoomBlock {
+  id              String              @id @default(uuid()) @db.Uuid
+  organizationId  String              @db.Uuid
+  propertyId      String              @db.Uuid
+  roomId          String              @db.Uuid
+  type            RoomBlockType
+  status          RoomBlockStatus     @default(ACTIVE)
+  reason          String
+  startsAt        DateTime
+  endsAt          DateTime
+  createdByUserId String?             @db.Uuid
+  releasedAt      DateTime?
+  releaseReason   String?
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property        Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  room            Room                @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  createdBy       User?               @relation("RoomBlockCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  statusHistory   RoomStatusHistory[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status, startsAt])
+  @@index([roomId, status, startsAt])
+  @@index([organizationId, createdByUserId])
+}
+
+model RoomStatusHistory {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  propertyId     String             @db.Uuid
+  roomId         String             @db.Uuid
+  roomBlockId    String?            @db.Uuid
+  category       RoomStatusCategory
+  fromState      String?
+  toState        String
+  reason         String?
+  actorUserId    String?            @db.Uuid
+  correlationId  String?
+  occurredAt     DateTime           @default(now())
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property       Property           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  room           Room               @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  roomBlock      RoomBlock?         @relation(fields: [roomBlockId], references: [id], onDelete: Restrict)
+  actor          User?              @relation("RoomStatusHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, propertyId, occurredAt])
+  @@index([roomId, occurredAt])
+  @@index([organizationId, propertyId, roomId])
 }

@@ -18,7 +18,7 @@ async function bootstrap(): Promise<void> {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('NOVA PMS API')
       .setDescription(
-        'Phase 1 foundation. Development authentication uses X-Dev-User-Id; tenant selection uses X-Organization-Id and X-Property-Id and is validated server-side.',
+        'NOVA PMS API. Authentication is either an opaque local-session cookie (AUTH_MODE=local-session) or the non-production X-Dev-User-Id header (AUTH_MODE=dev-header). Tenant selection uses X-Organization-Id and X-Property-Id and is always validated server-side.',
       )
       .setVersion('0.1.0')
       .addApiKey({ type: 'apiKey', in: 'header', name: 'X-Dev-User-Id' }, 'dev-user')

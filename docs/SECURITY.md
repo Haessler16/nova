@@ -15,6 +15,73 @@
 - Structured logs must redact tokens, passwords, personal documents and payment payloads.
 - Dependency scanning and security updates in CI.
 
+## Implemented controls (Phase 1 + Phase 2)
+
+### Authentication
+
+- `AUTH_MODE=local-session`: email + password against `User.passwordHash`.
+- Passwords hashed with Node `scrypt` (`N=16384`, `r=8`, `p=1`, 64-byte key, 16-byte salt). Hash format is versioned so parameters can be raised later.
+- Unknown emails still run a dummy `scrypt` verification to reduce timing/user-enumeration signal.
+- Login failures return a generic `invalid_credentials` message.
+- `AUTH_MODE=dev-header` is rejected when `NODE_ENV=production`, both at config validation and at the guard. It is intended only for local development and deterministic E2E tests.
+- `AUTH_MODE=disabled` rejects every protected route.
+
+### Sessions
+
+- Sessions are opaque 256-bit random tokens. Only `sha256(token)` is stored in `Session.tokenHash`.
+- Session row tracks `expiresAt`, `revokedAt`, `revokedReason`, `lastSeenAt`.
+- Resolution requires: known hash, not revoked, not expired, and an ACTIVE user.
+- `lastSeenAt` updates are throttled to 5 minutes to bound write amplification.
+- Logout revokes the session row and clears both cookies.
+- Session TTL is configured by `SESSION_TTL_HOURS` (default 8h).
+- Expired/revoked rows for the same user are opportunistically deleted on new session creation.
+
+### Cookies and CSRF
+
+- `nova_session`: HttpOnly, `SameSite=Lax`, `Path=/`, `Secure` in production, `Max-Age` = session TTL.
+- `nova_csrf`: readable by the browser (double-submit), `SameSite=Lax`, `Secure` in production.
+- CSRF token format `nonce.signature`, signature = HMAC-SHA256(`CSRF_SECRET`, nonce). Comparison uses `timingSafeEqual`.
+- `CsrfGuard` runs globally and requires matching cookie + `X-CSRF-Token` header with a valid signature on all non-safe methods when `AUTH_MODE=local-session`.
+- `CSRF_SECRET` is mandatory for `local-session` and validated to be at least 32 characters.
+- Auth responses set `Cache-Control: no-store`.
+
+### Rate limiting
+
+- Login attempts are counted in Redis in a fixed window keyed by `sha256(client_ip|normalized_email)` — raw IP/email are not stored in Redis.
+- Configurable with `LOGIN_RATE_LIMIT_MAX` and `LOGIN_RATE_LIMIT_WINDOW_SECONDS`.
+- When Redis is unavailable the limiter fails open and logs a warning. PostgreSQL remains the authentication authority; a perimeter limiter/WAF is still required.
+- There is no per-user account lockout yet.
+
+### Authorization
+
+- Tenant context is resolved server-side from authenticated identity and active memberships.
+- `X-Organization-Id` / `X-Property-Id` are selectors only; arbitrary ids cannot authorize access.
+- Denials do not reveal whether a tenant exists.
+- Permission keys are atomic and checked by `PermissionsGuard`; the frontend may hide UI but never resolves access.
+- Organization-role permissions are additive; organization-wide property access requires `property.read`.
+- Every tenant-scoped query includes `organizationId` (and `propertyId` where applicable).
+- Cross-tenant references are blocked by composite foreign keys at the database layer.
+
+### Input and output
+
+- Global `ValidationPipe` with `whitelist` and `forbidNonWhitelisted`: unknown body/query fields are rejected.
+- Error envelope only exposes `code`, `message`, safe `details` and `correlationId`; Prisma/database internals are never returned.
+- Correlation ids accept only `^[A-Za-z0-9._:-]{8,128}$` or are regenerated.
+- Request logging does not include credentials, session tokens or CSRF tokens.
+
+### Audit and history
+
+- `AuditEvent` and `RoomStatusHistory` are append-only; PostgreSQL triggers reject `UPDATE`, `DELETE` and `TRUNCATE`.
+- All Phase 2 write endpoints write audit in the same transaction as the mutation.
+- Operational and housekeeping transitions also write `RoomStatusHistory`.
+- Audit metadata is capped at 8 KiB in API and DB.
+
+### Database integrity
+
+- `pnpm db:verify` asserts that manual constraints, triggers, functions and `btree_gist` are present after migrations.
+- Composite tenant FKs and CHECK constraints are documented in `docs/DATABASE.md`.
+- Reservation non-overlap and payment idempotency are still out of scope.
+
 ## Multi-tenant security tests
 
 For every resource type:
@@ -24,6 +91,23 @@ For every resource type:
 - forged organizationId/propertyId in body/query is ignored or rejected;
 - IDs guessed from another tenant do not leak existence;
 - background jobs carry and validate tenant context.
+
+Current automated coverage:
+
+- `apps/api/test/tenant-isolation.e2e-spec.ts` (identity, properties, audit, cross-org denial);
+- `apps/api/test/inventory.e2e-spec.ts` (room types, rooms, housekeeping history immutability, blocks/overlap, property settings, cross-tenant denial);
+- `apps/api/test/auth-session.e2e-spec.ts` (CSRF, invalid credentials, session cookie flags, logout revocation, rate limiting).
+
+## Known security limitations
+
+- Local credentials are a transitional mechanism; no MFA, password reset, email verification or account lockout.
+- Login rate limiting is fixed-window, Redis-dependent and fail-open on Redis outage.
+- Sessions are not rotated periodically and there is no administrative session/device listing.
+- No membership, invitation or role-administration endpoints, so role changes are currently seed/database operations.
+- Swagger is enabled whenever `NODE_ENV != production`; do not expose development instances publicly.
+- E2E suites run against the local seeded database and must never target real environments.
+- No external penetration test, dependency scanning job or WAF has been observed yet.
+- Reservation concurrency, payment tokenization and LGPD data-subject workflows are not implemented.
 
 ## LGPD design checklist
 
@@ -39,6 +123,8 @@ This document is an engineering baseline, not legal advice.
 - Define processor/subprocessor responsibilities and incident response.
 - Keep demo/sandbox data synthetic and isolated.
 - Never use production guest data to train or test AI features by default.
+
+Phase 2 stores only synthetic hotel configuration. No guest or document data is collected yet.
 
 ## Payment safety
 

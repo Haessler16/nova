@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { join } from 'node:path';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CsrfGuard } from './auth/csrf.guard';
 import { validateEnv } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PropertiesModule } from './properties/properties.module';
 import { RedisModule } from './redis/redis.module';
@@ -33,7 +36,14 @@ import { TenancyModule } from './tenancy/tenancy.module';
     TenancyModule,
     IdentityModule,
     PropertiesModule,
+    InventoryModule,
     AuditModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: CsrfGuard,
+    },
   ],
 })
 export class AppModule {}

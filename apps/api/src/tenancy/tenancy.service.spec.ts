@@ -18,19 +18,33 @@ function buildPrisma(): {
   prisma: PrismaService;
   membershipFindFirst: jest.Mock;
   propertyFindFirst: jest.Mock;
+  propertyFindMany: jest.Mock;
   propertyMembershipFindFirst: jest.Mock;
+  propertyMembershipFindMany: jest.Mock;
 } {
   const membershipFindFirst = jest.fn();
   const propertyFindFirst = jest.fn();
+  const propertyFindMany = jest.fn();
   const propertyMembershipFindFirst = jest.fn();
+  const propertyMembershipFindMany = jest.fn();
 
   const prisma = {
     membership: { findFirst: membershipFindFirst },
-    property: { findFirst: propertyFindFirst },
-    propertyMembership: { findFirst: propertyMembershipFindFirst },
+    property: { findFirst: propertyFindFirst, findMany: propertyFindMany },
+    propertyMembership: {
+      findFirst: propertyMembershipFindFirst,
+      findMany: propertyMembershipFindMany,
+    },
   } as unknown as PrismaService;
 
-  return { prisma, membershipFindFirst, propertyFindFirst, propertyMembershipFindFirst };
+  return {
+    prisma,
+    membershipFindFirst,
+    propertyFindFirst,
+    propertyFindMany,
+    propertyMembershipFindFirst,
+    propertyMembershipFindMany,
+  };
 }
 
 describe('TenancyService.resolveContext', () => {
@@ -107,6 +121,70 @@ describe('TenancyService.resolveContext', () => {
     await expect(rejection).rejects.toMatchObject({
       response: { code: 'property_access_denied' },
     });
+  });
+
+  it('adds organization-role permissions globally when a property is selected', async () => {
+    const { prisma, membershipFindFirst, propertyFindFirst, propertyMembershipFindFirst } =
+      buildPrisma();
+    membershipFindFirst.mockResolvedValue({
+      id: 'membership-1',
+      roleId: '00000000-0000-4000-8000-000000000021',
+      role: { permissions: [{ permission: { key: 'property.read' } }] },
+    });
+    propertyFindFirst.mockResolvedValue({ id: PROPERTY_ID });
+    propertyMembershipFindFirst.mockResolvedValue(null);
+
+    const service = new TenancyService(prisma);
+    const context = await service.resolveContext(
+      ACTOR,
+      ORGANIZATION_ID,
+      PROPERTY_ID,
+      CORRELATION_ID,
+    );
+
+    expect(context.organizationRoleId).toBe('00000000-0000-4000-8000-000000000021');
+    expect(context.propertyRoleId).toBeUndefined();
+    expect([...context.permissions]).toEqual(['property.read']);
+    expect([...context.organizationPermissions]).toEqual(['property.read']);
+  });
+
+  it('still denies property access to an org role without property.read', async () => {
+    const { prisma, membershipFindFirst, propertyFindFirst, propertyMembershipFindFirst } =
+      buildPrisma();
+    membershipFindFirst.mockResolvedValue({
+      id: 'membership-1',
+      roleId: 'role-1',
+      role: { permissions: [{ permission: { key: 'audit.read' } }] },
+    });
+    propertyFindFirst.mockResolvedValue({ id: PROPERTY_ID });
+    propertyMembershipFindFirst.mockResolvedValue(null);
+
+    const service = new TenancyService(prisma);
+
+    await expect(
+      service.resolveContext(ACTOR, ORGANIZATION_ID, PROPERTY_ID, CORRELATION_ID),
+    ).rejects.toMatchObject({ response: { code: 'property_access_denied' } });
+  });
+
+  it('lists every property when the organization role grants property.read', async () => {
+    const { prisma, propertyFindMany } = buildPrisma();
+    propertyFindMany.mockResolvedValue([{ id: PROPERTY_ID }]);
+
+    const service = new TenancyService(prisma);
+    const items = await service.listPropertiesForContext({
+      organizationId: ORGANIZATION_ID,
+      actor: ACTOR,
+      permissions: new Set(['property.read']),
+      organizationPermissions: new Set(['property.read']),
+      correlationId: CORRELATION_ID,
+    });
+
+    expect(items).toHaveLength(1);
+    expect(propertyFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORGANIZATION_ID, status: RecordStatus.ACTIVE },
+      }),
+    );
   });
 
   it('keeps organization-only context free of property permissions', async () => {

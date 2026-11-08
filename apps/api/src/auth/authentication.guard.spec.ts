@@ -2,6 +2,9 @@ import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthenticationGuard } from './authentication.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { SessionService } from './session.service';
+
+const SESSIONS = {} as SessionService;
 
 const USER_ID = '00000000-0000-4000-8000-000000000011';
 
@@ -27,6 +30,7 @@ describe('AuthenticationGuard (development header mode)', () => {
     const guard = new AuthenticationGuard(
       buildConfig({ NODE_ENV: 'production', AUTH_MODE: 'dev-header' }),
       prisma,
+      SESSIONS,
     );
 
     await expect(
@@ -38,6 +42,7 @@ describe('AuthenticationGuard (development header mode)', () => {
     const guard = new AuthenticationGuard(
       buildConfig({ NODE_ENV: 'test', AUTH_MODE: 'dev-header' }),
       {} as PrismaService,
+      SESSIONS,
     );
 
     await expect(guard.canActivate(buildContext({}))).rejects.toMatchObject({
@@ -58,6 +63,7 @@ describe('AuthenticationGuard (development header mode)', () => {
     const guard = new AuthenticationGuard(
       buildConfig({ NODE_ENV: 'test', AUTH_MODE: 'dev-header' }),
       prisma,
+      SESSIONS,
     );
 
     await expect(guard.canActivate(context)).resolves.toBe(true);

@@ -7,6 +7,7 @@ import {
   Matches,
   Max,
   Min,
+  MinLength,
   validateSync,
 } from 'class-validator';
 
@@ -29,8 +30,8 @@ export class EnvironmentVariables {
   @Matches(/^rediss?:\/\//, { message: 'REDIS_URL must be a redis:// or rediss:// URL' })
   REDIS_URL = 'redis://localhost:6379';
 
-  @IsIn(['dev-header', 'disabled'])
-  AUTH_MODE: 'dev-header' | 'disabled' = 'dev-header';
+  @IsIn(['dev-header', 'local-session', 'disabled'])
+  AUTH_MODE: 'dev-header' | 'local-session' | 'disabled' = 'dev-header';
 
   @IsString()
   @IsOptional()
@@ -41,6 +42,45 @@ export class EnvironmentVariables {
   @Min(1024)
   @Max(8192)
   AUDIT_METADATA_MAX_BYTES = 8192;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  SESSION_TTL_HOURS = 8;
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{3,64}$/, {
+    message: 'SESSION_COOKIE_NAME must contain 3-64 letters, digits, hyphens or underscores',
+  })
+  SESSION_COOKIE_NAME = 'nova_session';
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{3,64}$/, {
+    message: 'CSRF_COOKIE_NAME must contain 3-64 letters, digits, hyphens or underscores',
+  })
+  CSRF_COOKIE_NAME = 'nova_csrf';
+
+  /**
+   * Required when AUTH_MODE=local-session. Used to HMAC-sign CSRF tokens.
+   * Never commit a real value; production must provide it from a secret store.
+   */
+  @IsString()
+  @IsOptional()
+  @MinLength(32)
+  CSRF_SECRET?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  LOGIN_RATE_LIMIT_MAX = 10;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(10)
+  @Max(86400)
+  LOGIN_RATE_LIMIT_WINDOW_SECONDS = 900;
 }
 
 /**
@@ -67,6 +107,10 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     throw new Error(
       'AUTH_MODE=dev-header is forbidden when NODE_ENV=production. Configure a real identity provider first.',
     );
+  }
+
+  if (validated.AUTH_MODE === 'local-session' && validated.CSRF_SECRET === undefined) {
+    throw new Error('CSRF_SECRET is required when AUTH_MODE=local-session.');
   }
 
   return validated;

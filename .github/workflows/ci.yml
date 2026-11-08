@@ -76,6 +76,9 @@ jobs:
       - name: Seed synthetic data
         run: pnpm db:seed
 
+      - name: Verify manual database integrity objects
+        run: pnpm db:verify
+
       - name: Lint
         run: pnpm lint
 
@@ -88,5 +91,8 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: E2E tests
+      - name: E2E tests (dev-header tenant/inventory)
         run: pnpm test:e2e
+
+      - name: E2E tests (local-session authentication)
+        run: pnpm test:e2e:auth

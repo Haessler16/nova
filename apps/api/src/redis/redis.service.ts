@@ -38,6 +38,31 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Fixed-window counter used for authentication abuse limiting. Redis is
+   * auxiliary here: if it is unavailable the caller decides how to degrade.
+   */
+  async incrementWindow(key: string, ttlSeconds: number): Promise<number | null> {
+    try {
+      if (this.client.status === 'wait' || this.client.status === 'end') {
+        await this.client.connect();
+      }
+
+      const count = await this.withTimeout(this.client.incr(key));
+      if (count === 1) {
+        await this.withTimeout(this.client.expire(key, ttlSeconds));
+      }
+      return count;
+    } catch (error) {
+      this.logger.warn(
+        `Redis rate-limit increment failed: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+      return null;
+    }
+  }
+
   async onModuleDestroy(): Promise<void> {
     try {
       if (this.client.status !== 'end') {

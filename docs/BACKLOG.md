@@ -2,7 +2,7 @@
 
 Estimaciones relativas para planificación, no compromisos. `S` = pequeño, `M` = medio, `L` = grande, `XL` = investigación/alto riesgo. La estimación debe revisarse tras inspeccionar el repositorio.
 
-> **Estado 2026-11-08:** FND-001 a FND-012 implementados localmente y verificados (lint, typecheck, 16 unit tests, 18 E2E, build). El CI remoto está definido en `.github/workflows/ci.yml` pero aún no se ejecutó en GitHub. Ver `docs/PHASE_1_REPORT.md`.
+> **Estado 2026-11-08:** FND-001 a FND-012 e INV-001 a INV-005 implementados localmente y verificados (lint, typecheck, format, build, 32 unit tests, 30 E2E de tenant/inventario, 5 E2E de sesión/CSRF/rate limit y `pnpm db:verify`). INV-006 (UI de inventario) queda pendiente. El CI remoto está definido en `.github/workflows/ci.yml` pero aún no se ejecutó en GitHub. Ver `docs/PHASE_1_REPORT.md` y `docs/PHASE_2_REPORT.md`.
 
 ## P0 — Foundation (bloquea todo)
 

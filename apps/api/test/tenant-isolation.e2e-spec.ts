@@ -79,7 +79,10 @@ describe('NOVA PMS foundation (E2E)', () => {
       expect(response.body.email).toBe('admin@demo.nova.local');
       expect(response.body.memberships).toHaveLength(1);
       expect(response.body.memberships[0].organization.id).toBe(ORG_A);
-      expect(response.body.memberships[0].properties).toHaveLength(2);
+      expect(response.body.memberships[0].role.key).toBe('ORG_ADMIN');
+      expect(
+        response.body.memberships[0].properties.map((property: { id: string }) => property.id),
+      ).toEqual(expect.arrayContaining([PROPERTY_CENTRO, PROPERTY_PRAIA]));
     });
   });
 

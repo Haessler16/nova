@@ -1,0 +1,125 @@
+import { PrismaClient } from '@prisma/client';
+
+/**
+ * Verifies database objects that Prisma does not model: composite tenant
+ * foreign keys, CHECK constraints, the room-block exclusion constraint and
+ * append-only triggers.
+ *
+ * Run after `prisma migrate deploy` in local development and CI. A missing
+ * object means a migration was edited, replaced or bypassed and the database
+ * can no longer be trusted to enforce tenant/audit invariants.
+ */
+const prisma = new PrismaClient();
+
+const EXPECTED_CONSTRAINTS = [
+  // Phase 1 tenant and audit hardening.
+  'PropertyMembership_property_tenant_fkey',
+  'PropertyMembership_role_tenant_fkey',
+  'PropertyMembership_membership_fkey',
+  'AuditEvent_property_tenant_fkey',
+  'User_email_normalized_check',
+  'Property_currency_code_check',
+  'Property_operational_day_start_check',
+  'Property_timezone_not_blank_check',
+  'AuditEvent_metadata_size_check',
+  // Phase 2 organization roles and inventory hardening.
+  'Membership_role_tenant_fkey',
+  'Session_token_hash_check',
+  'Session_expiry_check',
+  'RoomType_property_tenant_fkey',
+  'Room_property_tenant_fkey',
+  'Room_room_type_tenant_fkey',
+  'RoomBlock_property_tenant_fkey',
+  'RoomBlock_room_tenant_fkey',
+  'RoomBlock_creator_membership_fkey',
+  'RoomStatusHistory_property_tenant_fkey',
+  'RoomStatusHistory_room_tenant_fkey',
+  'RoomStatusHistory_block_tenant_fkey',
+  'RoomStatusHistory_actor_membership_fkey',
+  'RoomType_code_check',
+  'RoomType_name_check',
+  'RoomType_capacity_check',
+  'Room_number_check',
+  'Room_attributes_count_check',
+  'Room_floor_check',
+  'Room_building_check',
+  'RoomBlock_reason_check',
+  'RoomBlock_interval_check',
+  'RoomBlock_release_reason_check',
+  'RoomBlock_status_fields_check',
+  'RoomBlock_active_no_overlap',
+  'RoomStatusHistory_to_state_check',
+  'RoomStatusHistory_from_state_check',
+  'RoomStatusHistory_reason_check',
+] as const;
+
+const EXPECTED_TRIGGERS = [
+  'AuditEvent_append_only_row',
+  'AuditEvent_append_only_truncate',
+  'RoomStatusHistory_append_only_row',
+  'RoomStatusHistory_append_only_truncate',
+] as const;
+
+const EXPECTED_FUNCTIONS = [
+  'nova_audit_event_append_only',
+  'nova_room_status_history_append_only',
+] as const;
+
+async function main(): Promise<void> {
+  const [constraints, triggers, functions, extensions] = await Promise.all([
+    prisma.$queryRaw<Array<{ conname: string }>>`
+      SELECT conname FROM pg_constraint
+      WHERE connamespace = 'public'::regnamespace
+    `,
+    prisma.$queryRaw<Array<{ tgname: string }>>`
+      SELECT tgname FROM pg_trigger WHERE NOT tgisinternal
+    `,
+    prisma.$queryRaw<Array<{ proname: string }>>`
+      SELECT proname FROM pg_proc
+      WHERE pronamespace = 'public'::regnamespace
+    `,
+    prisma.$queryRaw<Array<{ extname: string }>>`
+      SELECT extname FROM pg_extension
+    `,
+  ]);
+
+  const constraintNames = new Set(constraints.map((row) => row.conname));
+  const triggerNames = new Set(triggers.map((row) => row.tgname));
+  const functionNames = new Set(functions.map((row) => row.proname));
+  const extensionNames = new Set(extensions.map((row) => row.extname));
+
+  const missingConstraints = EXPECTED_CONSTRAINTS.filter((name) => !constraintNames.has(name));
+  const missingTriggers = EXPECTED_TRIGGERS.filter((name) => !triggerNames.has(name));
+  const missingFunctions = EXPECTED_FUNCTIONS.filter((name) => !functionNames.has(name));
+  const missingExtensions = ['btree_gist'].filter((name) => !extensionNames.has(name));
+
+  const failures = [
+    ...missingConstraints.map((name) => `missing constraint: ${name}`),
+    ...missingTriggers.map((name) => `missing trigger: ${name}`),
+    ...missingFunctions.map((name) => `missing function: ${name}`),
+    ...missingExtensions.map((name) => `missing extension: ${name}`),
+  ];
+
+  if (failures.length > 0) {
+    console.error('Database integrity verification FAILED:');
+    for (const failure of failures) {
+      console.error(`  - ${failure}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(
+    `Database integrity verified: ${EXPECTED_CONSTRAINTS.length} constraints, ` +
+      `${EXPECTED_TRIGGERS.length} triggers, ${EXPECTED_FUNCTIONS.length} functions and btree_gist.`,
+  );
+}
+
+main()
+  .catch((error: unknown) => {
+    console.error('Database integrity verification could not run:', error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

@@ -1,5 +1,7 @@
 # NOVA PMS — Phase 1 Foundation Report
 
+> Historical document. Authentication/session/CSRF/rate-limiting limitations listed here were partially addressed in Phase 2. See `docs/PHASE_2_REPORT.md` and ADR-008/ADR-009 in `docs/DECISIONS.md`.
+
 Date: 2026-11-08
 Scope: Phase 1 only (no rooms, guests, reservations, front office, folios, cash, night audit, OCR, offline, Edge).
 
