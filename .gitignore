@@ -27,4 +27,5 @@ pnpm-debug.log*
 
 # Prisma local artifacts
 prisma/*.db
-prisma/*.db-journal
+backups/
+*.dump

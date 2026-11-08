@@ -91,8 +91,5 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: E2E tests (dev-header tenant/inventory)
-        run: pnpm test:e2e
-
-      - name: E2E tests (local-session authentication)
-        run: pnpm test:e2e:auth
+      - name: E2E tests (isolated schemas)
+        run: pnpm test:e2e:all:isolated

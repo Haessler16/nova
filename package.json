@@ -17,6 +17,9 @@
     "test": "pnpm --filter @nova/api test",
     "test:e2e": "pnpm --filter @nova/api test:e2e",
     "test:e2e:auth": "pnpm --filter @nova/api test:e2e:auth",
+    "test:e2e:isolated": "ts-node --project tsconfig.seed.json scripts/run-e2e-isolated.ts -- pnpm --filter @nova/api test:e2e",
+    "test:e2e:auth:isolated": "ts-node --project tsconfig.seed.json scripts/run-e2e-isolated.ts -- pnpm --filter @nova/api test:e2e:auth",
+    "test:e2e:all:isolated": "pnpm test:e2e:isolated && pnpm test:e2e:auth:isolated",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "prisma generate",
@@ -26,6 +29,8 @@
     "db:verify": "ts-node --project tsconfig.seed.json scripts/verify-db-integrity.ts",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
+    "db:backup": "bash scripts/backup-db.sh",
+    "db:restore:drill": "bash scripts/restore-drill.sh",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f"

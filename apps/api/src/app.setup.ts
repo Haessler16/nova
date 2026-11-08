@@ -12,7 +12,7 @@ export function configureApp(app: INestApplication): void {
   const config = app.get(ConfigService);
 
   app.setGlobalPrefix('api/v1', {
-    exclude: ['health/live', 'health/ready'],
+    exclude: ['health/live', 'health/ready', 'metrics'],
   });
 
   app.use(correlationIdMiddleware);

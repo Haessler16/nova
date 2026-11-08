@@ -4,15 +4,7 @@ export const PASSWORD_MIN_LENGTH = 12;
 export const PASSWORD_MAX_LENGTH = 128;
 
 export interface PasswordPolicyViolation {
-  code:
-    | 'length'
-    | 'lowercase'
-    | 'uppercase'
-    | 'digit'
-    | 'symbol'
-    | 'whitespace'
-    | 'email'
-    | 'name';
+  code: 'length' | 'lowercase' | 'uppercase' | 'digit' | 'symbol' | 'whitespace' | 'email' | 'name';
   message: string;
 }
 

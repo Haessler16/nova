@@ -120,7 +120,11 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     if (request.sessionId !== undefined) {
-      await this.auth.revokeOwnSession(request.actor!.id, request.sessionId, authRequestMetadata(request));
+      await this.auth.revokeOwnSession(
+        request.actor!.id,
+        request.sessionId,
+        authRequestMetadata(request),
+      );
     }
     this.clearCookies(response);
   }
@@ -177,10 +181,7 @@ export class AuthController {
   @Post('password/forgot')
   @HttpCode(HttpStatus.ACCEPTED)
   @Header('Cache-Control', 'no-store')
-  forgotPassword(
-    @Req() request: AuthenticatedRequest,
-    @Body() dto: ForgotPasswordDto,
-  ) {
+  forgotPassword(@Req() request: AuthenticatedRequest, @Body() dto: ForgotPasswordDto) {
     return this.auth.requestPasswordReset(dto.email, authRequestMetadata(request));
   }
 
@@ -289,4 +290,3 @@ export class AuthController {
     };
   }
 }
-

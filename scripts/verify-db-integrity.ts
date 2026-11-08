@@ -51,6 +51,20 @@ const EXPECTED_CONSTRAINTS = [
   'RoomStatusHistory_to_state_check',
   'RoomStatusHistory_from_state_check',
   'RoomStatusHistory_reason_check',
+  // Phase 3 auth, administration and security hardening.
+  'PasswordResetToken_hash_check',
+  'PasswordResetToken_expiry_check',
+  'EmailVerificationToken_hash_check',
+  'EmailVerificationToken_expiry_check',
+  'User_lockout_fields_check',
+  'User_mfa_fields_check',
+  'Session_ip_hash_check',
+  'Session_user_agent_check',
+  'Role_key_check',
+  'Role_name_check',
+  'SecurityEvent_type_check',
+  'SecurityEvent_severity_check',
+  'SecurityEvent_metadata_size_check',
 ] as const;
 
 const EXPECTED_TRIGGERS = [
@@ -58,15 +72,23 @@ const EXPECTED_TRIGGERS = [
   'AuditEvent_append_only_truncate',
   'RoomStatusHistory_append_only_row',
   'RoomStatusHistory_append_only_truncate',
+  'SecurityEvent_append_only_row',
+  'SecurityEvent_append_only_truncate',
 ] as const;
 
 const EXPECTED_FUNCTIONS = [
   'nova_audit_event_append_only',
   'nova_room_status_history_append_only',
+  'nova_security_event_append_only',
+] as const;
+
+const EXPECTED_INDEXES = [
+  'PasswordResetToken_active_user_key',
+  'EmailVerificationToken_active_user_key',
 ] as const;
 
 async function main(): Promise<void> {
-  const [constraints, triggers, functions, extensions] = await Promise.all([
+  const [constraints, triggers, functions, extensions, indexes] = await Promise.all([
     prisma.$queryRaw<Array<{ conname: string }>>`
       SELECT conname FROM pg_constraint
       WHERE connamespace = 'public'::regnamespace
@@ -81,23 +103,30 @@ async function main(): Promise<void> {
     prisma.$queryRaw<Array<{ extname: string }>>`
       SELECT extname FROM pg_extension
     `,
+    prisma.$queryRaw<Array<{ indexname: string }>>`
+      SELECT indexname FROM pg_indexes
+      WHERE schemaname = 'public'
+    `,
   ]);
 
   const constraintNames = new Set(constraints.map((row) => row.conname));
   const triggerNames = new Set(triggers.map((row) => row.tgname));
   const functionNames = new Set(functions.map((row) => row.proname));
   const extensionNames = new Set(extensions.map((row) => row.extname));
+  const indexNames = new Set(indexes.map((row) => row.indexname));
 
   const missingConstraints = EXPECTED_CONSTRAINTS.filter((name) => !constraintNames.has(name));
   const missingTriggers = EXPECTED_TRIGGERS.filter((name) => !triggerNames.has(name));
   const missingFunctions = EXPECTED_FUNCTIONS.filter((name) => !functionNames.has(name));
   const missingExtensions = ['btree_gist'].filter((name) => !extensionNames.has(name));
+  const missingIndexes = EXPECTED_INDEXES.filter((name) => !indexNames.has(name));
 
   const failures = [
     ...missingConstraints.map((name) => `missing constraint: ${name}`),
     ...missingTriggers.map((name) => `missing trigger: ${name}`),
     ...missingFunctions.map((name) => `missing function: ${name}`),
     ...missingExtensions.map((name) => `missing extension: ${name}`),
+    ...missingIndexes.map((name) => `missing index: ${name}`),
   ];
 
   if (failures.length > 0) {
@@ -111,7 +140,8 @@ async function main(): Promise<void> {
 
   console.log(
     `Database integrity verified: ${EXPECTED_CONSTRAINTS.length} constraints, ` +
-      `${EXPECTED_TRIGGERS.length} triggers, ${EXPECTED_FUNCTIONS.length} functions and btree_gist.`,
+      `${EXPECTED_TRIGGERS.length} triggers, ${EXPECTED_FUNCTIONS.length} functions, ` +
+      `${EXPECTED_INDEXES.length} indexes and btree_gist.`,
   );
 }
 

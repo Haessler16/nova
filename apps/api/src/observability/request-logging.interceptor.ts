@@ -1,10 +1,4 @@
-import {
-  CallHandler,
-  ExecutionContext,
-  Injectable,
-  Logger,
-  NestInterceptor,
-} from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import type { Response } from 'express';
 import { Observable, tap } from 'rxjs';
 import { AuthenticatedRequest } from '../common/http/request-context';
@@ -42,11 +36,10 @@ export class RequestLoggingInterceptor implements NestInterceptor {
         status: String(status),
         status_class: statusClass,
       });
-      this.metrics.observeHistogram(
-        'nova_http_request_duration_seconds',
-        durationSeconds,
-        { method, path },
-      );
+      this.metrics.observeHistogram('nova_http_request_duration_seconds', durationSeconds, {
+        method,
+        path,
+      });
 
       const line = JSON.stringify({
         event: 'http_request',

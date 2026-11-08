@@ -165,11 +165,7 @@ export class SessionService {
     });
   }
 
-  async revokeForUser(
-    userId: string,
-    sessionId: string,
-    reason: string,
-  ): Promise<boolean> {
+  async revokeForUser(userId: string, sessionId: string, reason: string): Promise<boolean> {
     const updated = await this.prisma.session.updateMany({
       where: { id: sessionId, userId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: reason },
@@ -194,11 +190,7 @@ export class SessionService {
   }
 
   /** Administrative revocation after verifying tenant-scoped membership. */
-  async revokeAnyForUser(
-    userId: string,
-    sessionId: string,
-    reason: string,
-  ): Promise<boolean> {
+  async revokeAnyForUser(userId: string, sessionId: string, reason: string): Promise<boolean> {
     return this.revokeForUser(userId, sessionId, reason);
   }
 }

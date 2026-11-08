@@ -241,16 +241,16 @@ pnpm test:e2e:auth
 
 ## Limitaciones
 
-- La autenticación local no incluye MFA, recuperación de contraseña, bloqueo de cuenta, verificación de email ni proveedor de identidad. Debe revisarse antes de producción.
+- La autenticación local es una transición controlada: incluye MFA TOTP, recuperación/verificación por token hash, bloqueo por intentos fallidos y administración básica de sesiones/membresías/roles, pero **no** incluye proveedor de identidad final, recovery codes, desbloqueo administrativo completo, ni entrega de correo en producción.
 - El rate limiting es fixed-window y falla abierto si Redis no está disponible; no sustituye un WAF/rate limiter perimetral.
-- Las sesiones no tienen rotación periódica de token ni listado/revocación administrativa de dispositivos.
-- Los permisos de organización son aditivos y todavía no hay endpoints de administración de membresías, invitaciones o roles.
-- El estado operativo se reconcilia de forma perezosa al leer habitaciones; no hay scheduler de expiración en segundo plano.
+- Los tokens de reset/verificación solo se registran/devuelven fuera de producción según `AUTH_TOKEN_DELIVERY`; en producción se requiere proveedor de correo.
+- Los permisos de administración son API-only (sin UI) y aplican reglas conservadoras (subset de permisos del actor y protección del último administrador).
+- El estado operativo se reconcilia en lecturas y mediante un scheduler in-process con advisory lock PostgreSQL; no sustituye observabilidad/alertas operativas.
 - No hay reservas, huéspedes, front office, folios, caja, night audit, OCR, offline ni Edge.
 - No hay estrategia final de no-solapamiento de reservas. Antes de confirmar reservas debe definirse y probarse contra PostgreSQL.
-- Los E2E usan la base local sembrada y no están aislados de datos de desarrollo; nunca deben apuntar a entornos reales.
-- El workflow CI está definido pero no se ha observado una ejecución remota en GitHub.
-- No hay backups/restore drill, observabilidad completa ni revisión de seguridad externa.
+- Los E2E aislados crean/drolean esquemas por ejecución y requieren PostgreSQL local/CI con permisos adecuados.
+- El workflow CI está actualizado para E2E aislado, pero no se ha observado una ejecución remota en GitHub desde este entorno.
+- Backups/restore drill y métricas/logs son baseline local/operador; no hay backups administrados, agregación de logs/métricas, revisión de seguridad externa ni hardening perimetral completo.
 
 ## Siguiente paso recomendado
 
@@ -268,4 +268,5 @@ Phase 3 — huéspedes y reservas: CRUD con minimización de datos, ciclo de vid
 - `docs/DECISIONS.md`
 - `docs/PHASE_1_REPORT.md`
 - `docs/PHASE_2_REPORT.md`
+- `docs/PHASE_3_REPORT.md`
 - `prompts/PROMPT_01_FOUNDATION.md`

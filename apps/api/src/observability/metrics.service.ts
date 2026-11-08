@@ -61,25 +61,29 @@ export class MetricsService {
 
     lines.push('# HELP nova_process_node_info Node.js runtime information.');
     lines.push('# TYPE nova_process_node_info gauge');
-    lines.push(
-      `nova_process_node_info{version="${process.version.replace(/"/g, '')}"} 1`,
-    );
+    lines.push(`nova_process_node_info{version="${process.version.replace(/"/g, '')}"} 1`);
 
-    for (const [name, family] of [...this.counters.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [name, family] of [...this.counters.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
       lines.push(`# TYPE ${name} counter`);
       for (const series of family.values()) {
         lines.push(`${name}${formatLabels(series.labels)} ${series.value}`);
       }
     }
 
-    for (const [name, family] of [...this.histograms.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [name, family] of [...this.histograms.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
       lines.push(`# TYPE ${name} histogram`);
       for (const series of family.values()) {
         for (let index = 0; index < series.buckets.length; index += 1) {
           const bucketLabels = { ...series.labels, le: String(series.buckets[index]) };
           lines.push(`${name}_bucket${formatLabels(bucketLabels)} ${series.counts[index] ?? 0}`);
         }
-        lines.push(`${name}_bucket${formatLabels({ ...series.labels, le: '+Inf' })} ${series.count}`);
+        lines.push(
+          `${name}_bucket${formatLabels({ ...series.labels, le: '+Inf' })} ${series.count}`,
+        );
         lines.push(`${name}_sum${formatLabels(series.labels)} ${series.sum}`);
         lines.push(`${name}_count${formatLabels(series.labels)} ${series.count}`);
       }
@@ -89,7 +93,10 @@ export class MetricsService {
   }
 
   private counterSeries(name: string, labels: Labels): CounterSeries {
-    return this.seriesFor(this.counters, name, labels, () => ({ labels: normalizeLabels(labels), value: 0 }));
+    return this.seriesFor(this.counters, name, labels, () => ({
+      labels: normalizeLabels(labels),
+      value: 0,
+    }));
   }
 
   private histogramSeries(name: string, labels: Labels): HistogramSeries {

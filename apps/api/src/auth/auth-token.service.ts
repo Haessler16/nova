@@ -28,33 +28,19 @@ export class AuthTokenService {
     private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
-    this.resetTtlMs =
-      config.get<number>('PASSWORD_RESET_TTL_MINUTES', 30) * 60 * 1000;
+    this.resetTtlMs = config.get<number>('PASSWORD_RESET_TTL_MINUTES', 30) * 60 * 1000;
     this.verificationTtlMs =
       config.get<number>('EMAIL_VERIFICATION_TTL_HOURS', 24) * 60 * 60 * 1000;
   }
 
   async issuePasswordReset(userId: string, requestedIpHash?: string): Promise<IssuedAuthToken> {
     await this.deleteExpired();
-    return this.issue(
-      'passwordResetToken',
-      userId,
-      this.resetTtlMs,
-      requestedIpHash,
-    );
+    return this.issue('passwordResetToken', userId, this.resetTtlMs, requestedIpHash);
   }
 
-  async issueEmailVerification(
-    userId: string,
-    requestedIpHash?: string,
-  ): Promise<IssuedAuthToken> {
+  async issueEmailVerification(userId: string, requestedIpHash?: string): Promise<IssuedAuthToken> {
     await this.deleteExpired();
-    return this.issue(
-      'emailVerificationToken',
-      userId,
-      this.verificationTtlMs,
-      requestedIpHash,
-    );
+    return this.issue('emailVerificationToken', userId, this.verificationTtlMs, requestedIpHash);
   }
 
   async consumePasswordReset(

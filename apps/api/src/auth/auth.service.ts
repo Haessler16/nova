@@ -90,10 +90,7 @@ export class AuthService {
   ) {
     this.lockoutThreshold = config.get<number>('ACCOUNT_LOCKOUT_THRESHOLD', 5);
     this.lockoutMs = config.get<number>('ACCOUNT_LOCKOUT_MINUTES', 15) * 60 * 1000;
-    this.tokenDelivery = config.get<'log' | 'response' | 'none'>(
-      'AUTH_TOKEN_DELIVERY',
-      'log',
-    );
+    this.tokenDelivery = config.get<'log' | 'response' | 'none'>('AUTH_TOKEN_DELIVERY', 'log');
     this.nodeEnv = config.get<string>('NODE_ENV', 'development');
     this.mfaIssuer = config.get<string>('MFA_ISSUER', 'NOVA PMS');
   }
@@ -135,7 +132,12 @@ export class AuthService {
     }
 
     if (user.status !== RecordStatus.ACTIVE || !passwordMatches) {
-      await this.registerFailedAttempt(user.id, user.failedLoginAttempts, metadata, 'bad_credentials');
+      await this.registerFailedAttempt(
+        user.id,
+        user.failedLoginAttempts,
+        metadata,
+        'bad_credentials',
+      );
       throw invalidCredentials();
     }
 
@@ -443,11 +445,7 @@ export class AuthService {
     };
   }
 
-  async enableMfa(
-    userId: string,
-    code: string,
-    metadata: AuthRequestMetadata,
-  ): Promise<void> {
+  async enableMfa(userId: string, code: string, metadata: AuthRequestMetadata): Promise<void> {
     this.mfa.assertConfigured();
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -548,7 +546,10 @@ export class AuthService {
     });
   }
 
-  async listSessions(userId: string, currentSessionId?: string): Promise<Array<SessionSummary & { current: boolean }>> {
+  async listSessions(
+    userId: string,
+    currentSessionId?: string,
+  ): Promise<Array<SessionSummary & { current: boolean }>> {
     const sessions = await this.sessions.listForUser(userId);
     return sessions.map((session) => ({
       ...session,
@@ -616,7 +617,12 @@ export class AuthService {
 
     const verification = this.totp.verify(this.mfa.decryptSecret(user.mfaSecret), code);
     if (verification === null) {
-      await this.registerFailedAttempt(user.id, user.failedLoginAttempts, metadata, 'invalid_mfa_code');
+      await this.registerFailedAttempt(
+        user.id,
+        user.failedLoginAttempts,
+        metadata,
+        'invalid_mfa_code',
+      );
       throw invalidMfaCode();
     }
 
@@ -769,7 +775,7 @@ function invalidToken(): BadRequestException {
 }
 
 function accountLocked(lockedUntil: Date): HttpException {
-  return new HttpException(
+  throw new HttpException(
     {
       code: 'account_locked',
       message: 'The account is temporarily locked after repeated failed sign-in attempts.',
@@ -777,6 +783,6 @@ function accountLocked(lockedUntil: Date): HttpException {
         retryAfterSeconds: Math.max(1, Math.ceil((lockedUntil.getTime() - Date.now()) / 1000)),
       },
     },
-    HttpStatus.LOCKED,
+    423,
   );
 }

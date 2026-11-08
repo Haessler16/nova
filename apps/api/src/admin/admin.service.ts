@@ -73,25 +73,42 @@ export class AdminService {
       where: { organizationId: context.organizationId },
       orderBy: [{ status: 'asc' }, { user: { name: 'asc' } }],
       take: 200,
+      select: MEMBERSHIP_SELECT,
+    });
+
+    const propertyMemberships = await this.prisma.propertyMembership.findMany({
+      where: {
+        organizationId: context.organizationId,
+        userId: { in: memberships.map((membership) => membership.userId) },
+      },
       select: {
-        ...MEMBERSHIP_SELECT,
-        propertyMemberships: {
-          where: { organizationId: context.organizationId },
-          select: {
-            id: true,
-            propertyId: true,
-            roleId: true,
-            status: true,
-            property: { select: { id: true, name: true, code: true } },
-            role: { select: { id: true, key: true, name: true } },
-          },
-        },
+        id: true,
+        userId: true,
+        propertyId: true,
+        roleId: true,
+        status: true,
+        property: { select: { id: true, name: true, code: true } },
+        role: { select: { id: true, key: true, name: true } },
       },
     });
 
+    const byUser = new Map<string, typeof propertyMemberships>();
+    for (const propertyMembership of propertyMemberships) {
+      const list = byUser.get(propertyMembership.userId) ?? [];
+      list.push(propertyMembership);
+      byUser.set(propertyMembership.userId, list);
+    }
+
     return {
       items: memberships.map((membership) => ({
-        ...membership,
+        id: membership.id,
+        organizationId: membership.organizationId,
+        userId: membership.userId,
+        roleId: membership.roleId,
+        status: membership.status,
+        createdAt: membership.createdAt,
+        updatedAt: membership.updatedAt,
+        user: membership.user,
         role:
           membership.role === null
             ? null
@@ -104,6 +121,7 @@ export class AdminService {
                   (rolePermission) => rolePermission.permission.key,
                 ),
               },
+        propertyMemberships: byUser.get(membership.userId) ?? [],
       })),
     };
   }
@@ -118,7 +136,8 @@ export class AdminService {
 
     let roleId: string | null = null;
     if (dto.roleId !== undefined) {
-      roleId = (await this.assertRoleSubset(context.organizationId, dto.roleId, actorPermissions)).id;
+      roleId = (await this.assertRoleSubset(context.organizationId, dto.roleId, actorPermissions))
+        .id;
     }
 
     const propertyAssignments = dto.propertyAssignments ?? [];
@@ -249,11 +268,7 @@ export class AdminService {
     return { membership, invitation };
   }
 
-  async updateMembership(
-    context: TenantContext,
-    membershipId: string,
-    dto: UpdateMembershipDto,
-  ) {
+  async updateMembership(context: TenantContext, membershipId: string, dto: UpdateMembershipDto) {
     const actorPermissions = this.actorPermissions(context);
 
     return this.prisma.$transaction(async (transaction) => {
@@ -497,9 +512,7 @@ export class AdminService {
         system: role.system,
         createdAt: role.createdAt,
         updatedAt: role.updatedAt,
-        permissions: role.permissions.map(
-          (rolePermission) => rolePermission.permission.key,
-        ),
+        permissions: role.permissions.map((rolePermission) => rolePermission.permission.key),
         membershipCount: role._count.memberships,
         propertyMembershipCount: role._count.propertyRoles,
       })),
@@ -524,9 +537,7 @@ export class AdminService {
         });
 
         await transaction.rolePermission.createMany({
-          data: (
-            await this.permissionIds(transaction, dto.permissions)
-          ).map((permissionId) => ({
+          data: (await this.permissionIds(transaction, dto.permissions)).map((permissionId) => ({
             roleId: created.id,
             permissionId,
           })),
@@ -608,9 +619,10 @@ export class AdminService {
         await transaction.rolePermission.deleteMany({ where: { roleId } });
         if (dto.permissions.length > 0) {
           await transaction.rolePermission.createMany({
-            data: (await this.permissionIds(transaction, dto.permissions)).map(
-              (permissionId) => ({ roleId, permissionId }),
-            ),
+            data: (await this.permissionIds(transaction, dto.permissions)).map((permissionId) => ({
+              roleId,
+              permissionId,
+            })),
             skipDuplicates: true,
           });
         }
@@ -751,10 +763,7 @@ export class AdminService {
     }
   }
 
-  private async assertOrganizationMember(
-    organizationId: string,
-    userId: string,
-  ): Promise<void> {
+  private async assertOrganizationMember(organizationId: string, userId: string): Promise<void> {
     const membership = await this.prisma.membership.findFirst({
       where: { organizationId, userId, status: RecordStatus.ACTIVE },
       select: { id: true },

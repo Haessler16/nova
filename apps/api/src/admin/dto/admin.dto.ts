@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -14,7 +13,8 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { ALL_PERMISSIONS } from '../access/permissions';
+import { Type } from 'class-transformer';
+import { ALL_PERMISSIONS } from '../../access/permissions';
 
 export class PropertyAssignmentDto {
   @IsUUID()

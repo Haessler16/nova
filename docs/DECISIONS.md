@@ -248,7 +248,144 @@ These choices should be confirmed against the existing repository and current st
   - confirm the runtime ICU data is updated in deployment images;
   - revisit if sub-minute precision or historical timezone rules become necessary.
 
-## ADR template
+## Phase 3 decisions — implemented 2026-11-08 (auth/admin, E2E isolation, scheduler, observability)
+
+### ADR-014 — MFA/TOTP with encrypted secrets and short-lived challenges
+
+- Status: accepted for the transitional local-session phase.
+- Date: 2026-11-08.
+- Context: the pilot needs stronger authentication than password-only login, without adding a third-party dependency before the final identity provider is chosen.
+- Options:
+  1. defer MFA until an external IdP (leaves accounts exposed);
+  2. SMS MFA (operational cost, SIM-swap risk);
+  3. TOTP with an authenticator app (chosen).
+- Decision:
+  - TOTP uses Node `crypto` HMAC-SHA1 (RFC 6238 defaults: 6 digits, 30s, ±1 step). No new dependency.
+  - Shared secrets are encrypted at rest with AES-256-GCM derived from `MFA_ENCRYPTION_KEY`; enrollment/enablement fail with `503 mfa_not_configured` when the key is absent.
+  - Login with MFA enabled returns an `mfa_challenge` (signed, short-lived, `MFA_CHALLENGE_TTL_SECONDS`) after password verification; the client completes login with `POST /auth/login/mfa`.
+  - Each accepted TOTP step is recorded in `User.mfaLastUsedStep` to reject replay within the accepted window.
+  - Disabling MFA requires the current password and a valid TOTP code.
+- Consequences:
+  - Secrets are not stored in plaintext, but key rotation is manual and not yet implemented.
+  - Recovery codes and administrative MFA reset are not implemented.
+- Validation required:
+  - decide recovery-code workflow and IdP migration path;
+  - rotate/backup `MFA_ENCRYPTION_KEY` as a production secret.
+
+### ADR-015 — Password reset and email verification use hashed one-time tokens
+
+- Status: accepted, transitional delivery.
+- Date: 2026-11-08.
+- Context: accounts need password recovery and verified contact without storing reusable secrets.
+- Decision:
+  - Reset and verification tokens are 256-bit random values; only SHA-256 digests are stored.
+  - Tokens are single-use (`usedAt`), time-limited, and at most one active token per user/type is kept (partial unique indexes + delete-on-issue).
+  - `POST /auth/password/forgot` returns the same response shape regardless of whether the email exists to reduce account enumeration.
+  - Successful reset sets a new password hash, clears lockout counters, revokes sessions, and marks invited/unverified accounts appropriately.
+  - Token delivery is controlled by `AUTH_TOKEN_DELIVERY`: `log`/`response` only outside production; production validation forces `none` until an email provider is integrated.
+- Consequences:
+  - No email provider is wired yet; production cannot deliver reset/verification links until that integration exists.
+  - Admin-created memberships can trigger invitation/reset flows through the same mechanism.
+- Validation required:
+  - integrate a transactional email provider with signed links, templates, rate limits and bounce handling.
+
+### ADR-016 — Account lockout is authoritative in PostgreSQL
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: repeated credential failures must be throttled beyond best-effort rate limiting.
+- Decision:
+  - `User.failedLoginAttempts` and `User.lockedUntil` are stored in PostgreSQL.
+  - Failed password or MFA attempts increment the counter; reaching `ACCOUNT_LOCKOUT_THRESHOLD` sets a temporary lock for `ACCOUNT_LOCKOUT_MINUTES`.
+  - Successful login, password change, or password reset clears the counter and lock.
+  - Lockout returns `423 account_locked` with a retry hint; rate limiting still applies per IP+email.
+- Consequences:
+  - Lockout state survives process restarts and is visible to administrators through security events/future UI.
+  - There is no permanent lockout or admin unlock endpoint yet.
+- Validation required:
+  - add admin unlock/audit workflow and tune thresholds per deployment.
+
+### ADR-017 — Session administration is self-service plus scoped admin revocation
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: users need to see and revoke their own sessions; administrators need to respond to compromised accounts without broad database access.
+- Decision:
+  - `GET /auth/sessions` lists active sessions for the authenticated user (id, user agent, created/last seen/expires, current flag).
+  - `DELETE /auth/sessions/:id` revokes only the caller's own session.
+  - `GET/DELETE /admin/memberships/:id/sessions[/:sessionId]` allow organization administrators with `organization.members.manage` to inspect/revoke sessions for users who have a membership in that organization.
+  - Session metadata stores a truncated user agent and hashed IP; raw IP is not stored in session rows.
+- Consequences:
+  - Cross-organization session administration is not possible.
+  - Session tokens remain opaque and are never listed.
+- Validation required:
+  - add device labeling and suspicious-session heuristics when telemetry matures.
+
+### ADR-018 — Membership/role administration prevents privilege escalation
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: organization administrators need to manage memberships and custom roles, but must not grant permissions they do not hold or lock the organization out.
+- Decision:
+  - New permissions: `organization.members.read/manage`, `organization.roles.read/manage`, `security.events.read`.
+  - Administration endpoints require organization context (`X-Organization-Id`) and do not accept property-scoped admin operations through the same path.
+  - Creating/updating memberships or roles validates that every granted permission is held by the actor's organization permissions (subset rule).
+  - System roles are immutable; custom roles are tenant-scoped.
+  - Membership/role updates that would remove the last active administrator capable of `organization.members.manage` are rejected.
+  - Security-relevant admin actions write `AuditEvent` and/or append-only `SecurityEvent`.
+- Consequences:
+  - `ORG_ADMIN` remains the bootstrap administrator; fine-grained delegation is possible but constrained.
+  - Role administration is API-only; no UI yet.
+- Validation required:
+  - add approval workflows for sensitive permission changes in larger organizations.
+
+### ADR-019 — Room-block expiry uses an in-process scheduler with PostgreSQL advisory lock
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: expired `RoomBlock` rows should not remain `ACTIVE` until the next room read, but correctness must not depend on Redis or a best-effort timer.
+- Decision:
+  - `RoomBlockExpiryScheduler` discovers properties with expired active blocks and calls `RoomStateService.reconcileProperty`, which already performs transactional, row-locked reconciliation and writes audit/history.
+  - A PostgreSQL advisory lock (`pg_try_advisory_lock`) prevents concurrent scheduler instances from duplicating work.
+  - The scheduler is disabled automatically in Jest; tests call `runOnce()` deterministically.
+  - Lazy reconciliation on reads remains in place as a fallback.
+- Consequences:
+  - Expiry latency is bounded by `ROOM_BLOCK_EXPIRY_INTERVAL_SECONDS` when the scheduler runs.
+  - Multi-process deployments coordinate through PostgreSQL, not Redis.
+- Validation required:
+  - add operational metrics/alerts for scheduler lag and repeated failures.
+
+### ADR-020 — Isolated E2E runs use per-run PostgreSQL schemas
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: E2E suites shared the local seeded `public` schema, making failures order-dependent and unsafe for parallel/local experimentation.
+- Decision:
+  - `scripts/run-e2e-isolated.ts` creates a unique schema, sets `DATABASE_URL?...schema=<run>`, runs `prisma migrate deploy` and `prisma db seed`, executes the requested Jest command, then drops the schema in `finally`.
+  - Setup env files preserve a pre-set `DATABASE_URL`, so the orchestrator controls isolation.
+  - Root scripts expose `test:e2e:isolated`, `test:e2e:auth:isolated`, and `test:e2e:all:isolated`; CI uses the isolated aggregate.
+- Consequences:
+  - E2E runs are slower because they migrate/seed per schema, but results are reproducible.
+  - The orchestrator requires PostgreSQL privileges to create/drop schemas.
+- Validation required:
+  - observe remote GitHub Actions runtime and cache behavior.
+
+### ADR-021 — Backups and observability are local/operator-focused baselines
+
+- Status: accepted as a baseline; not production operations completeness.
+- Date: 2026-11-08.
+- Context: the codebase had no backup drill, structured request logs, or metrics surface.
+- Decision:
+  - `scripts/backup-db.sh` creates logical `pg_dump -Fc` backups through Docker with local-target safeguards.
+  - `scripts/restore-drill.sh` requires explicit confirmation, restores into a temporary database, runs integrity checks, and drops the temp database.
+  - Request logging is structured JSON with low-cardinality fields (method, path without query, status, duration, correlation/user/tenant ids). Bodies, query strings, cookies and tokens are excluded.
+  - `/metrics` exposes Prometheus-compatible text with bounded in-process counters/histograms; it can be protected by `METRICS_TOKEN`.
+  - `/health/live` and `/health/ready` remain; readiness still treats PostgreSQL+Redis as dependencies.
+- Consequences:
+  - Metrics are per-process and not aggregated across replicas.
+  - WAF/perimeter controls, external security review, and hosted backup/restore automation remain out of scope.
+- Validation required:
+  - run restore drills against approved staging snapshots and integrate logs/metrics with the chosen platform.
 
 ### ADR-NNN — Title
 
