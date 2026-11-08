@@ -1,6 +1,6 @@
 # NOVA PMS
 
-SaaS hotelero multi-tenant. Este repositorio contiene la **Phase 1 — Foundation**, la **Phase 2 — Configuración de propiedad e inventario** y el backend de la **Phase 3 — Huéspedes y reservas** ejecutables: monorepo, API NestJS, web Next.js, PostgreSQL/Redis, Prisma, autenticación local con sesiones/MFA/recuperación, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, huéspedes minimizados, reservas con disponibilidad y asignación transaccional, historial append-only de reservas, seeds sintéticos y pruebas de aislamiento.
+SaaS hotelero multi-tenant. Este repositorio contiene la **Phase 1 — Foundation**, la **Phase 2 — Configuración de propiedad e inventario** y la **Phase 3 — Huéspedes y reservas** ejecutables de punta a punta: monorepo, API NestJS, **UI web Next.js + Chakra UI para fases 1–3**, PostgreSQL/Redis, Prisma, autenticación local con sesiones/MFA/recuperación, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, huéspedes minimizados, reservas con disponibilidad y asignación transaccional, historial append-only de reservas, seeds sintéticos y pruebas de aislamiento.
 
 > La autenticación local con usuario/contraseña es una transición controlada, no un proveedor de identidad definitivo. No es producción-ready sin revisión de seguridad, MFA/recuperación de cuenta y secretos gestionados. Ver [Limitaciones](#limitaciones).
 
@@ -49,6 +49,31 @@ Para un entorno limpio:
 ```bash
 pnpm db:reset   # drop + migrate + seed (destructivo solo en local)
 ```
+
+## Aplicación web (Phase 1–3)
+
+La web es una app operativa client-side contra la API real. No guarda el tenant en el cliente como autoridad: envía `X-Organization-Id`/`X-Property-Id` y el backend valida membresías y permisos en cada request.
+
+| Ruta                    | Contenido                                                                           |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `/login`                | Login local (email/contraseña + MFA) o selector de usuario en `dev-header`          |
+| `/dashboard`            | Día operativo, propiedad, sesión, readiness y accesos rápidos                       |
+| `/reservations`         | Listado/filtros, disponibilidad, alta, edición, asignación, cancelación e historial |
+| `/guests`               | Búsqueda, alta/edición y activación/desactivación de huéspedes                      |
+| `/inventory/rooms`      | Habitaciones, housekeeping, bloqueos, liberación e historial                        |
+| `/inventory/room-types` | Tipologías, capacidad y estado                                                      |
+| `/settings`             | Nombre, timezone, moneda y hora de corte del día operativo                          |
+| `/audit`                | Eventos de auditoría append-only con metadatos                                      |
+| `/admin`                | Membresías, roles/permisos y eventos de seguridad (contexto de organización)        |
+| `/account`              | Sesiones activas, cambio de contraseña y enrolamiento/desenrolamiento MFA           |
+
+Notas de uso:
+
+- En `AUTH_MODE=dev-header` (default local) el login muestra usuarios sintéticos; el id elegido se guarda en `localStorage` solo para desarrollo y se envía como `X-Dev-User-Id`.
+- En `AUTH_MODE=local-session` el navegador usa la cookie HttpOnly y la UI obtiene un token CSRF antes de cada mutación.
+- El selector de organización/propiedad persiste la última selección y se revalida contra `/organizations` y `/properties` al recargar.
+- Los errores de permisos se muestran como alertas de la API; la UI no replica reglas de autorización.
+- Un 401 durante la navegación cierra la sesión local de la UI y redirige a `/login`.
 
 ## Variables de entorno
 
@@ -266,9 +291,9 @@ pnpm test:e2e:auth
 - La autenticación local es una transición controlada: incluye MFA TOTP, recuperación/verificación por token hash, bloqueo por intentos fallidos y administración básica de sesiones/membresías/roles, pero **no** incluye proveedor de identidad final, recovery codes, desbloqueo administrativo completo, ni entrega de correo en producción.
 - El rate limiting es fixed-window y falla abierto si Redis no está disponible; no sustituye un WAF/rate limiter perimetral.
 - Los tokens de reset/verificación solo se registran/devuelven fuera de producción según `AUTH_TOKEN_DELIVERY`; en producción se requiere proveedor de correo.
-- Los permisos de administración son API-only (sin UI) y aplican reglas conservadoras (subset de permisos del actor y protección del último administrador).
+- La administración tiene UI (`/admin`) pero aplica reglas conservadoras en API (subset de permisos del actor y protección del último administrador); no incluye aprobaciones de cambios sensibles.
 - El estado operativo se reconcilia en lecturas y mediante un scheduler in-process con advisory lock PostgreSQL; no sustituye observabilidad/alertas operativas.
-- El backend de huéspedes y reservas existe, pero no hay calendario UI ni front office (check-in/out, room rack, room move), folios, caja, night audit, OCR, offline ni Edge.
+- La UI cubre listas, alta/edición, disponibilidad, asignación y cancelación, pero no un calendario gráfico ni front office (check-in/out, room rack, room move), folios, caja, night audit, OCR, offline ni Edge.
 - Una reserva admite una sola habitación y las estancias usan granularidad de fecha calendario; las horas de check-in/out y los conflictos con bloqueos a nivel de instante necesitan revisión en Front Office.
 - El conflicto reserva↔bloqueo se serializa por el lock de la fila `Room`, pero no existe una constraint única que relacione ambas tablas.
 - Los E2E aislados crean/drolean esquemas por ejecución y requieren PostgreSQL local/CI con permisos adecuados.
@@ -279,7 +304,7 @@ pnpm test:e2e:auth
 
 Phase 4 — Front Office: room rack, listas de llegadas/salidas/in-house, check-in/check-out como máquina de estados idempotente, cambio de habitación y notas/incidencias. Antes de check-in, definir la relación entre reserva, estancia y estado de ocupación de la habitación.
 
-Pendiente inmediato de Phase 3: calendario de reservas (RSV-006) y UI de huéspedes; el backend y sus garantías de concurrencia ya están implementados.
+Pendiente inmediato: calendario gráfico de reservas (RSV-006); la UI operativa de fases 1–3 ya consume la API.
 
 ## Documentación
 

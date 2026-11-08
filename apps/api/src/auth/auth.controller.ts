@@ -53,6 +53,17 @@ export class AuthController {
     this.sessionCookieName = this.config.get<string>('SESSION_COOKIE_NAME', SESSION_COOKIE_NAME);
   }
 
+  /**
+   * Lets the web client choose the correct sign-in screen without probing
+   * credentials. The value is not a secret: dev-header is rejected in
+   * production by configuration validation.
+   */
+  @Get('mode')
+  @Header('Cache-Control', 'no-store')
+  mode(): { authMode: string } {
+    return { authMode: this.config.get<string>('AUTH_MODE', 'disabled') };
+  }
+
   @Get('csrf')
   @Header('Cache-Control', 'no-store')
   csrfToken(@Res({ passthrough: true }) response: Response): { csrfToken: string } {

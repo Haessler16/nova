@@ -68,6 +68,13 @@ describe('Local session authentication (E2E)', () => {
     await app.close();
   });
 
+  it('exposes the configured auth mode without credentials', async () => {
+    const response = await request(app.getHttpServer()).get('/api/v1/auth/mode').expect(200);
+
+    expect(response.body).toEqual({ authMode: 'local-session' });
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
   it('issues a signed CSRF token in a readable cookie', async () => {
     const agent = request.agent(app.getHttpServer());
     const response = await agent.get('/api/v1/auth/csrf').expect(200);

@@ -85,12 +85,13 @@ Los permisos de organización son aditivos respecto de los de propiedad. Un rol 
 
 ### Auth
 
-| Método | Ruta                   | Guard       | Notas                              |
-| ------ | ---------------------- | ----------- | ---------------------------------- |
-| GET    | `/api/v1/auth/csrf`    | —           | Emite CSRF token + cookie          |
-| POST   | `/api/v1/auth/login`   | CSRF        | `200`; setea cookies; rate limited |
-| POST   | `/api/v1/auth/logout`  | auth + CSRF | `204`; revoca sesión               |
-| GET    | `/api/v1/auth/session` | auth        | `{ user, authentication }`         |
+| Método | Ruta                   | Guard       | Notas                                        |
+| ------ | ---------------------- | ----------- | -------------------------------------------- |
+| GET    | `/api/v1/auth/mode`    | —           | `{ authMode }` para elegir pantalla de login |
+| GET    | `/api/v1/auth/csrf`    | —           | Emite CSRF token + cookie                    |
+| POST   | `/api/v1/auth/login`   | CSRF        | `200`; setea cookies; rate limited           |
+| POST   | `/api/v1/auth/logout`  | auth + CSRF | `204`; revoca sesión                         |
+| GET    | `/api/v1/auth/session` | auth        | `{ user, authentication }`                   |
 
 ### Identity
 
@@ -198,6 +199,28 @@ Fechas y ocupación:
 - `ReservationHistory` es append-only (`reservation.created`, `reservation.updated`, `reservation.room_assigned`, `reservation.cancelled`).
 
 Errores específicos: `guest_not_found`, `invalid_guest_document`, `invalid_calendar_date`, `invalid_stay_window`, `reservation_in_past`, `reservation_too_long`, `invalid_date_filter`, `reservation_not_found`, `room_not_available`, `room_type_mismatch`, `room_inactive`, `occupancy_exceeds_room_type`, `reservation_not_editable`, `reservation_not_assignable`, `reservation_not_cancellable`, `reservation_conflict`, `idempotency_key_reuse`.
+
+### Admin
+
+Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
+
+| Método | Ruta                                                   | Permiso                       |
+| ------ | ------------------------------------------------------ | ----------------------------- |
+| GET    | `/api/v1/admin/memberships`                            | `organization.members.read`   |
+| POST   | `/api/v1/admin/memberships`                            | `organization.members.manage` |
+| PATCH  | `/api/v1/admin/memberships/:id`                        | `organization.members.manage` |
+| GET    | `/api/v1/admin/memberships/:id/sessions`               | `organization.members.manage` |
+| DELETE | `/api/v1/admin/memberships/:id/sessions/:sessionId`    | `organization.members.manage` |
+| GET    | `/api/v1/admin/properties/:propertyId/memberships`     | `organization.members.read`   |
+| POST   | `/api/v1/admin/properties/:propertyId/memberships`     | `organization.members.manage` |
+| PATCH  | `/api/v1/admin/properties/:propertyId/memberships/:id` | `organization.members.manage` |
+| GET    | `/api/v1/admin/permissions`                            | `organization.roles.read`     |
+| GET    | `/api/v1/admin/roles`                                  | `organization.roles.read`     |
+| POST   | `/api/v1/admin/roles`                                  | `organization.roles.manage`   |
+| PATCH  | `/api/v1/admin/roles/:id`                              | `organization.roles.manage`   |
+| GET    | `/api/v1/admin/security-events`                        | `security.events.read`        |
+
+`GET /admin/permissions` devuelve el catálogo `{ items: string[] }` que la UI usa para editar roles. Los roles de sistema son inmutables (`409 system_role_immutable`); otorgar permisos exige que el actor ya los posea (`403 permission_escalation_denied`).
 
 ### Housekeeping workflow
 

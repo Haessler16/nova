@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'NOVA PMS — Foundation',
-  description: 'NOVA PMS Phase 1 foundation',
+  title: 'NOVA PMS',
+  description: 'NOVA PMS — operaciones hoteleras multi-tenant',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

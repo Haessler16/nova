@@ -450,6 +450,30 @@ These choices should be confirmed against the existing repository and current st
 - Validation required:
   - define retention/anonymization and purpose of identity documents with the pilot and legal review; then implement erasure/anonymization and access auditing for sensitive fields.
 
+### ADR-025 — The Phase 1–3 web UI is client-side with server-validated tenant selectors
+
+- Status: accepted for the transitional web app.
+- Date: 2026-11-08.
+- Context: phases 1–3 had a complete API but only a health landing page; operators need a usable interface without changing the backend contracts or duplicating authorization rules.
+- Options:
+  1. server-rendered pages with a second backend-for-frontend (adds a session/tenant layer and deployment surface before Phase 4);
+  2. client-side Next.js App Router pages calling the API directly with the session cookie/dev header and explicit tenant headers (chosen);
+  3. keep an API-only product until Front Office (rejected: inventory and reservations are already operable).
+- Decision:
+  - `apps/web` owns presentation, navigation and tenant selection only; every list, mutation and permission decision stays in the API.
+  - The session cookie is sent with `credentials: include`; local-session writes fetch a CSRF token once and send `X-CSRF-Token`.
+  - `X-Organization-Id`/`X-Property-Id` are selectors, never authority; the UI revalidates them through `/organizations` and `/properties` after login/reload.
+  - A public `GET /auth/mode` tells the login screen which flow to render, avoiding credential probing.
+  - Shared response types mirror API contracts without sharing Prisma types; no business rule (capacity, overlap, transitions, permissions) is reimplemented in the UI.
+  - Failed API calls surface the backend message; a `401` drops the UI session and redirects to `/login`.
+  - Admin screens intentionally omit `X-Property-Id` because admin endpoints require organization context.
+- Consequences:
+  - The UI is a static export-friendly SPA shell; it must be deployed alongside the API and is subject to CORS/session-cookie configuration.
+  - No offline mode, calendar/room-rack visualization, or optimistic mutations yet.
+- Validation required:
+  - validate keyboard/screen-reader flows and mobile breakpoints with the pilot;
+  - revisit server components/BFF if SEO or server-side authorization rendering becomes a requirement.
+
 ### ADR-NNN — Title
 
 - Status: proposed / accepted / superseded

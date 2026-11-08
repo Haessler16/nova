@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { PERMISSIONS } from '../access/permissions';
+import { ALL_PERMISSIONS, PERMISSIONS } from '../access/permissions';
 import { AuthenticationGuard } from '../auth/authentication.guard';
 import { authRequestMetadata } from '../auth/request-metadata';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
@@ -120,6 +120,12 @@ export class AdminController {
     @Body() dto: UpdatePropertyMembershipDto,
   ) {
     return this.admin.updatePropertyMembership(tenant, propertyId, id, dto);
+  }
+
+  @Get('permissions')
+  @RequirePermissions(PERMISSIONS.ORGANIZATION_ROLES_READ)
+  listPermissions() {
+    return { items: ALL_PERMISSIONS };
   }
 
   @Get('roles')

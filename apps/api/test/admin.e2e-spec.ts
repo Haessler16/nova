@@ -56,6 +56,14 @@ describe('Administration (E2E)', () => {
       .expect(200);
 
     expect(roles.body.items.some((role: { key: string }) => role.key === 'ORG_ADMIN')).toBe(true);
+
+    const permissions = await request(app.getHttpServer())
+      .get('/api/v1/admin/permissions')
+      .set(orgHeaders(ADMIN, ORG_A))
+      .expect(200);
+
+    expect(permissions.body.items).toContain('guests.read');
+    expect(permissions.body.items).toContain('organization.roles.manage');
   });
 
   it('denies admin endpoints to users without permission', async () => {
