@@ -2,7 +2,7 @@
 
 Estimaciones relativas para planificación, no compromisos. `S` = pequeño, `M` = medio, `L` = grande, `XL` = investigación/alto riesgo. La estimación debe revisarse tras inspeccionar el repositorio.
 
-> **Estado 2026-11-08:** FND-001 a FND-012, INV-001 a INV-006, GST-001/002 y RSV-001/002/003/005 implementados localmente y verificados (lint, typecheck, format, build, unit tests, E2E aislados y `pnpm db:verify`). La UI web de fases 1–3 cubre login/sesión, selector organización/propiedad, configuración, inventario, huéspedes, reservas, auditoría, administración y cuenta. Quedan pendientes RSV-004 (lease temporal; la exclusión PostgreSQL ya existe y RSV-004 no es requisito de integridad), RSV-006 (calendario gráfico de reservas) y las fases posteriores. El CI remoto está definido en `.github/workflows/ci.yml` pero aún no se ejecutó en GitHub. Ver `docs/PHASE_1_REPORT.md`, `docs/PHASE_2_REPORT.md` y `docs/PHASE_3_REPORT.md`.
+> **Estado 2026-11-08:** FND-001 a FND-012, INV-001 a INV-006, GST-001/002, RSV-001/002/003/005/006 y FO-001 a FO-006 implementados localmente y verificados (lint, typecheck, format, builds, unit tests, E2E aislados y `pnpm db:verify`). La UI web de fases 1–4 cubre login/sesión, selector organización/propiedad, configuración, inventario, huéspedes, reservas, calendario, Front Office, auditoría, administración y cuenta. Quedan pendientes RSV-004 (lease temporal; la exclusión PostgreSQL ya existe y RSV-004 no es requisito de integridad) y las fases posteriores. El CI remoto está definido en `.github/workflows/ci.yml` pero aún no se ejecutó en GitHub. Ver `docs/PHASE_1_REPORT.md`, `docs/PHASE_2_REPORT.md`, `docs/PHASE_3_REPORT.md` y `docs/PHASE_4_REPORT.md`.
 
 **Phase 3 — guests y reservas (backend):** CRUD de huéspedes con minimización, búsqueda asistida, ciclo de vida de reserva (`CONFIRMED`/`CANCELLED`), disponibilidad por fechas, asignación de habitación transaccional, idempotencia de creación, historial append-only y garantía de no-solapamiento con exclusion constraint PostgreSQL. Check-in/check-out pertenecen a Phase 4 (Front Office).
 
@@ -47,7 +47,9 @@ Estimaciones relativas para planificación, no compromisos. `S` = pequeño, `M` 
 | RSV-005 | Reservations | Modificar/cancelar con historial                | Must      | M    | RSV-001         | Historial preservado y auditado                     |
 | RSV-006 | UI           | Calendario de reservas                          | Must      | XL   | RSV-001..005    | Refleja conflictos y estados del backend            |
 
-Estado P2: GST-001, GST-002, RSV-001, RSV-002, RSV-003 y RSV-005 implementados en backend con tests y UI operativa (listas, alta/edición, asignación y cancelación). RSV-004 no se implementó (Redis/lease no sustituye PostgreSQL); RSV-006 (calendario gráfico) sigue pendiente.
+Estado P2: GST-001, GST-002, RSV-001, RSV-002, RSV-003, RSV-005 y RSV-006 implementados en backend/UI con tests. RSV-004 no se implementó (Redis/lease no sustituye PostgreSQL).
+
+Estado P3: FO-001 a FO-006 implementados en API y UI con E2E aislados: room rack, llegadas/salidas/in-house, check-in/out idempotentes, room move e incidencias. Quedan pendientes de validación con el piloto las horas de llegada/salida, no-show y la política de overbooking.
 
 ## P3 — Front Office
 

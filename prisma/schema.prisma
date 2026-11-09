@@ -58,6 +58,30 @@ enum ReservationStatus {
   NO_SHOW
 }
 
+enum StayStatus {
+  IN_HOUSE
+  CHECKED_OUT
+}
+
+enum IncidentType {
+  NOTE
+  MAINTENANCE
+  COMPLAINT
+  SAFETY
+  OTHER
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum IncidentStatus {
+  OPEN
+  RESOLVED
+}
+
 model Organization {
   id                  String               @id @default(uuid()) @db.Uuid
   name                String
@@ -76,8 +100,14 @@ model Organization {
   guests              Guest[]
   reservations        Reservation[]
   reservationHistory  ReservationHistory[]
+  stays               Stay[]
+  incidents           Incident[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  Folio               Folio[]
+  Payment             Payment[]
+  CashSession         CashSession[]
+  CashMovement        CashMovement[]
 
   @@index([status])
 }
@@ -101,8 +131,14 @@ model Property {
   guests              Guest[]
   reservations        Reservation[]
   reservationHistory  ReservationHistory[]
+  stays               Stay[]
+  incidents           Incident[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  Folio               Folio[]
+  Payment             Payment[]
+  CashSession         CashSession[]
+  CashMovement        CashMovement[]
 
   @@unique([organizationId, code])
   @@unique([organizationId, id])
@@ -135,6 +171,10 @@ model User {
   roomStatusHistory       RoomStatusHistory[]      @relation("RoomStatusHistoryActor")
   reservationsCreated     Reservation[]            @relation("ReservationCreatedBy")
   reservationHistory      ReservationHistory[]     @relation("ReservationHistoryActor")
+  staysCheckedIn          Stay[]                   @relation("StayCheckedInBy")
+  staysCheckedOut         Stay[]                   @relation("StayCheckedOutBy")
+  incidentsCreated        Incident[]               @relation("IncidentCreatedBy")
+  incidentsResolved       Incident[]               @relation("IncidentResolvedBy")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -252,22 +292,22 @@ model AuditEvent {
 }
 
 model RoomType {
-  id               String       @id @default(uuid()) @db.Uuid
-  organizationId   String       @db.Uuid
-  propertyId       String       @db.Uuid
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @db.Uuid
+  propertyId       String        @db.Uuid
   name             String
   code             String
   description      String?
-  capacityAdults   Int          @default(1)
-  capacityChildren Int          @default(0)
+  capacityAdults   Int           @default(1)
+  capacityChildren Int           @default(0)
   bedType          String?
-  status           RecordStatus @default(ACTIVE)
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property         Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  status           RecordStatus  @default(ACTIVE)
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property         Property      @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   rooms            Room[]
   reservations     Reservation[]
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@unique([propertyId, code])
   @@unique([organizationId, propertyId, id])
@@ -292,6 +332,8 @@ model Room {
   blocks            RoomBlock[]
   statusHistory     RoomStatusHistory[]
   reservations      Reservation[]
+  stays             Stay[]
+  incidents         Incident[]
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
@@ -355,21 +397,22 @@ model RoomStatusHistory {
 }
 
 model Guest {
-  id             String            @id @default(uuid()) @db.Uuid
-  organizationId String            @db.Uuid
-  propertyId     String            @db.Uuid
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  propertyId     String             @db.Uuid
   fullName       String
   email          String?
   phone          String?
   documentType   GuestDocumentType?
   documentNumber String?
   notes          String?
-  status         RecordStatus      @default(ACTIVE)
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property       Property          @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  status         RecordStatus       @default(ACTIVE)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property       Property           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   reservations   Reservation[]
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  stays          Stay[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   @@unique([organizationId, propertyId, id])
   @@index([organizationId, propertyId, status])
@@ -381,33 +424,38 @@ model Guest {
 /// calendar dates (property timezone) and the stay occupies
 /// [checkInDate, checkOutDate). One room per reservation in this phase.
 model Reservation {
-  id                 String              @id @default(uuid()) @db.Uuid
-  organizationId     String              @db.Uuid
-  propertyId         String              @db.Uuid
-  code               String              @db.VarChar(32)
-  status             ReservationStatus   @default(CONFIRMED)
-  source             String?             @db.VarChar(32)
-  checkInDate        DateTime            @db.Date
-  checkOutDate       DateTime            @db.Date
-  adults             Int                 @default(1)
-  children           Int                 @default(0)
-  guestId            String              @db.Uuid
-  roomTypeId         String              @db.Uuid
-  roomId             String?             @db.Uuid
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @db.Uuid
+  propertyId         String               @db.Uuid
+  code               String               @db.VarChar(32)
+  status             ReservationStatus    @default(CONFIRMED)
+  source             String?              @db.VarChar(32)
+  checkInDate        DateTime             @db.Date
+  checkOutDate       DateTime             @db.Date
+  adults             Int                  @default(1)
+  children           Int                  @default(0)
+  guestId            String               @db.Uuid
+  roomTypeId         String               @db.Uuid
+  roomId             String?              @db.Uuid
   notes              String?
-  idempotencyKey     String?             @db.VarChar(64)
-  createdByUserId    String?             @db.Uuid
+  idempotencyKey     String?              @db.VarChar(64)
+  createdByUserId    String?              @db.Uuid
   cancelledAt        DateTime?
   cancellationReason String?
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  guest              Guest               @relation(fields: [guestId], references: [id], onDelete: Restrict)
-  roomType           RoomType            @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
-  room               Room?               @relation(fields: [roomId], references: [id], onDelete: Restrict)
-  createdBy          User?               @relation("ReservationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  noShowAt           DateTime?
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property           Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  guest              Guest                @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  roomType           RoomType             @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  room               Room?                @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  createdBy          User?                @relation("ReservationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   history            ReservationHistory[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  stay               Stay?
+  incidents          Incident[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  Folio              Folio[]
+  Payment            Payment[]
 
   @@unique([propertyId, code])
   @@unique([propertyId, idempotencyKey])
@@ -439,6 +487,75 @@ model ReservationHistory {
   actor          User?              @relation("ReservationHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, propertyId, reservationId, occurredAt])
+}
+
+/// One front-office stay per reservation. Occupancy is derived from an
+/// `IN_HOUSE` stay and is intentionally separate from housekeeping state.
+model Stay {
+  id                 String       @id @default(uuid()) @db.Uuid
+  organizationId     String       @db.Uuid
+  propertyId         String       @db.Uuid
+  reservationId      String       @unique @db.Uuid
+  guestId            String       @db.Uuid
+  roomId             String       @db.Uuid
+  status             StayStatus   @default(IN_HOUSE)
+  checkedInAt        DateTime
+  checkedInByUserId  String?      @db.Uuid
+  checkedOutAt       DateTime?
+  checkedOutByUserId String?      @db.Uuid
+  checkOutNotes      String?
+  moveCount          Int          @default(0)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property           Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservation        Reservation  @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  guest              Guest        @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  room               Room         @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  checkedInBy        User?        @relation("StayCheckedInBy", fields: [checkedInByUserId], references: [id], onDelete: SetNull)
+  checkedOutBy       User?        @relation("StayCheckedOutBy", fields: [checkedOutByUserId], references: [id], onDelete: SetNull)
+  incidents          Incident[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  Folio              Folio[]
+  Payment            Payment[]
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status])
+  @@index([propertyId, roomId, status])
+  @@index([organizationId, guestId])
+}
+
+/// Operational notes and incidents. Optional scope links allow a note to be
+/// about a room, a reservation, a stay or the property in general.
+model Incident {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @db.Uuid
+  propertyId       String           @db.Uuid
+  roomId           String?          @db.Uuid
+  reservationId    String?          @db.Uuid
+  stayId           String?          @db.Uuid
+  type             IncidentType     @default(NOTE)
+  severity         IncidentSeverity @default(MEDIUM)
+  status           IncidentStatus   @default(OPEN)
+  title            String           @db.VarChar(120)
+  description      String
+  resolution       String?
+  createdByUserId  String?          @db.Uuid
+  resolvedByUserId String?          @db.Uuid
+  resolvedAt       DateTime?
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property         Property         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  room             Room?            @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  reservation      Reservation?     @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  stay             Stay?            @relation(fields: [stayId], references: [id], onDelete: Restrict)
+  createdBy        User?            @relation("IncidentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  resolvedBy       User?            @relation("IncidentResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status, createdAt])
+  @@index([propertyId, roomId, status])
+  @@index([organizationId, propertyId, reservationId])
 }
 
 model PasswordResetToken {
@@ -491,4 +608,110 @@ model SecurityEvent {
   @@index([organizationId, occurredAt])
   @@index([userId, occurredAt])
   @@index([type, occurredAt])
+}
+
+// Phase 5 — Folio, cash and operational day
+model Folio {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  propertyId     String   @db.Uuid
+  stayId         String?  @db.Uuid
+  reservationId  String?  @db.Uuid
+  number         String   @db.VarChar(32)
+  concept        String   @db.VarChar(120)
+  amount         Decimal  @db.Decimal(10, 2)
+  currencyCode   String   @default("BRL") @db.VarChar(3)
+  status         String   @default("PENDING")
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  stay         Stay?        @relation(fields: [stayId], references: [id], onDelete: Restrict)
+  reservation  Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  Payment      Payment[]
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status])
+  @@index([propertyId, stayId])
+  @@index([propertyId, reservationId])
+  @@index([organizationId, propertyId, createdAt])
+}
+
+model Payment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  propertyId     String   @db.Uuid
+  folioId        String?  @db.Uuid
+  stayId         String?  @db.Uuid
+  reservationId  String?  @db.Uuid
+  amount         Decimal  @db.Decimal(10, 2)
+  currencyCode   String   @default("BRL") @db.VarChar(3)
+  method         String   @db.VarChar(32)
+  status         String   @default("PENDING")
+  referenceId    String?  @db.VarChar(64)
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  folio        Folio?       @relation(fields: [folioId], references: [id], onDelete: Restrict)
+  stay         Stay?        @relation(fields: [stayId], references: [id], onDelete: Restrict)
+  reservation  Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status])
+  @@index([folioId])
+  @@index([stayId])
+  @@index([reservationId])
+  @@index([organizationId, propertyId, createdAt])
+}
+
+model CashSession {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  propertyId      String    @db.Uuid
+  name            String    @db.VarChar(120)
+  operationalDate DateTime  @db.Date
+  openingAmount   Decimal   @db.Decimal(10, 2)
+  closingAmount   Decimal?  @db.Decimal(10, 2)
+  openingByUserId String?   @db.Uuid
+  closedAt        DateTime?
+  closedByUserId  String?   @db.Uuid
+  status          String    @default("OPEN")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property       @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  movements    CashMovement[]
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, operationalDate])
+  @@index([propertyId, status])
+  @@index([organizationId, propertyId, createdAt])
+}
+
+model CashMovement {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  propertyId     String   @db.Uuid
+  cashSessionId  String   @db.Uuid
+  type           String   @db.VarChar(32)
+  amount         Decimal  @db.Decimal(10, 2)
+  currencyCode   String   @default("BRL") @db.VarChar(3)
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  cashSession  CashSession  @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, propertyId, id])
+  @@index([cashSessionId])
+  @@index([organizationId, propertyId, type])
+  @@index([organizationId, propertyId, createdAt])
 }

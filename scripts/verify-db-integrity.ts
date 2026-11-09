@@ -93,6 +93,21 @@ const EXPECTED_CONSTRAINTS = [
   'ReservationHistory_action_check',
   'ReservationHistory_reason_check',
   'ReservationHistory_room_change_check',
+  // Phase 5 folio, cash and payments hardening.
+  'Folio_organizationId_fkey',
+  'Folio_propertyId_fkey',
+  'Folio_stayId_fkey',
+  'Folio_reservationId_fkey',
+  'Payment_organizationId_fkey',
+  'Payment_propertyId_fkey',
+  'Payment_folioId_fkey',
+  'Payment_stayId_fkey',
+  'Payment_reservationId_fkey',
+  'CashSession_organizationId_fkey',
+  'CashSession_propertyId_fkey',
+  'CashMovement_organizationId_fkey',
+  'CashMovement_propertyId_fkey',
+  'CashMovement_cashSessionId_fkey',
 ] as const;
 
 const EXPECTED_TRIGGERS = [

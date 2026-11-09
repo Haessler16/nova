@@ -1,6 +1,9 @@
 import type {
   GuestDocumentType,
   HousekeepingState,
+  IncidentSeverity,
+  IncidentStatus,
+  IncidentType,
   ReservationStatus,
   RoomBlockStatus,
   RoomBlockType,
@@ -88,6 +91,31 @@ export const SEVERITY_COLORS: Record<SecuritySeverity, string> = {
   CRITICAL: 'red',
 };
 
+export const INCIDENT_TYPE_LABELS: Record<IncidentType, string> = {
+  NOTE: 'Nota',
+  MAINTENANCE: 'Mantenimiento',
+  COMPLAINT: 'Reclamo',
+  SAFETY: 'Seguridad',
+  OTHER: 'Otro',
+};
+
+export const INCIDENT_SEVERITY_LABELS: Record<IncidentSeverity, string> = {
+  LOW: 'Baja',
+  MEDIUM: 'Media',
+  HIGH: 'Alta',
+};
+
+export const INCIDENT_SEVERITY_COLORS: Record<IncidentSeverity, string> = {
+  LOW: 'blue',
+  MEDIUM: 'orange',
+  HIGH: 'red',
+};
+
+export const INCIDENT_STATUS_LABELS: Record<IncidentStatus, string> = {
+  OPEN: 'Abierta',
+  RESOLVED: 'Resuelta',
+};
+
 export const HOUSEKEEPING_TRANSITIONS: Record<HousekeepingState, HousekeepingState[]> = {
   DIRTY: ['CLEANING'],
   CLEANING: ['CLEAN', 'DIRTY'],
@@ -117,6 +145,18 @@ export function todayISO(offsetDays = 0): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offsetDays);
   return date.toISOString().slice(0, 10);
+}
+
+export function addDaysISO(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function weekdayShort(value: string): string {
+  return new Intl.DateTimeFormat('es-AR', { weekday: 'short', timeZone: 'UTC' }).format(
+    new Date(`${value}T00:00:00.000Z`),
+  );
 }
 
 export function nightsBetween(checkIn: string, checkOut: string): number {

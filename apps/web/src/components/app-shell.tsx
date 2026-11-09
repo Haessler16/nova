@@ -42,6 +42,8 @@ const NAV_SECTIONS = [
     title: 'Operación',
     items: [
       { href: '/dashboard', label: 'Panel' },
+      { href: '/front-office', label: 'Front Office' },
+      { href: '/calendar', label: 'Calendario' },
       { href: '/reservations', label: 'Reservas' },
       { href: '/guests', label: 'Huéspedes' },
     ],

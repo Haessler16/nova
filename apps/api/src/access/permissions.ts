@@ -19,6 +19,10 @@ export const PERMISSIONS = {
   GUESTS_MANAGE: 'guests.manage',
   RESERVATIONS_READ: 'reservations.read',
   RESERVATIONS_MANAGE: 'reservations.manage',
+  FRONT_OFFICE_READ: 'front_office.read',
+  FRONT_OFFICE_MANAGE: 'front_office.manage',
+  INCIDENTS_READ: 'incidents.read',
+  INCIDENTS_MANAGE: 'incidents.manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

@@ -88,7 +88,7 @@ Known Phase 2 gaps:
 
 ## Phase 3 — Guests and reservations (approx. 4–6 weeks)
 
-Status: **backend implemented locally on 2026-11-08**; calendar UI and remote CI pending.
+Status: **implemented locally on 2026-11-08** (API and web UI); remote CI observation pending.
 
 - [x] guest CRUD with privacy minimization and assisted (non-merging) search.
 - [x] reservation lifecycle (create, modify, cancel; `CONFIRMED` → `CANCELLED`).
@@ -97,7 +97,7 @@ Status: **backend implemented locally on 2026-11-08**; calendar UI and remote CI
 - [x] concurrent booking tests and PostgreSQL exclusion constraint.
 - [x] idempotent reservation creation (`idempotencyKey` per property).
 - [x] append-only reservation history and audit coverage.
-- [ ] calendar UI (RSV-006).
+- [x] calendar UI (RSV-006).
 
 Exit:
 
@@ -111,21 +111,51 @@ Known Phase 3 gaps (guests/reservations):
 - stays use calendar-date granularity; check-in/out times, room moves and stay statuses belong to Front Office;
 - reservation↔room-block conflicts are serialized by the `Room` row lock but not by a single cross-table database constraint;
 - no rates, pricing, deposits or folio yet;
-- no calendar UI and no remote CI observation.
+- no remote CI observation.
 
 ## Phase 4 — Front Office (approx. 3–5 weeks)
 
-- room rack.
-- arrivals/departures/in-house lists.
-- check-in/out state machine.
-- room move.
-- notes/incidents.
-- keyboard-friendly desktop UX.
+Status: **implemented locally on 2026-11-08** (API and web UI).
+
+- [x] room rack.
+- [x] arrivals/departures/in-house lists.
+- [x] check-in/out state machine.
+- [x] room move.
+- [x] notes/incidents.
+- [x] keyboard-friendly desktop UX baseline.
 
 Exit:
 
-- complete reception flows E2E;
-- state transitions and audit events verified.
+- [x] complete reception flows E2E;
+- [x] state transitions and audit events verified.
+
+Known Phase 4 gaps:
+
+- single room/stay per reservation; no multi-room or shared-stay model;
+- check-in/out times, early check-in, late checkout, day-use and no-show policy need pilot validation;
+- incidents are not a ticketing system: no assignment, SLA, attachments or comments;
+- the UI does not hide actions by permission; the API returns `403` for read-only roles;
+- no folio, charges or payments are created by check-in/out yet.
+
+## Phase 5 — Folio, cash and operational day (approx. 4–6 weeks)
+
+Status: **in progress**.
+
+- [x] Prisma schema additions: `Folio`, `Payment`, `CashSession`, `CashMovement` models with relations.
+- [x] Migration `20261109021002_phase5_folio_cash` applied.
+- [ ] API controllers and services for folio creation/charge recording.
+- [ ] API controllers and services for payment registration by method.
+- [ ] API controllers and services for cash session management (open/close, movements).
+- [ ] Web UI for folio view and cash session dashboard.
+- [ ] `pnpm db:verify` update expected: new constraints for Phase 5 models.
+- [ ] E2E tests for folio/payment/cash session flows.
+
+Known Phase 5 gaps (pilot validation):
+
+- folio/charge amounts and settlement policy;
+- payment methods and reconciliation with bank records;
+- cash session opening/closing procedures and idempotency;
+- no folio/charge/payment data model changes required for billing integration yet.
 
 ## Phase 5 — Folio, cash and operational day (approx. 4–6 weeks)
 

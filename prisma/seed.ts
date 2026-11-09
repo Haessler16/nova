@@ -56,6 +56,10 @@ const IDS = {
   permissionGuestsManage: '00000000-0000-4000-8000-000000000044',
   permissionReservationsRead: '00000000-0000-4000-8000-000000000045',
   permissionReservationsManage: '00000000-0000-4000-8000-000000000046',
+  permissionFrontOfficeRead: '00000000-0000-4000-8000-000000000047',
+  permissionFrontOfficeManage: '00000000-0000-4000-8000-000000000048',
+  permissionIncidentsRead: '00000000-0000-4000-8000-000000000049',
+  permissionIncidentsManage: '00000000-0000-4000-8000-000000000050',
 
   guestAna: '00000000-0000-4000-8000-000000000061',
   guestBruno: '00000000-0000-4000-8000-000000000062',
@@ -154,6 +158,26 @@ const PERMISSIONS = [
     key: 'reservations.manage',
     description: 'Create, modify, assign and cancel reservations',
   },
+  {
+    id: IDS.permissionFrontOfficeRead,
+    key: 'front_office.read',
+    description: 'Read the room rack, arrivals, departures and in-house stays',
+  },
+  {
+    id: IDS.permissionFrontOfficeManage,
+    key: 'front_office.manage',
+    description: 'Check guests in/out, move rooms and mark no-shows',
+  },
+  {
+    id: IDS.permissionIncidentsRead,
+    key: 'incidents.read',
+    description: 'Read operational notes and incidents',
+  },
+  {
+    id: IDS.permissionIncidentsManage,
+    key: 'incidents.manage',
+    description: 'Create and resolve operational notes and incidents',
+  },
 ] as const;
 
 const ALL_PERMISSION_IDS = PERMISSIONS.map((permission) => permission.id);
@@ -189,6 +213,10 @@ const ROLES = [
       IDS.permissionGuestsManage,
       IDS.permissionReservationsRead,
       IDS.permissionReservationsManage,
+      IDS.permissionFrontOfficeRead,
+      IDS.permissionFrontOfficeManage,
+      IDS.permissionIncidentsRead,
+      IDS.permissionIncidentsManage,
     ],
   },
   {
@@ -205,6 +233,10 @@ const ROLES = [
       IDS.permissionGuestsManage,
       IDS.permissionReservationsRead,
       IDS.permissionReservationsManage,
+      IDS.permissionFrontOfficeRead,
+      IDS.permissionFrontOfficeManage,
+      IDS.permissionIncidentsRead,
+      IDS.permissionIncidentsManage,
     ],
   },
   {
@@ -219,6 +251,8 @@ const ROLES = [
       IDS.permissionInventoryRead,
       IDS.permissionGuestsRead,
       IDS.permissionReservationsRead,
+      IDS.permissionFrontOfficeRead,
+      IDS.permissionIncidentsRead,
     ],
   },
   {
@@ -231,6 +265,8 @@ const ROLES = [
       IDS.permissionPropertyRead,
       IDS.permissionInventoryRead,
       IDS.permissionHousekeepingManage,
+      IDS.permissionFrontOfficeRead,
+      IDS.permissionIncidentsRead,
     ],
   },
   {

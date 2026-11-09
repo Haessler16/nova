@@ -72,7 +72,7 @@
 ### Audit and history
 
 - `AuditEvent`, `RoomStatusHistory`, `SecurityEvent` and `ReservationHistory` are append-only; PostgreSQL triggers reject `UPDATE`, `DELETE` and `TRUNCATE`.
-- All Phase 2/Phase 3 write endpoints write audit in the same transaction as the mutation.
+- All Phase 2/Phase 3/Phase 4 write endpoints write audit in the same transaction as the mutation.
 - Operational and housekeeping transitions also write `RoomStatusHistory`; reservation changes write `ReservationHistory`.
 - Audit metadata is capped at 8 KiB in API and DB.
 
@@ -86,6 +86,15 @@
 - Reservation creation supports an idempotency key unique per property; reusing it with a different payload returns `409 idempotency_key_reuse`.
 - Cancellation is soft (status + timestamps) and preserves the historical room assignment and append-only history.
 - Reservation dates are hotel calendar dates (`date`), not instants; check-in/out times and instant-level availability remain Front Office scope.
+
+### Front Office (Phase 4)
+
+- Check-in/out, room move and no-show require `front_office.manage`; reading the room rack requires `front_office.read`. Incidents use separate `incidents.read`/`incidents.manage` permissions.
+- Every transition is property-scoped and runs in a transaction with row locks on the reservation/stay/room; the API never trusts a client-supplied property or stay owner.
+- Check-in validates the assigned room belongs to the reservation room type, is active/available, has no active block and has no other in-house stay. `Stay.reservationId` uniqueness is the final guard against double check-in.
+- Check-out and no-show are idempotent and preserve append-only `ReservationHistory` plus `AuditEvent`.
+- Incidents linked to a stay derive room/reservation from it; contradictory scope, cross-property rooms/reservations and missing rows are rejected. Incident descriptions are free text: operators must not paste card data, credentials or unnecessary guest PII.
+- Incidents and stays are never hard-deleted through the API; there is no route to modify audit or reservation history.
 
 ### Database integrity
 
@@ -109,7 +118,8 @@ Current automated coverage:
 - `apps/api/test/inventory.e2e-spec.ts` (room types, rooms, housekeeping history immutability, blocks/overlap, property settings, cross-tenant denial);
 - `apps/api/test/auth-session.e2e-spec.ts` (CSRF, invalid credentials, session cookie flags, logout revocation, rate limiting, lockout, password reset/verification, MFA, session revocation);
 - `apps/api/test/admin.e2e-spec.ts` and `apps/api/test/resilience.e2e-spec.ts` (membership/role administration, security events, scheduler, metrics);
-- `apps/api/test/guests-reservations.e2e-spec.ts` (guest CRUD/audit minimization, availability, overlapping and concurrent reservations, block conflicts, idempotency, cancellation history, cross-tenant denial).
+- `apps/api/test/guests-reservations.e2e-spec.ts` (guest CRUD/audit minimization, availability, overlapping and concurrent reservations, block conflicts, idempotency, cancellation history, cross-tenant denial);
+- `apps/api/test/front-office.e2e-spec.ts` (room rack, check-in/out idempotency, room move and room-type mismatch, no-show timing, incidents/resolution, permission split, tenant/property isolation).
 
 Registered E2E suites run on per-run isolated PostgreSQL schemas (`pnpm test:e2e:all:isolated`); they never share the seeded development schema.
 

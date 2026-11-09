@@ -84,6 +84,10 @@ const ACTION_LABELS: Record<string, string> = {
   'reservation.room_unassigned': 'Habitación liberada',
   'reservation.cancelled': 'Reserva cancelada',
   'reservation.status_changed': 'Estado modificado',
+  'reservation.checked_in': 'Check-in',
+  'reservation.checked_out': 'Check-out',
+  'reservation.room_moved': 'Cambio de habitación',
+  'reservation.no_show': 'No-show',
 };
 
 function ReservationsContent() {

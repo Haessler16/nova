@@ -469,17 +469,93 @@ These choices should be confirmed against the existing repository and current st
   - Admin screens intentionally omit `X-Property-Id` because admin endpoints require organization context.
 - Consequences:
   - The UI is a static export-friendly SPA shell; it must be deployed alongside the API and is subject to CORS/session-cookie configuration.
-  - No offline mode, calendar/room-rack visualization, or optimistic mutations yet.
+  - No offline mode or optimistic mutations yet; the calendar and room rack were added in Phase 4 inside this same client-side model.
 - Validation required:
   - validate keyboard/screen-reader flows and mobile breakpoints with the pilot;
   - revisit server components/BFF if SEO or server-side authorization rendering becomes a requirement.
 
-### ADR-NNN — Title
+## Phase 4 decisions — Front Office (implemented 2026-11-08)
 
-- Status: proposed / accepted / superseded
-- Date:
-- Context:
+### ADR-026 — Occupancy is a single Stay per reservation, derived from IN_HOUSE status
+
+- Status: accepted for the pilot phase.
+- Date: 2026-11-08.
+- Context: reservations are calendar-date based and Phase 4 needs operational check-in/out without mixing occupancy with housekeeping. A reservation may have at most one active stay.
 - Options:
+  1. store occupancy directly on `Room` (rejected: couples operational state and creates a second source of truth);
+  2. derive occupancy from `Stay.status = IN_HOUSE` with one stay per reservation (chosen);
+  3. reuse `ReservationStatus` as the only occupancy source (rejected: loses check-in/out instants, actor and room-move history).
 - Decision:
+  - `Stay` is unique per `reservationId`, carries guest/room snapshot references, check-in/out instants and actors, checkout notes and `moveCount`.
+  - `IN_HOUSE` means the room is occupied; `CHECKED_OUT` frees it. Housekeeping remains a separate dimension.
+  - Check-in requires the reservation room to be assigned, active, operationally available, unblocked and without another in-house stay.
+  - Check-out updates the stay and reservation atomically; no housekeeping transition is implied.
 - Consequences:
+  - One room and one stay per reservation; multi-room stays need a future reservation model change.
+  - Occupancy and housekeeping can disagree operationally (e.g. occupied but dirty), which is intentional.
 - Validation required:
+  - confirm with the pilot whether early check-in, late checkout or day-use need sub-day stay intervals;
+  - define the housekeeping trigger after checkout (manual vs automatic) before automating it.
+
+### ADR-027 — Check-in/out are idempotent state transitions keyed by local calendar date
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: reception clients retry after timeouts, and an early-morning arrival still belongs to its arrival calendar date even when the operational day has not rolled over.
+- Options:
+  1. use the operational day for the check-in window (rejected: before the cut-off, a valid arrival appears “too early”);
+  2. use the property local calendar date for the window and persisted reservation dates for eligibility (chosen);
+  3. allow check-in at any time (rejected: permits checking in past/future stays).
+- Decision:
+  - Check-in is allowed when `localDate >= checkInDate` and `localDate < checkOutDate`; the operational day still drives lists and the room rack.
+  - Repeating check-in for a `CHECKED_IN` reservation returns the existing stay; repeating check-out for a `CHECKED_OUT` stay returns it unchanged.
+  - No-show is allowed only when `localDate > checkInDate` and no stay exists.
+  - All transitions run in a transaction with row locks; `Stay.reservationId` uniqueness is the final guard against double check-in.
+- Consequences:
+  - Check-in/out have no time-of-day policy yet; the pilot must define earliest/latest times.
+  - A no-show cannot be recorded on the arrival date itself.
+- Validation required:
+  - pilot policy for no-show timing and late arrivals;
+  - whether a reservation may be checked in after its checkout date with an exception flow.
+
+### ADR-028 — Incidents are scoped operational records, not reservation edits
+
+- Status: accepted.
+- Date: 2026-11-08.
+- Context: reception and housekeeping need to record notes, maintenance, complaints and safety issues without mutating the reservation or overloading free-text notes.
+- Options:
+  1. store everything in `Reservation.notes` (rejected: no lifecycle, severity or resolution);
+  2. add a generic task/comment table shared by all modules (premature);
+  3. dedicated `Incident` with optional room/reservation/stay scope (chosen).
+- Decision:
+  - `Incident` has type, severity, status, title, description, optional scope and resolution metadata.
+  - Linking a stay derives its room and reservation; contradictory scope returns `409 incident_scope_mismatch`.
+  - Permissions are split: `incidents.read` and `incidents.manage`.
+  - Creation and resolution append `AuditEvent`; resolution is idempotent.
+  - No physical delete; open/resolved is the lifecycle in this phase.
+- Consequences:
+  - Incidents are operational records, not a full ticketing system (no assignment, SLA, attachments or comments).
+  - Any incident scope is property-scoped; cross-property references are rejected by composite FKs.
+- Validation required:
+  - pilot workflow for assignment/escalation and whether incidents should block room availability;
+  - retention policy for operational notes.
+
+### ADR-029 — Front Office UI keeps authorization in the API
+
+- Status: accepted for the transitional web app.
+- Date: 2026-11-08.
+- Context: the Phase 4 UI needs check-in/out, room moves and incident actions, but the session payload does not expose atomic permissions.
+- Options:
+  1. duplicate the role/permission matrix in the browser (rejected: drift and false authority);
+  2. expose permissions in `/me` and hide actions (deferred until the session contract is extended);
+  3. render the actions and let the API authorize each mutation (chosen for this phase).
+- Decision:
+  - The UI renders operational actions for all users with property access; the API enforces `front_office.manage`/`incidents.manage` and returns `403 permission_denied`.
+  - Failed actions surface the backend message; no optimistic state is persisted.
+  - Reloading the overview keeps the current tab mounted once data exists; initial load still shows a spinner.
+- Consequences:
+  - Read-only roles see buttons that fail with a permission error instead of being hidden.
+  - A future `/me` capabilities contract can hide actions without moving authorization to the client.
+- Validation required:
+  - usability test with housekeeping/auditor roles;
+  - decide whether to add capability flags to the session response.

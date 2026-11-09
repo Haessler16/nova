@@ -14,6 +14,10 @@ export type ReservationStatus =
   | 'NO_SHOW';
 export type GuestDocumentType = 'PASSPORT' | 'NATIONAL_ID' | 'DRIVER_LICENSE' | 'OTHER';
 export type SecuritySeverity = 'INFO' | 'WARNING' | 'CRITICAL';
+export type StayStatus = 'IN_HOUSE' | 'CHECKED_OUT';
+export type IncidentType = 'NOTE' | 'MAINTENANCE' | 'COMPLAINT' | 'SAFETY' | 'OTHER';
+export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type IncidentStatus = 'OPEN' | 'RESOLVED';
 
 export interface Actor {
   id: string;
@@ -206,6 +210,93 @@ export interface ReservationHistoryEntry {
   actorUserId: string | null;
   correlationId: string | null;
   occurredAt: string;
+}
+
+export interface Stay {
+  id: string;
+  status: StayStatus;
+  checkedInAt: string;
+  checkedOutAt: string | null;
+  checkOutNotes: string | null;
+  moveCount: number;
+  guest: { id: string; fullName: string; email: string | null; phone: string | null };
+  room: { id: string; number: string; floor: string | null; building: string | null };
+  reservation: {
+    id: string;
+    code: string;
+    status: ReservationStatus;
+    checkInDate: string;
+    checkOutDate: string;
+    nights: number;
+    adults: number;
+    children: number;
+    notes: string | null;
+    roomType: { id: string; name: string; code: string };
+  };
+}
+
+export interface RoomRackItem {
+  id: string;
+  number: string;
+  floor: string | null;
+  building: string | null;
+  roomType: { id: string; name: string; code: string };
+  housekeepingState: HousekeepingState;
+  operationalState: RoomOperationalState;
+  occupancy: 'VACANT' | 'OCCUPIED';
+  currentStay: {
+    id: string;
+    reservationId: string;
+    code: string;
+    guestName: string;
+    checkOutDate: string;
+  } | null;
+  activeBlock: { id: string; type: string; endsAt: string } | null;
+  nextArrival: {
+    reservationId: string;
+    code: string;
+    guestName: string;
+    checkInDate: string;
+  } | null;
+}
+
+export interface FrontOfficeOverview {
+  operationalDate: string;
+  localDate: string;
+  localTime: string;
+  timezone: string;
+  operationalDayStart: string;
+  counts: {
+    arrivals: number;
+    departures: number;
+    inHouse: number;
+    noShowCandidates: number;
+    vacantRooms: number;
+    occupiedRooms: number;
+  };
+  arrivals: Reservation[];
+  departures: Stay[];
+  inHouse: Stay[];
+  noShowCandidates: Reservation[];
+  roomRack: RoomRackItem[];
+}
+
+export interface Incident {
+  id: string;
+  type: IncidentType;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  title: string;
+  description: string;
+  resolution: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  room: { id: string; number: string } | null;
+  reservation: { id: string; code: string } | null;
+  stay: { id: string; status: StayStatus } | null;
+  createdBy: { id: string; name: string } | null;
+  resolvedBy: { id: string; name: string } | null;
 }
 
 export interface AuditEvent {

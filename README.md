@@ -1,6 +1,6 @@
 # NOVA PMS
 
-SaaS hotelero multi-tenant. Este repositorio contiene la **Phase 1 — Foundation**, la **Phase 2 — Configuración de propiedad e inventario** y la **Phase 3 — Huéspedes y reservas** ejecutables de punta a punta: monorepo, API NestJS, **UI web Next.js + Chakra UI para fases 1–3**, PostgreSQL/Redis, Prisma, autenticación local con sesiones/MFA/recuperación, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, huéspedes minimizados, reservas con disponibilidad y asignación transaccional, historial append-only de reservas, seeds sintéticos y pruebas de aislamiento.
+SaaS hotelero multi-tenant. Este repositorio contiene las **Phases 1–4** ejecutables de punta a punta —Foundation, configuración de propiedad e inventario, huéspedes y reservas, y **Front Office**—: monorepo, API NestJS, **UI web Next.js + Chakra UI para fases 1–4**, PostgreSQL/Redis, Prisma, autenticación local con sesiones/MFA/recuperación, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, huéspedes minimizados, reservas con disponibilidad y asignación transaccional, historial append-only de reservas, calendario gráfico, room rack, llegadas/salidas/in-house, check-in/check-out idempotentes, cambio de habitación, incidencias, seeds sintéticos y pruebas de aislamiento.
 
 > La autenticación local con usuario/contraseña es una transición controlada, no un proveedor de identidad definitivo. No es producción-ready sin revisión de seguridad, MFA/recuperación de cuenta y secretos gestionados. Ver [Limitaciones](#limitaciones).
 
@@ -50,7 +50,7 @@ Para un entorno limpio:
 pnpm db:reset   # drop + migrate + seed (destructivo solo en local)
 ```
 
-## Aplicación web (Phase 1–3)
+## Aplicación web (Phases 1–4)
 
 La web es una app operativa client-side contra la API real. No guarda el tenant en el cliente como autoridad: envía `X-Organization-Id`/`X-Property-Id` y el backend valida membresías y permisos en cada request.
 
@@ -58,6 +58,8 @@ La web es una app operativa client-side contra la API real. No guarda el tenant 
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | `/login`                | Login local (email/contraseña + MFA) o selector de usuario en `dev-header`          |
 | `/dashboard`            | Día operativo, propiedad, sesión, readiness y accesos rápidos                       |
+| `/front-office`         | Llegadas, en casa, salidas, room rack, check-in/out, room move e incidencias        |
+| `/calendar`             | Calendario gráfico habitación × noche (7/14/21 días)                                |
 | `/reservations`         | Listado/filtros, disponibilidad, alta, edición, asignación, cancelación e historial |
 | `/guests`               | Búsqueda, alta/edición y activación/desactivación de huéspedes                      |
 | `/inventory/rooms`      | Habitaciones, housekeeping, bloqueos, liberación e historial                        |
@@ -189,17 +191,36 @@ Todos usan la contraseña `NovaDemo!2026`.
 | POST   | `/api/v1/reservations/:id/room-assignment`             | auth + tenant | `reservations.manage`            |
 | POST   | `/api/v1/reservations/:id/cancel`                      | auth + tenant | `reservations.manage`            |
 | GET    | `/api/v1/reservations/:id/history`                     | auth + tenant | `reservations.read`              |
+| GET    | `/api/v1/front-office/overview`                        | auth + tenant | `front_office.read`              |
+| POST   | `/api/v1/front-office/reservations/:id/check-in`       | auth + tenant | `front_office.manage`            |
+| POST   | `/api/v1/front-office/reservations/:id/no-show`        | auth + tenant | `front_office.manage`            |
+| POST   | `/api/v1/front-office/stays/:id/check-out`             | auth + tenant | `front_office.manage`            |
+| POST   | `/api/v1/front-office/stays/:id/room-move`             | auth + tenant | `front_office.manage`            |
+| GET    | `/api/v1/front-office/incidents`                       | auth + tenant | `incidents.read`                 |
+| POST   | `/api/v1/front-office/incidents`                       | auth + tenant | `incidents.manage`               |
+| POST   | `/api/v1/front-office/incidents/:id/resolve`           | auth + tenant | `incidents.manage`               |
 
-Todas las mutaciones de propiedades, inventario, huéspedes y reservas escriben `AuditEvent` en la misma transacción. No existe ruta HTTP para modificar o borrar auditoría, historial de estado ni historial de reservas.
+Todas las mutaciones de propiedades, inventario, huéspedes, reservas y Front Office escriben `AuditEvent` en la misma transacción. No existe ruta HTTP para modificar o borrar auditoría, historial de estado ni historial de reservas.
 
 ## Huéspedes y reservas
 
 - `Guest` es property-scoped y minimizado: nombre, email/teléfono opcionales, documento opcional (tipo + número juntos) y notas. Sin borrado físico; `status = DISABLED`.
-- `Reservation` usa fechas calendario de la propiedad `[checkInDate, checkOutDate)`, una habitación opcional y estados `CONFIRMED`/`CANCELLED` en esta fase (check-in/out pertenece a Front Office).
+- `Reservation` usa fechas calendario de la propiedad `[checkInDate, checkOutDate)` y una habitación opcional. El ciclo completo es `CONFIRMED → CHECKED_IN → CHECKED_OUT`, con `CANCELLED`/`NO_SHOW` como salidas alternativas.
 - `POST /reservations` acepta `idempotencyKey`; repetir la misma clave devuelve la reserva original y una clave reutilizada con otro payload responde `409 idempotency_key_reuse`.
 - `GET /reservations/availability` excluye habitaciones inactivas, bloqueadas o ya reservadas en el rango solicitado.
 - La asignación de habitación valida room type, bloqueos y solapamiento bajo lock de la fila `Room`. La garantía final es la exclusion constraint PostgreSQL `Reservation_room_date_no_overlap`.
 - `ReservationHistory` es append-only; las modificaciones y cancelaciones preservan historial y auditoría.
+
+## Front Office
+
+- `Stay` es único por reserva y representa la estancia operativa (`IN_HOUSE`/`CHECKED_OUT`). La ocupación se deriva de estancias `IN_HOUSE`; sigue separada de housekeeping.
+- `GET /front-office/overview` devuelve día operativo, llegadas, salidas, in-house, candidatos a no-show y room rack por propiedad.
+- Check-in exige reserva `CONFIRMED`, habitación asignada, habitación `ACTIVE`/`AVAILABLE`, sin bloqueo activo y sin otra estancia in-house. Es idempotente: repetirlo devuelve la misma estancia.
+- Check-out es idempotente, marca la reserva `CHECKED_OUT` y libera la habitación para nuevas llegadas.
+- Room move exige mismo room type, habitación libre y sin solapamiento; actualiza reserva y estancia y conserva historial.
+- No-show solo se permite después de la fecha de llegada y no si ya existe una estancia.
+- `Incident` registra notas/incidencias con tipo, severidad, alcance opcional (habitación/reserva/estancia) y resolución auditable.
+- Todas las acciones de Front Office escriben `ReservationHistory` append-only y `AuditEvent`.
 
 ## Inventario y estados
 
@@ -229,6 +250,7 @@ Todas las mutaciones de propiedades, inventario, huéspedes y reservas escriben 
 - FKs compuestas organización/propiedad/rol/membresía;
 - checks de email, moneda, hora operativa, tokens de sesión, habitaciones y bloqueos;
 - exclusion constraint de solapamiento de bloqueos;
+- constraints de `Stay`/`Incident`, coherencia tenant y unicidad de estancia por reserva;
 - funciones y triggers append-only;
 - extensión `btree_gist`.
 
@@ -293,8 +315,9 @@ pnpm test:e2e:auth
 - Los tokens de reset/verificación solo se registran/devuelven fuera de producción según `AUTH_TOKEN_DELIVERY`; en producción se requiere proveedor de correo.
 - La administración tiene UI (`/admin`) pero aplica reglas conservadoras en API (subset de permisos del actor y protección del último administrador); no incluye aprobaciones de cambios sensibles.
 - El estado operativo se reconcilia en lecturas y mediante un scheduler in-process con advisory lock PostgreSQL; no sustituye observabilidad/alertas operativas.
-- La UI cubre listas, alta/edición, disponibilidad, asignación y cancelación, pero no un calendario gráfico ni front office (check-in/out, room rack, room move), folios, caja, night audit, OCR, offline ni Edge.
-- Una reserva admite una sola habitación y las estancias usan granularidad de fecha calendario; las horas de check-in/out y los conflictos con bloqueos a nivel de instante necesitan revisión en Front Office.
+- La UI cubre listas, calendario, Front Office y administración, pero no folios, caja, night audit, reportes, OCR, offline ni Edge.
+- Una reserva admite una sola habitación y las estancias usan granularidad de fecha calendario. El check-in se habilita por fecha local; las horas exactas de llegada/salida y los conflictos con bloqueos a nivel de instante siguen pendientes de validación con el hotel piloto.
+- El room rack y las acciones de Front Office se validan en backend, pero la UI no oculta acciones según permisos: un rol de solo lectura recibe el `403` de la API.
 - El conflicto reserva↔bloqueo se serializa por el lock de la fila `Room`, pero no existe una constraint única que relacione ambas tablas.
 - Los E2E aislados crean/drolean esquemas por ejecución y requieren PostgreSQL local/CI con permisos adecuados.
 - El workflow CI está actualizado para E2E aislado, pero no se ha observado una ejecución remota en GitHub desde este entorno.
@@ -302,9 +325,9 @@ pnpm test:e2e:auth
 
 ## Siguiente paso recomendado
 
-Phase 4 — Front Office: room rack, listas de llegadas/salidas/in-house, check-in/check-out como máquina de estados idempotente, cambio de habitación y notas/incidencias. Antes de check-in, definir la relación entre reserva, estancia y estado de ocupación de la habitación.
+Phase 5 — Folio, caja y night audit: cargos/pagos sin datos de tarjeta, sesiones de caja, cierre del día operativo idempotente y reportes operativos básicos. Antes de implementarlo, definir la estrategia decimal/menor unidad, moneda e idempotencia financiera con el hotel piloto.
 
-Pendiente inmediato: calendario gráfico de reservas (RSV-006); la UI operativa de fases 1–3 ya consume la API.
+Pendiente inmediato de producto: validar con el piloto las horas de check-in/out, no-show y la política de overbooking antes de refinar la granularidad de fechas.
 
 ## Documentación
 
@@ -319,4 +342,5 @@ Pendiente inmediato: calendario gráfico de reservas (RSV-006); la UI operativa 
 - `docs/PHASE_1_REPORT.md`
 - `docs/PHASE_2_REPORT.md`
 - `docs/PHASE_3_REPORT.md`
+- `docs/PHASE_4_REPORT.md`
 - `prompts/PROMPT_01_FOUNDATION.md`

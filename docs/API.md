@@ -71,6 +71,10 @@ Detalles:
 | `guests.manage`                  | Org o propiedad | Crear/actualizar huéspedes                                                                         |
 | `reservations.read`              | Org o propiedad | Leer reservas, disponibilidad e historial                                                          |
 | `reservations.manage`            | Org o propiedad | Crear, modificar, asignar habitación y cancelar reservas                                           |
+| `front_office.read`              | Org o propiedad | Leer room rack, llegadas, salidas e in-house                                                       |
+| `front_office.manage`            | Org o propiedad | Check-in, check-out, room move y no-show                                                           |
+| `incidents.read`                 | Org o propiedad | Leer notas e incidencias operativas                                                                |
+| `incidents.manage`               | Org o propiedad | Crear y resolver notas/incidencias                                                                 |
 
 Los permisos de organización son aditivos respecto de los de propiedad. Un rol de organización con `property.read` da acceso organization-wide (caso `ORG_ADMIN`); el staff regular mantiene `Membership.roleId = null` y usa `PropertyMembership`.
 
@@ -200,6 +204,29 @@ Fechas y ocupación:
 
 Errores específicos: `guest_not_found`, `invalid_guest_document`, `invalid_calendar_date`, `invalid_stay_window`, `reservation_in_past`, `reservation_too_long`, `invalid_date_filter`, `reservation_not_found`, `room_not_available`, `room_type_mismatch`, `room_inactive`, `occupancy_exceeds_room_type`, `reservation_not_editable`, `reservation_not_assignable`, `reservation_not_cancellable`, `reservation_conflict`, `idempotency_key_reuse`.
 
+### Front Office
+
+| Método | Ruta                                             | Guard         | Permiso               | Status |
+| ------ | ------------------------------------------------ | ------------- | --------------------- | ------ |
+| GET    | `/api/v1/front-office/overview`                  | auth + tenant | `front_office.read`   | 200    |
+| POST   | `/api/v1/front-office/reservations/:id/check-in` | auth + tenant | `front_office.manage` | 201    |
+| POST   | `/api/v1/front-office/reservations/:id/no-show`  | auth + tenant | `front_office.manage` | 201    |
+| POST   | `/api/v1/front-office/stays/:id/check-out`       | auth + tenant | `front_office.manage` | 201    |
+| POST   | `/api/v1/front-office/stays/:id/room-move`       | auth + tenant | `front_office.manage` | 201    |
+| GET    | `/api/v1/front-office/incidents`                 | auth + tenant | `incidents.read`      | 200    |
+| POST   | `/api/v1/front-office/incidents`                 | auth + tenant | `incidents.manage`    | 201    |
+| POST   | `/api/v1/front-office/incidents/:id/resolve`     | auth + tenant | `incidents.manage`    | 201    |
+
+- `GET /overview?date?` usa el día operativo de la propiedad (timezone + `operationalDayStart`) por default y devuelve `operationalDate`, `localDate`, `localTime`, conteos, llegadas, salidas, in-house, candidatos a no-show y `roomRack`. La ocupación del room rack se deriva de estancias `IN_HOUSE`; housekeeping y estado operativo son campos independientes.
+- Check-in: solo `CONFIRMED`, con habitación asignada, `ACTIVE`/`AVAILABLE`, sin bloqueo activo y sin otra estancia in-house. Se habilita desde la fecha local de llegada y hasta el check-out. Idempotente: si la reserva ya está `CHECKED_IN`, devuelve la misma estancia.
+- Check-out: idempotente, marca `Stay.CHECKED_OUT`, la reserva `CHECKED_OUT` y libera la habitación. Acepta `notes` opcionales (≤ 2000).
+- Room move: mismo room type, habitación libre, sin bloqueo ni reserva solapada; actualiza `Stay.roomId`, `Reservation.roomId` e incrementa `moveCount`.
+- No-show: solo `CONFIRMED`, después de la fecha de llegada y sin estancia existente. Idempotente para reservas ya `NO_SHOW`.
+- Incidencias: `type` (`NOTE`, `MAINTENANCE`, `COMPLAINT`, `SAFETY`, `OTHER`), `severity` (`LOW`, `MEDIUM`, `HIGH`), título 3–120, descripción 3–4000 y alcance opcional por `roomId`, `reservationId` o `stayId`. Si se envía `stayId`, el alcance se deriva de la estancia y no puede contradecirla. Resolver exige `resolution` de 3–4000 y es idempotente.
+- Cada acción escribe `ReservationHistory` (check-in/out/move/no-show) y `AuditEvent` en la misma transacción.
+
+Errores específicos: `reservation_room_required`, `check_in_too_early`, `check_in_window_elapsed`, `room_out_of_service`, `room_occupied`, `stay_inconsistent`, `reservation_not_check_in_eligible`, `stay_not_check_out_eligible`, `stay_not_in_house`, `no_show_too_early`, `reservation_has_stay`, `reservation_not_no_show_eligible`, `stay_not_found`, `incident_not_found`, `incident_scope_mismatch`.
+
 ### Admin
 
 Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
@@ -283,6 +310,21 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 | 409  | `reservation_not_cancellable`               | Cancelar una reserva no confirmada                        |
 | 409  | `reservation_conflict`                      | Código de reserva duplicado                               |
 | 409  | `idempotency_key_reuse`                     | Misma key con payload distinto                            |
+| 409  | `reservation_room_required`                 | Check-in sin habitación asignada                          |
+| 409  | `check_in_too_early`                        | Check-in antes de la fecha local de llegada               |
+| 409  | `check_in_window_elapsed`                   | Check-in en o después de la fecha de salida               |
+| 409  | `room_out_of_service`                       | Habitación no disponible operativamente o bloqueada       |
+| 409  | `room_occupied`                             | Habitación con otra estancia in-house                     |
+| 409  | `stay_inconsistent`                         | Reserva en casa sin registro de estancia                  |
+| 409  | `reservation_not_check_in_eligible`         | Reserva no confirmada para check-in                       |
+| 409  | `stay_not_check_out_eligible`               | Estancia no in-house para check-out                       |
+| 409  | `stay_not_in_house`                         | Room move sobre estancia no in-house                      |
+| 409  | `no_show_too_early`                         | No-show antes de vencer la llegada                        |
+| 409  | `reservation_has_stay`                      | No-show sobre reserva con estancia                        |
+| 409  | `reservation_not_no_show_eligible`          | No-show sobre reserva no confirmada                       |
+| 409  | `incident_scope_mismatch`                   | Alcance de incidencia contradictorio                      |
+| 404  | `stay_not_found`                            | Estancia inexistente en la propiedad                      |
+| 404  | `incident_not_found`                        | Incidencia inexistente en la propiedad                    |
 | 422  | `invalid_housekeeping_transition`           | Transición de housekeeping no permitida                   |
 | 429  | `rate_limited`                              | Demasiados intentos de login; `details.retryAfterSeconds` |
 | 503  | `auth_mode_unavailable`                     | Login local deshabilitado                                 |
@@ -299,12 +341,6 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 El resto de endpoints de escritura todavía no acepta `Idempotency-Key`; los duplicados se cubren con constraints únicas y la exclusión de solapamientos.
 
 ## Endpoints previstos (no implementados)
-
-### Front Office
-
-- `GET /api/v1/front-office/room-rack`
-- `POST /api/v1/stays/:id/check-in`
-- `POST /api/v1/stays/:id/check-out`
 
 ### Folio / Cash / Night audit
 

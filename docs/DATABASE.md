@@ -378,9 +378,35 @@ ALTER TABLE "Reservation"
 - `nova_reservation_history_append_only()` lanza excepción en `UPDATE`/`DELETE`/`TRUNCATE`.
 - Triggers `ReservationHistory_append_only_row` y `ReservationHistory_append_only_truncate`.
 
+## Phase 4 implementation notes — Front Office
+
+Applied in `prisma/migrations/20261108230000_phase4_front_office/migration.sql`.
+
+### Stay
+
+- `Stay` es único por `reservationId` (`Stay_reservationId_key`); una reserva tiene como máximo una estancia.
+- `status` es `IN_HOUSE` o `CHECKED_OUT`. La ocupación de una habitación se deriva de una estancia `IN_HOUSE`, nunca de `Room.housekeepingState`.
+- `checkedInAt` es obligatorio; `checkedOutAt` solo existe con `CHECKED_OUT` (`Stay_checkout_consistency`) y debe ser posterior al check-in (`Stay_checkout_after_checkin`).
+- `moveCount >= 0` (`Stay_move_count_check`).
+- FKs compuestas garantizan que reserva, huésped y habitación pertenecen a la misma organización y propiedad (`Stay_tenant_reservation_fkey`, `Stay_tenant_room_fkey`, `Stay_tenant_guest_fkey`).
+- Las acciones de check-in/out/move bloquean la fila `Stay` o `Reservation` con `SELECT ... FOR UPDATE` y validan dentro de la transacción; la unicidad por reserva es la garantía final contra dobles check-in.
+- `Reservation.noShowAt` registra el instante del no-show; el estado `NO_SHOW` libera el intervalo de la exclusion constraint.
+
+### Incident
+
+- `Incident` admite alcance opcional por habitación, reserva o estancia; si se vincula a una estancia, el servicio deriva habitación y reserva y rechaza un alcance contradictorio (`incident_scope_mismatch`).
+- `title` 3–120, `description` 3–4000 y `resolution` 3–4000 cuando existe (`Incident_title_length`, `Incident_description_length`, `Incident_resolution_length`).
+- `status = RESOLVED` exige `resolvedAt`; `OPEN` exige que sea nulo (`Incident_resolved_consistency`).
+- FKs compuestas `Incident_tenant_room_fkey`, `Incident_tenant_reservation_fkey` e `Incident_tenant_stay_fkey` impiden cruces de tenant.
+
+### Housekeeping y ocupación
+
+- El room rack combina `occupancy` (derivada de `Stay`) con `housekeepingState` y `operationalState` (derivados de inventario/bloqueos). Son dimensiones separadas y no se sincronizan entre sí.
+- El check-out no fuerza un estado de housekeeping: la habitación queda `VACANT` para ocupación y conserva su estado de limpieza hasta que el equipo lo transicione.
+
 ## Prisma
 
-`prisma/schema.prisma` modela la foundation, el inventario y las reservas. Las constraints avanzadas de PostgreSQL se agregan como SQL manual en las migraciones; documentarlas y probarlas. No simular una constraint compleja solo en TypeScript.
+`prisma/schema.prisma` modela la foundation, el inventario, las reservas y Front Office. Las constraints avanzadas de PostgreSQL se agregan como SQL manual en las migraciones; documentarlas y probarlas. No simular una constraint compleja solo en TypeScript.
 
 Reglas para futuras migraciones:
 

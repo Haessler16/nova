@@ -7,6 +7,8 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CsrfGuard } from './auth/csrf.guard';
 import { validateEnv } from './config/env.validation';
+import { FrontOfficeModule } from './front-office/front-office.module';
+import { FolioModule } from './folio/folio.module';
 import { GuestsModule } from './guests/guests.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
@@ -47,6 +49,8 @@ import { TenancyModule } from './tenancy/tenancy.module';
     InventoryModule,
     GuestsModule,
     ReservationsModule,
+    FrontOfficeModule,
+    FolioModule,
     AuditModule,
   ],
   providers: [
