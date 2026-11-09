@@ -34,6 +34,10 @@ describe('property day helpers', () => {
     expect(() => propertyDayStart('2026-02-31', 'America/Sao_Paulo')).toThrow(BadRequestException);
   });
 
+  it('rejects an invalid property timezone', () => {
+    expect(() => propertyDayStart('2026-11-09', 'Not/AZone')).toThrow(BadRequestException);
+  });
+
   it('rejects an inverted range', () => {
     expect(() => propertyDayBounds('2026-01-16', '2026-01-15', 'America/Sao_Paulo')).toThrow(
       BadRequestException,

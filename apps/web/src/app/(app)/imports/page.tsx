@@ -27,7 +27,7 @@ import { PageHeader, SectionCard } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
 import type { GuestImportPreview, GuestImportResult } from '@/lib/guest-import-types';
-import { useAsyncData } from '@/lib/use-async-data';
+import { useImportDraftStore } from '@/stores/import-draft';
 
 const TEMPLATE = [
   'fullName,email,phone,documentType,documentNumber,notes',
@@ -37,19 +37,29 @@ const TEMPLATE = [
 function ImportsContent() {
   const { tenant } = useSession();
   const toast = useToast();
-  const [csv, setCsv] = useState('');
-  const [preview, setPreview] = useState<GuestImportPreview | null>(null);
-  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
-  const [result, setResult] = useState<GuestImportResult | null>(null);
+  const tenantKey = `${tenant.organizationId}:${tenant.propertyId}`;
+  const draftTenantKey = useImportDraftStore((state) => state.tenantKey);
+  const storedCsv = useImportDraftStore((state) => state.csv);
+  const storedPreview = useImportDraftStore((state) => state.preview);
+  const storedIdempotencyKey = useImportDraftStore((state) => state.idempotencyKey);
+  const storedResult = useImportDraftStore((state) => state.result);
+
+  // Hide the previous property's draft until ensureTenant resets it.
+  const tenantMatches = draftTenantKey === tenantKey;
+  const csv = tenantMatches ? storedCsv : '';
+  const preview = tenantMatches ? storedPreview : null;
+  const idempotencyKey = tenantMatches ? storedIdempotencyKey : null;
+  const result = tenantMatches ? storedResult : null;
+  const ensureTenant = useImportDraftStore((state) => state.ensureTenant);
+  const setCsv = useImportDraftStore((state) => state.setCsv);
+  const setPreview = useImportDraftStore((state) => state.setPreview);
+  const complete = useImportDraftStore((state) => state.complete);
   const [busy, setBusy] = useState<'preview' | 'commit' | null>(null);
   const [online, setOnline] = useState(true);
 
-  // Keep a stable placeholder call so the import page reuses the project loader
-  // contract without fetching a list.
-  const { data: tenantKey } = useAsyncData(
-    () => Promise.resolve(`${tenant.organizationId}:${tenant.propertyId}`),
-    `${tenant.organizationId}:${tenant.propertyId}:imports`,
-  );
+  useEffect(() => {
+    ensureTenant(tenantKey);
+  }, [ensureTenant, tenantKey]);
 
   useEffect(() => {
     function update(): void {
@@ -64,12 +74,6 @@ function ImportsContent() {
     };
   }, []);
 
-  function resetPreview(): void {
-    setPreview(null);
-    setIdempotencyKey(null);
-    setResult(null);
-  }
-
   async function handleFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
     if (file === undefined) {
@@ -80,7 +84,6 @@ function ImportsContent() {
       return;
     }
     setCsv(await file.text());
-    resetPreview();
   }
 
   async function runPreview(): Promise<void> {
@@ -91,9 +94,7 @@ function ImportsContent() {
         tenant,
         body: { csv },
       });
-      setPreview(data);
-      setResult(null);
-      setIdempotencyKey(crypto.randomUUID());
+      setPreview(data, crypto.randomUUID());
     } catch (cause) {
       toast({
         title: 'No se pudo leer el CSV',
@@ -117,9 +118,7 @@ function ImportsContent() {
         tenant,
         body: { csv, idempotencyKey },
       });
-      setResult(data);
-      setPreview(null);
-      setIdempotencyKey(null);
+      complete(data);
       toast({
         title: data.replayed ? 'Importación ya confirmada' : 'Importación completada',
         description: `${data.createdCount} huéspedes creados.`,
@@ -174,14 +173,7 @@ function ImportsContent() {
               Columnas: fullName, email, phone, documentType, documentNumber, notes. Máximo 500
               filas y 512 KB. Delimitador coma o punto y coma.
             </Text>
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={() => {
-                setCsv(TEMPLATE);
-                resetPreview();
-              }}
-            >
+            <Button size="xs" variant="ghost" onClick={() => setCsv(TEMPLATE)}>
               Usar plantilla
             </Button>
           </HStack>
@@ -196,10 +188,7 @@ function ImportsContent() {
 
           <Textarea
             value={csv}
-            onChange={(event) => {
-              setCsv(event.target.value);
-              resetPreview();
-            }}
+            onChange={(event) => setCsv(event.target.value)}
             rows={8}
             fontFamily="mono"
             fontSize="sm"
@@ -227,7 +216,7 @@ function ImportsContent() {
               Confirmar importación
             </Button>
             <Text fontSize="xs" color="gray.500">
-              Clave de tenant: {tenantKey ?? '—'}
+              Clave de tenant: {tenantKey}
             </Text>
           </HStack>
         </Stack>

@@ -326,7 +326,7 @@ pnpm test:e2e:auth
 
 ## Siguiente paso recomendado
 
-Fase 6 quedó implementada localmente: checklist de onboarding y feedback en `/pilot`, sandbox demo aislado por schema, runbook y checklist de piloto, drill de restore exitoso y pruebas de concurrencia. Fase 7 tiene su primer corte: importación CSV de huéspedes con preview, confirmación todo-o-nada e idempotencia, más shell offline que bloquea escrituras en lugar de encolarlas. Sobre Fase 8 se agregó solo groundwork reversible: diagnóstico `/health/version`, exportaciones CSV auditadas de huéspedes/reservas/folios y filtros de actor/fecha con cursor en auditoría. No hay coordinador Edge, sync ni integraciones de proveedor; eso sigue sujeto a discovery. El siguiente paso es validar con el hotel piloto y, con esa evidencia, evaluar outbox offline, XLSX/OCR, reportes agregados e integraciones.
+Fase 6 quedó implementada localmente: checklist de onboarding y feedback en `/pilot`, sandbox demo aislado por schema, runbook y checklist de piloto, drill de restore exitoso y pruebas de concurrencia. Fase 7 tiene su primer corte: importación CSV de huéspedes con preview, confirmación todo-o-nada e idempotencia, más shell offline que bloquea escrituras en lugar de encolarlas. Sobre Fase 8 se agregó solo groundwork reversible: diagnóstico `/health/version`, exportaciones CSV auditadas de huéspedes/reservas/folios y filtros de actor/fecha con cursor en auditoría. La lógica de instantes usa Day.js (`utc`/`timezone`) y el estado cliente de auditoría/importación vive en stores de Zustand aislados por propiedad. No hay coordinador Edge, sync ni integraciones de proveedor; eso sigue sujeto a discovery. El siguiente paso es validar con el hotel piloto y, con esa evidencia, evaluar outbox offline, XLSX/OCR, reportes agregados e integraciones.
 
 Pendiente inmediato de producto: validar con el piloto las horas de check-in/out, no-show y la política de overbooking antes de refinar la granularidad de fechas.
 
@@ -348,6 +348,7 @@ Pendiente inmediato de producto: validar con el piloto las horas de check-in/out
 - `docs/PHASE_6_REPORT.md`
 - `docs/PHASE_7_REPORT.md`
 - `docs/PHASE_8_GROUNDWORK.md`
+- `docs/FRONTEND_STATE.md`
 - `docs/PILOT_RUNBOOK.md`
 - `docs/PILOT_CHECKLIST.md`
 - `prompts/PROMPT_01_FOUNDATION.md`

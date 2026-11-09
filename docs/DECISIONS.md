@@ -726,3 +726,20 @@ These choices should be confirmed against the existing repository and current st
 - Consequences:
   - The endpoint is public like the other health routes; it must stay non-sensitive as it evolves.
   - Edge architecture, update and reconciliation decisions remain pending hotel/hardware/provider discovery.
+
+### ADR-040 — Day.js for instants and Zustand for client workflow state
+
+- Status: accepted.
+- Date: 2026-11-09.
+- Context: upcoming reports by range, operational closures, calendar views and date-aware imports justify a date library; the audit feed and import wizard also need state that survives route navigation without turning server data into a second source of truth.
+- Decision:
+  - Use Day.js 1.11 with `utc` and `timezone` plugins in the API for instant/day-boundary calculations, centralized in `common/time/property-day.ts`. Calendar dates that are date-only values remain date-only.
+  - Use Zustand 5 for client workflow state only. The first stores are the audit feed and the import draft; both are tenant-keyed and in-memory.
+  - Stores never hold tokens, permissions or authorization decisions. Tenant selection is passed to actions and the backend remains the authority.
+  - UI hides or clears stored data when `tenantKey` does not match the selected property; async loads use request ids to discard stale responses.
+  - Server data remains API-driven. If caching/invalidation needs grow, adopt a server-state library rather than expanding Zustand into a cache.
+- Consequences:
+  - Two new runtime dependencies: `dayjs` in the API and `zustand` in the web app.
+  - Day.js timezone behavior still depends on the platform IANA database; the existing DST and timezone tests stay mandatory.
+  - Reservation drafts, report ranges and calendar views can add stores later using the same tenant-key pattern.
+  - Reloading the browser clears all stores; no offline or cross-session persistence is promised yet.

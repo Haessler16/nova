@@ -1,4 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
+import dayjs from 'dayjs';
+import timezonePlugin from 'dayjs/plugin/timezone';
+import utcPlugin from 'dayjs/plugin/utc';
+
+dayjs.extend(utcPlugin);
+dayjs.extend(timezonePlugin);
 
 /**
  * Converts hotel calendar dates (`YYYY-MM-DD`) into instants using the
@@ -6,17 +12,12 @@ import { BadRequestException } from '@nestjs/common';
  * must use this instead of UTC midnights: a local day can start on the previous
  * UTC date in western zones and on the same UTC date in eastern zones.
  *
- * DST is resolved by the platform IANA database through `Intl`, not by a fixed
- * offset. Calendar-date comparisons (reservation check-in/out) intentionally do
- * not use this helper because they are date-only, timezone-independent values.
+ * Day.js' timezone plugin resolves DST through the platform IANA database;
+ * there are no fixed offsets here. Calendar-date comparisons (reservation
+ * check-in/out) intentionally do not use this helper because they are
+ * date-only, timezone-independent values.
  */
 const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-interface CalendarParts {
-  year: number;
-  month: number;
-  day: number;
-}
 
 export interface PropertyDayBounds {
   gte?: Date;
@@ -24,16 +25,10 @@ export interface PropertyDayBounds {
 }
 
 export function propertyDayStart(calendarDate: string, timezone: string): Date {
-  const { year, month, day } = parseParts(calendarDate);
-  const wallAsUtc = Date.UTC(year, month - 1, day);
+  parseCalendarDate(calendarDate);
+  assertTimezone(timezone);
 
-  let instant = wallAsUtc - zoneOffsetMs(new Date(wallAsUtc), timezone);
-  const corrected = wallAsUtc - zoneOffsetMs(new Date(instant), timezone);
-  if (corrected !== instant) {
-    instant = corrected;
-  }
-
-  return new Date(instant);
+  return dayjs.tz(`${calendarDate} 00:00:00`, 'YYYY-MM-DD HH:mm:ss', timezone).toDate();
 }
 
 /**
@@ -59,13 +54,11 @@ export function propertyDayBounds(
 }
 
 export function addCalendarDays(calendarDate: string, days: number): string {
-  const { year, month, day } = parseParts(calendarDate);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
+  parseCalendarDate(calendarDate);
+  return dayjs.utc(calendarDate).add(days, 'day').format('YYYY-MM-DD');
 }
 
-function parseParts(calendarDate: string): CalendarParts {
+function parseCalendarDate(calendarDate: string): void {
   const match = CALENDAR_DATE_PATTERN.exec(calendarDate);
   if (match === null) {
     throw invalidCalendarDate();
@@ -83,47 +76,26 @@ function parseParts(calendarDate: string): CalendarParts {
   ) {
     throw invalidCalendarDate();
   }
-
-  return { year, month, day };
 }
 
-function zoneOffsetMs(instant: Date, timezone: string): number {
-  let formatter: Intl.DateTimeFormat;
+function assertTimezone(timezone: string): void {
   try {
-    formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      timeZoneName: 'longOffset',
-    });
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(0);
   } catch {
-    throw new BadRequestException({
-      code: 'invalid_property_timezone',
-      message: 'La propiedad tiene una zona horaria IANA inválida.',
-    });
+    throw invalidPropertyTimezone();
   }
-
-  const label =
-    formatter.formatToParts(instant).find((part) => part.type === 'timeZoneName')?.value ?? 'GMT';
-
-  if (label === 'GMT' || label === 'UTC') {
-    return 0;
-  }
-
-  const match = /^GMT([+-])(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(label);
-  if (match === null) {
-    throw new BadRequestException({
-      code: 'invalid_property_timezone',
-      message: 'La propiedad tiene una zona horaria IANA inválida.',
-    });
-  }
-
-  const sign = match[1] === '-' ? -1 : 1;
-  const seconds = Number(match[2]) * 3600 + Number(match[3]) * 60 + Number(match[4] ?? '0');
-  return sign * seconds * 1000;
 }
 
 function invalidCalendarDate(): BadRequestException {
   return new BadRequestException({
     code: 'invalid_calendar_date',
     message: 'La fecha debe ser una fecha calendario válida YYYY-MM-DD.',
+  });
+}
+
+function invalidPropertyTimezone(): BadRequestException {
+  return new BadRequestException({
+    code: 'invalid_property_timezone',
+    message: 'La propiedad tiene una zona horaria IANA inválida.',
   });
 }

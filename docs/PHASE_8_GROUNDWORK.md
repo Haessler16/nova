@@ -31,6 +31,15 @@ Endpoints: `/api/v1/exports/guests`, `/exports/reservations`, `/exports/folios`.
 
 Folio exports apply the same property-timezone conversion to their single `date` filter. Reservation exports remain calendar-date overlap filters because reservation dates are date-only values, not instants.
 
+## 3.1 Client state and date stack
+
+- Instant-based date logic migrated from the custom `Intl` offset helper to **Day.js 1.11** with `utc` + `timezone` plugins, centralized in `apps/api/src/common/time/property-day.ts`. The existing timezone/DST tests remain and an invalid-timezone test was added.
+- **Zustand 5** now owns two client workflows:
+  - `useAuditFeedStore`: filters, accumulated events, cursor and loading/error state; survives route navigation and discards stale responses by request id.
+  - `useImportDraftStore`: CSV, preview, idempotency key and result; in-memory only.
+- Both stores are keyed by `organizationId:propertyId`, clear or reload on tenant change, and the UI hides the previous tenant's data until the key matches. They do not store tokens, permissions or authorization decisions.
+- The pattern and future candidates (reservation draft, report ranges, calendar view, import mapping) are documented in `docs/FRONTEND_STATE.md`.
+
 ## 4. Design system verification (`docs/DESIGN_SYSTEM.md`)
 
 - Shared `PageHeader`, `SectionCard`, `QueryFeedback`, `ErrorAlert` and token colors (`surface`, `line`, `textSecondary`, `brand`, `mint`, `danger`); no raw hex in the new UI.
@@ -45,7 +54,7 @@ Folio exports apply the same property-timezone conversion to their single `date`
 | Command                      | Result                                                                                    |
 | ---------------------------- | ----------------------------------------------------------------------------------------- | --- | ----------- | --------------------------------------------------------------------- |
 | `pnpm lint`                  | pass — API + web                                                                          |
-| `pnpm typecheck`             | pass — API + web                                                                          |     | `pnpm test` | pass — **14 suites / 66 unit tests** (CSV, health and timezone tests) |
+| `pnpm typecheck`             | pass — API + web                                                                          |     | `pnpm test` | pass — **14 suites / 67 unit tests** (CSV, health and timezone tests) |
 | `pnpm build`                 | pass — `/audit`, `/guests`, `/reservations`, `/folios` regenerated                        |
 | `pnpm test:e2e:all:isolated` | pass — **11 suites / 84 tests** (exports and timezone boundaries) + **1 suite / 12 auth** |
 | `pnpm format:check`          | pass                                                                                      |
@@ -61,4 +70,6 @@ No migration was needed for these features.
 - DST-at-midnight edge cases rely on the IANA database via `Intl`; no fixed-offset conversion is used.
 - `/health/version` is public and must stay non-sensitive as it evolves.
 - The UI was not visually reviewed in a browser in this run.
+- Zustand stores are in-memory only: a reload clears the audit feed and any import draft. The reservation draft is not migrated to a store yet.
+- Day.js still relies on the platform IANA database; DST-at-midnight edge cases remain covered only by the generic helper tests.
 - No commit or push was made.

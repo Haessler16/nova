@@ -27,14 +27,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { ErrorAlert, PageHeader, QueryFeedback, SectionCard } from '@/components/ui';
 import { useSession } from '@/context/session';
-import { api } from '@/lib/api';
+import { useAuditFeedStore } from '@/stores/audit-feed';
 import { formatDateTime, formatJson } from '@/lib/format';
 import type { AuditEvent } from '@/lib/types';
-
-interface AuditPageData {
-  items: AuditEvent[];
-  nextCursor: string | null;
-}
 
 interface AuditFilters {
   action: string;
@@ -52,26 +47,6 @@ const EMPTY_FILTERS: AuditFilters = {
   toDate: '',
 };
 
-function buildParams(filters: AuditFilters): URLSearchParams {
-  const params = new URLSearchParams({ limit: '50' });
-  if (filters.action.trim() !== '') {
-    params.set('action', filters.action.trim().toUpperCase());
-  }
-  if (filters.entityType.trim() !== '') {
-    params.set('entityType', filters.entityType.trim());
-  }
-  if (filters.actorUserId.trim() !== '') {
-    params.set('actorUserId', filters.actorUserId.trim());
-  }
-  if (filters.fromDate !== '') {
-    params.set('fromDate', filters.fromDate);
-  }
-  if (filters.toDate !== '') {
-    params.set('toDate', filters.toDate);
-  }
-  return params;
-}
-
 function AuditContent() {
   const { tenant } = useSession();
   const organizationId = tenant.organizationId;
@@ -80,68 +55,36 @@ function AuditContent() {
 
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const [inputs, setInputs] = useState<AuditFilters>(EMPTY_FILTERS);
-  const [filters, setFilters] = useState<AuditFilters>(EMPTY_FILTERS);
-  const [items, setItems] = useState<AuditEvent[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-  const [moreError, setMoreError] = useState<unknown>(null);
-  const [version, setVersion] = useState(0);
+
+  const tenantKey = `${organizationId}:${propertyId}`;
+  const filters = useAuditFeedStore((state) => state.filters);
+  const feedTenantKey = useAuditFeedStore((state) => state.tenantKey);
+  const storedItems = useAuditFeedStore((state) => state.items);
+  const storedNextCursor = useAuditFeedStore((state) => state.nextCursor);
+  const storedLoading = useAuditFeedStore((state) => state.loading);
+  const storedLoadingMore = useAuditFeedStore((state) => state.loadingMore);
+  const storedError = useAuditFeedStore((state) => state.error);
+  const storedMoreError = useAuditFeedStore((state) => state.moreError);
+  const load = useAuditFeedStore((state) => state.load);
+  const loadMore = useAuditFeedStore((state) => state.loadMore);
+  const setFilters = useAuditFeedStore((state) => state.setFilters);
+
+  // Never render the previous property's feed while the new load starts.
+  const tenantMatches = feedTenantKey === tenantKey;
+  const items = tenantMatches ? storedItems : [];
+  const nextCursor = tenantMatches ? storedNextCursor : null;
+  const loading = tenantMatches ? storedLoading : true;
+  const loadingMore = tenantMatches ? storedLoadingMore : false;
+  const error = tenantMatches ? storedError : null;
+  const moreError = tenantMatches ? storedMoreError : null;
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setMoreError(null);
-    setItems([]);
-    setNextCursor(null);
-
-    api<AuditPageData>(`/api/v1/audit-events?${buildParams(filters).toString()}`, {
+    void load({
+      tenantKey,
       tenant: { organizationId, propertyId },
-    })
-      .then((data) => {
-        if (!cancelled) {
-          setItems(data.items);
-          setNextCursor(data.nextCursor);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) {
-          setError(cause);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId, propertyId, filters, version]);
-
-  async function loadMore(): Promise<void> {
-    if (nextCursor === null) {
-      return;
-    }
-    setLoadingMore(true);
-    setMoreError(null);
-    try {
-      const params = buildParams(filters);
-      params.set('cursor', nextCursor);
-      const data = await api<AuditPageData>(`/api/v1/audit-events?${params.toString()}`, {
-        tenant: { organizationId, propertyId },
-      });
-      setItems((current) => [...current, ...data.items]);
-      setNextCursor(data.nextCursor);
-    } catch (cause) {
-      setMoreError(cause);
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+      filters,
+    });
+  }, [load, tenantKey, organizationId, propertyId, filters]);
 
   function applyFilters(event: FormEvent): void {
     event.preventDefault();
@@ -149,8 +92,8 @@ function AuditContent() {
   }
 
   function resetFilters(): void {
-    setInputs(EMPTY_FILTERS);
-    setFilters(EMPTY_FILTERS);
+    setInputs({ ...EMPTY_FILTERS });
+    setFilters({ ...EMPTY_FILTERS });
   }
 
   return (
@@ -226,7 +169,7 @@ function AuditContent() {
         <QueryFeedback
           loading={loading}
           error={error}
-          onRetry={() => setVersion((current) => current + 1)}
+          onRetry={() => void load({ tenantKey, tenant: { organizationId, propertyId }, filters })}
           isEmpty={items.length === 0}
           emptyText="No hay eventos de auditoría para los filtros."
         >
@@ -307,7 +250,7 @@ function AuditContent() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => void loadMore()}
+                onClick={() => void loadMore({ organizationId, propertyId })}
                 isLoading={loadingMore}
               >
                 Cargar más
