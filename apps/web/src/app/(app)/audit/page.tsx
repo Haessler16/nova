@@ -157,7 +157,7 @@ function AuditContent() {
     <>
       <PageHeader
         title="Auditoría"
-        description="Eventos append-only de la propiedad, ordenados por fecha descendente. Filtrable por acción, entidad, actor y rango de fechas para soporte y conciliación."
+        description="Eventos append-only de la propiedad, ordenados por fecha descendente. Filtrable por acción, entidad, actor y rango de fechas para soporte y conciliación. El rango usa la zona horaria de la propiedad e incluye ambos días."
       />
 
       <SectionCard>

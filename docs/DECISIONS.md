@@ -712,7 +712,7 @@ These choices should be confirmed against the existing repository and current st
   - Responses set `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 - Consequences:
   - Exports are not a bulk data pipeline; scheduled/streaming exports remain future work.
-  - Date filters use UTC calendar days and must be explained in support material.
+  - Instant-based date filters use the property's IANA timezone (folio `date`, audit `fromDate`/`toDate`); reservation exports keep calendar-date overlap semantics. The upper day is inclusive where documented.
 
 ### ADR-039 — Version diagnostics are groundwork, not an Edge commitment
 

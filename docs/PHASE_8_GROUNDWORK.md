@@ -27,7 +27,9 @@ Endpoints: `/api/v1/exports/guests`, `/exports/reservations`, `/exports/folios`.
 
 ## 3. Audit feed for support and reconciliation
 
-`GET /api/v1/audit-events` now accepts `actorUserId`, `fromDate` and `toDate` (UTC calendar days) in addition to `action`, `entityType`, `entityId`, `cursor` and `limit`. Invalid ranges return `invalid_date_filter`. The Audit screen exposes the new filters and a `Cargar más` cursor action while preserving loading, empty and error states.
+`GET /api/v1/audit-events` now accepts `actorUserId`, `fromDate` and `toDate` in addition to `action`, `entityType`, `entityId`, `cursor` and `limit`. The range is interpreted in the property's IANA timezone and includes both days; invalid ranges return `invalid_date_filter`. The Audit screen exposes the new filters and a `Cargar más` cursor action while preserving loading, empty and error states.
+
+Folio exports apply the same property-timezone conversion to their single `date` filter. Reservation exports remain calendar-date overlap filters because reservation dates are date-only values, not instants.
 
 ## 4. Design system verification (`docs/DESIGN_SYSTEM.md`)
 
@@ -40,15 +42,14 @@ Endpoints: `/api/v1/exports/guests`, `/exports/reservations`, `/exports/folios`.
 
 ## 5. Verification results
 
-| Command                      | Result                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| `pnpm lint`                  | pass — API + web                                                             |
-| `pnpm typecheck`             | pass — API + web                                                             |
-| `pnpm test`                  | pass — **13 suites / 59 unit tests** (6 new CSV/health tests)                |
-| `pnpm build`                 | pass — `/audit`, `/guests`, `/reservations`, `/folios` regenerated           |
-| `pnpm test:e2e:all:isolated` | pass — **10 suites / 82 tests** (4 new export tests) + **1 suite / 12 auth** |
-| `pnpm format:check`          | pass                                                                         |
-| `pnpm db:verify`             | unchanged — **162 constraints, 8 triggers, 4 functions, 16 indexes**         |
+| Command                      | Result                                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------------------------- | --- | ----------- | --------------------------------------------------------------------- |
+| `pnpm lint`                  | pass — API + web                                                                          |
+| `pnpm typecheck`             | pass — API + web                                                                          |     | `pnpm test` | pass — **14 suites / 66 unit tests** (CSV, health and timezone tests) |
+| `pnpm build`                 | pass — `/audit`, `/guests`, `/reservations`, `/folios` regenerated                        |
+| `pnpm test:e2e:all:isolated` | pass — **11 suites / 84 tests** (exports and timezone boundaries) + **1 suite / 12 auth** |
+| `pnpm format:check`          | pass                                                                                      |
+| `pnpm db:verify`             | unchanged — **162 constraints, 8 triggers, 4 functions, 16 indexes**                      |
 
 No migration was needed for these features.
 
@@ -56,7 +57,8 @@ No migration was needed for these features.
 
 - This is not the Edge coordinator, LAN sync, update agent or outbox; those remain blocked on hotel/provider discovery (ADR-039).
 - Exports are synchronous and capped at 5000 rows; scheduled/streaming/XLSX exports remain future work.
-- Export date filters use UTC calendar days, not property timezone; document this in support material.
+- Export and audit instant filters resolve through the property's IANA timezone; a malformed property timezone fails the request instead of silently falling back to UTC.
+- DST-at-midnight edge cases rely on the IANA database via `Intl`; no fixed-offset conversion is used.
 - `/health/version` is public and must stay non-sensitive as it evolves.
 - The UI was not visually reviewed in a browser in this run.
 - No commit or push was made.

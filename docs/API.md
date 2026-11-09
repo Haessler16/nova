@@ -137,7 +137,7 @@ Los permisos de organización son aditivos respecto de los de propiedad. Un rol 
 | ------ | ---------------------- | ------------- | ------------ |
 | GET    | `/api/v1/audit-events` | auth + tenant | `audit.read` |
 
-Filtros: `action`, `entityType`, `entityId`, `actorUserId`, `fromDate`, `toDate` (`YYYY-MM-DD`, días UTC), `cursor`, `limit` (≤ 100). Requiere `X-Property-Id`. Devuelve `nextCursor` para feed de soporte/conciliación.
+Filtros: `action`, `entityType`, `entityId`, `actorUserId`, `fromDate`, `toDate` (`YYYY-MM-DD`, días calendario en la timezone IANA de la propiedad; el día final es inclusivo), `cursor`, `limit` (≤ 100). Requiere `X-Property-Id`. Devuelve `nextCursor` para feed de soporte/conciliación. Una timezone inválida responde `invalid_property_timezone`.
 
 ### Exports
 
@@ -149,6 +149,8 @@ Filtros: `action`, `entityType`, `entityId`, `actorUserId`, `fromDate`, `toDate`
 
 - Solo lectura, limitadas a la organización/propiedad autenticadas; `Cache-Control: no-store`.
 - Máximo 5000 filas (`400 export_too_large`); acotar con los mismos filtros de lista (`search`, `status`, fechas).
+- En reservas, `fromDate`/`toDate` son fechas calendario con solapamiento `[fromDate, toDate)` (el `toDate` no se incluye), igual que `GET /reservations`. En folios, `date` es un único día calendario en la timezone de la propiedad, convertido a `[inicio, inicio+1 día)`.
+- Un rango invertido o una fecha imposible responde `invalid_date_filter` / `invalid_calendar_date`.
 - CSV con BOM UTF-8, comillas RFC 4180 y neutralización de fórmulas de hoja de cálculo.
 - Cada exportación escribe un `AuditEvent` (`export.guests`, `export.reservations`, `export.folios`) con `{ rowCount }`, sin datos personales.
 - La UI expone "Exportar CSV" en Huéspedes, Reservas y Folios respetando los filtros visibles.
@@ -419,6 +421,7 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 | 409  | `operational_day_already_closed`            | Día operativo ya cerrado                                  |
 | 400  | `pilot_feedback_context_too_large`          | Contexto de feedback mayor a 4 KB                         |
 | 400  | `export_too_large`                          | Exportación supera 5000 filas; acotar filtros             |
+| 400  | `invalid_property_timezone`                 | La propiedad tiene una timezone IANA inválida             |
 | 404  | `pilot_feedback_not_found`                  | Feedback inexistente en la propiedad                      |
 | 429  | `rate_limited`                              | Demasiados intentos de login; `details.retryAfterSeconds` |
 | 503  | `auth_mode_unavailable`                     | Login local deshabilitado                                 |

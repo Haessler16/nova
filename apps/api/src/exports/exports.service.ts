@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { FolioLineStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { money } from '../common/money/decimal';
+import { addCalendarDays, propertyDayStart } from '../common/time/property-day';
 import { requirePropertyContext } from '../inventory/room-state.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseCalendarDate } from '../reservations/reservation-dates';
@@ -209,9 +210,21 @@ export class ExportsService {
       ];
     }
     if (query.date !== undefined) {
-      const start = new Date(`${query.date}T00:00:00.000Z`);
-      const end = new Date(start.getTime() + 86_400_000);
-      where.createdAt = { gte: start, lt: end };
+      const property = await this.prisma.property.findFirst({
+        where: { id: propertyId, organizationId: context.organizationId },
+        select: { timezone: true },
+      });
+      if (property === null) {
+        throw new NotFoundException({
+          code: 'property_not_found',
+          message: 'Property not found in the current organization.',
+        });
+      }
+
+      where.createdAt = {
+        gte: propertyDayStart(query.date, property.timezone),
+        lt: propertyDayStart(addCalendarDays(query.date, 1), property.timezone),
+      };
     }
 
     const rows = await this.prisma.folio.findMany({

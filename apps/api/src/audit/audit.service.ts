@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { TenantContext } from '../common/http/request-context';
+import { propertyDayBounds } from '../common/time/property-day';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListAuditEventsQueryDto } from './dto/list-audit-events.dto';
 
@@ -110,19 +111,21 @@ export class AuditService {
       where.actorUserId = query.actorUserId;
     }
     if (query.fromDate !== undefined || query.toDate !== undefined) {
-      const from =
-        query.fromDate !== undefined ? new Date(`${query.fromDate}T00:00:00.000Z`) : undefined;
-      const toStart =
-        query.toDate !== undefined ? new Date(`${query.toDate}T00:00:00.000Z`) : undefined;
-      if (from !== undefined && toStart !== undefined && toStart.getTime() <= from.getTime()) {
-        throw new BadRequestException({
-          code: 'invalid_date_filter',
-          message: 'toDate must be after fromDate.',
+      const property = await this.prisma.property.findFirst({
+        where: { id: context.propertyId, organizationId: context.organizationId },
+        select: { timezone: true },
+      });
+      if (property === null) {
+        throw new NotFoundException({
+          code: 'property_not_found',
+          message: 'Property not found in the current organization.',
         });
       }
+
+      const bounds = propertyDayBounds(query.fromDate, query.toDate, property.timezone);
       where.occurredAt = {
-        ...(from !== undefined ? { gte: from } : {}),
-        ...(toStart !== undefined ? { lt: new Date(toStart.getTime() + 86_400_000) } : {}),
+        ...(bounds.gte !== undefined ? { gte: bounds.gte } : {}),
+        ...(bounds.lt !== undefined ? { lt: bounds.lt } : {}),
       };
     }
 

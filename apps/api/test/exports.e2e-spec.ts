@@ -138,6 +138,45 @@ describe('CSV exports (E2E)', () => {
     expect(denied.body.code).toBe('permission_denied');
   });
 
+  it('interprets the folio export date in the property timezone', async () => {
+    const reservation = await request(app.getHttpServer())
+      .post('/api/v1/reservations')
+      .set(headers(ADMIN))
+      .send({
+        checkInDate: today,
+        checkOutDate: tomorrow,
+        adults: 1,
+        guestId: GUEST_ANA,
+        roomTypeId: ROOM_TYPE_STD,
+        source: `export-tz-${suffix}`,
+      })
+      .expect(201);
+
+    const number = `TZ${suffix}`;
+    await prisma.folio.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        reservationId: reservation.body.id,
+        number,
+        idempotencyKey: `tz-export-${suffix}`,
+        createdAt: new Date('2026-01-15T02:30:00.000Z'),
+      },
+    });
+
+    const localDay = await request(app.getHttpServer())
+      .get(`/api/v1/exports/folios?date=2026-01-14&search=${number}`)
+      .set(headers(ADMIN))
+      .expect(200);
+    expect(csvText(localDay)).toContain(number);
+
+    const nextDay = await request(app.getHttpServer())
+      .get(`/api/v1/exports/folios?date=2026-01-15&search=${number}`)
+      .set(headers(ADMIN))
+      .expect(200);
+    expect(csvText(nextDay)).not.toContain(number);
+  });
+
   it('rejects invalid audit-style date ranges on reservation exports', async () => {
     const rejected = await request(app.getHttpServer())
       .get(`/api/v1/exports/reservations?fromDate=${tomorrow}&toDate=${today}`)
