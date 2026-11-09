@@ -57,7 +57,7 @@ La web es una app operativa client-side contra la API real. No guarda el tenant 
 | Ruta                    | Contenido                                                                           |
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | `/login`                | Login local (email/contraseña + MFA) o selector de usuario en `dev-header`          |
-| `/dashboard`            | Día operativo, propiedad, sesión, readiness y accesos rápidos                       |
+| `/dashboard`            | KPIs operativos, llegadas, alertas, día operativo, readiness y accesos rápidos      |
 | `/front-office`         | Llegadas, en casa, salidas, room rack, check-in/out, room move e incidencias        |
 | `/calendar`             | Calendario gráfico habitación × noche (7/14/21 días)                                |
 | `/reservations`         | Listado/filtros, disponibilidad, alta, edición, asignación, cancelación e historial |
@@ -74,6 +74,7 @@ Notas de uso:
 - En `AUTH_MODE=dev-header` (default local) el login muestra usuarios sintéticos; el id elegido se guarda en `localStorage` solo para desarrollo y se envía como `X-Dev-User-Id`.
 - En `AUTH_MODE=local-session` el navegador usa la cookie HttpOnly y la UI obtiene un token CSRF antes de cada mutación.
 - El selector de organización/propiedad persiste la última selección y se revalida contra `/organizations` y `/properties` al recargar.
+- La UI sigue `docs/DESIGN_SYSTEM.md`: tokens Sky & Mint centralizados en `apps/web/src/theme`, sidebar navy, tipografía Inter y estados de color accesibles.
 - Los errores de permisos se muestran como alertas de la API; la UI no replica reglas de autorización.
 - Un 401 durante la navegación cierra la sesión local de la UI y redirige a `/login`.
 

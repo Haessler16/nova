@@ -40,11 +40,11 @@ const DAY_WIDTH = 76;
 const ROOM_COLUMN_WIDTH = 168;
 
 const BAR_COLORS: Record<Reservation['status'], string> = {
-  CONFIRMED: 'purple.500',
-  CHECKED_IN: 'green.500',
-  CHECKED_OUT: 'blue.500',
+  CONFIRMED: 'brand.500',
+  CHECKED_IN: 'mint.500',
+  CHECKED_OUT: 'sky.500',
   CANCELLED: 'gray.400',
-  NO_SHOW: 'orange.500',
+  NO_SHOW: 'warning.500',
 };
 
 function CalendarContent() {
@@ -87,7 +87,7 @@ function CalendarContent() {
         title="Calendario de reservas"
         description="Ocupación por habitación y noche. La estancia ocupa [check-in, check-out); una salida puede coincidir con la llegada siguiente."
         actions={
-          <Button as={NextLink} href="/reservations" size="sm" colorScheme="purple">
+          <Button as={NextLink} href="/reservations" size="sm" colorScheme="brand">
             Nueva reserva
           </Button>
         }
@@ -219,7 +219,7 @@ function CalendarContent() {
                         textAlign="center"
                         borderRightWidth="1px"
                         borderColor="gray.200"
-                        bg={isToday ? 'purple.50' : weekend ? 'gray.100' : 'gray.50'}
+                        bg={isToday ? 'brand.50' : weekend ? 'gray.100' : 'gray.50'}
                       >
                         <Text fontSize="xs" color="gray.500" textTransform="uppercase">
                           {weekdayShort(date)}
@@ -227,7 +227,7 @@ function CalendarContent() {
                         <Text
                           fontSize="sm"
                           fontWeight={isToday ? 'bold' : 'medium'}
-                          color={isToday ? 'purple.700' : 'gray.800'}
+                          color={isToday ? 'brand.700' : 'gray.800'}
                         >
                           {date.slice(8, 10)}/{date.slice(5, 7)}
                         </Text>
@@ -279,7 +279,7 @@ function CalendarContent() {
                                 minW={`${DAY_WIDTH}px`}
                                 borderRightWidth="1px"
                                 borderColor="gray.100"
-                                bg={date === today ? 'purple.50' : weekend ? 'gray.50' : 'white'}
+                                bg={date === today ? 'brand.50' : weekend ? 'gray.50' : 'white'}
                               />
                             );
                           })}
@@ -404,7 +404,7 @@ function CalendarContent() {
                     color={RESERVATION_STATUS_COLORS[selected.status]}
                     label={RESERVATION_STATUS_LABELS[selected.status]}
                   />
-                  <Badge colorScheme="purple" textTransform="none">
+                  <Badge colorScheme="brand" textTransform="none">
                     Hab. {selected.room?.number ?? 'sin asignar'}
                   </Badge>
                 </HStack>
@@ -425,7 +425,7 @@ function CalendarContent() {
                   </Text>
                 )}
                 <HStack>
-                  <Button as={NextLink} href="/reservations" size="sm" colorScheme="purple">
+                  <Button as={NextLink} href="/reservations" size="sm" colorScheme="brand">
                     Abrir en Reservas
                   </Button>
                   <Button size="sm" variant="ghost" onClick={detail.onClose}>

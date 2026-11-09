@@ -371,7 +371,7 @@ function RoomsContent() {
         title="Habitaciones"
         description="Inventario físico, housekeeping, bloqueos e historial. Housekeeping y estado operativo son dimensiones separadas."
         actions={
-          <Button colorScheme="purple" size="sm" onClick={createModal.onOpen}>
+          <Button colorScheme="brand" size="sm" onClick={createModal.onOpen}>
             Nueva habitación
           </Button>
         }
@@ -595,7 +595,7 @@ function RoomsContent() {
             <Button variant="ghost" mr={3} onClick={createModal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={saving}>
+            <Button type="submit" colorScheme="brand" isLoading={saving}>
               Crear
             </Button>
           </ModalFooter>
@@ -669,7 +669,7 @@ function RoomsContent() {
             <Button variant="ghost" mr={3} onClick={editModal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={saving}>
+            <Button type="submit" colorScheme="brand" isLoading={saving}>
               Guardar
             </Button>
           </ModalFooter>
@@ -763,10 +763,12 @@ function RoomsContent() {
                         >
                           <Box>
                             <HStack spacing={2}>
-                              <Badge colorScheme={block.type === 'OUT_OF_ORDER' ? 'red' : 'orange'}>
+                              <Badge
+                                colorScheme={block.type === 'OUT_OF_ORDER' ? 'danger' : 'warning'}
+                              >
                                 {BLOCK_TYPE_LABELS[block.type]}
                               </Badge>
-                              <Badge colorScheme={block.status === 'ACTIVE' ? 'green' : 'gray'}>
+                              <Badge colorScheme={block.status === 'ACTIVE' ? 'mint' : 'gray'}>
                                 {BLOCK_STATUS_LABELS[block.status]}
                               </Badge>
                             </HStack>
@@ -851,7 +853,7 @@ function RoomsContent() {
                           />
                         </Box>
                       </HStack>
-                      <Button type="submit" size="sm" colorScheme="purple" isLoading={blockSaving}>
+                      <Button type="submit" size="sm" colorScheme="brand" isLoading={blockSaving}>
                         Crear bloqueo
                       </Button>
                     </Stack>
@@ -873,7 +875,7 @@ function RoomsContent() {
                   >
                     <Stack spacing={2} maxH="320px" overflowY="auto">
                       {detail.data?.history.map((entry) => (
-                        <Box key={entry.id} borderLeftWidth="3px" borderColor="purple.200" pl={3}>
+                        <Box key={entry.id} borderLeftWidth="3px" borderColor="brand.200" pl={3}>
                           <Text fontSize="xs" color="gray.500">
                             {formatDateTime(entry.occurredAt)} · {entry.category}
                           </Text>

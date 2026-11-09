@@ -35,7 +35,7 @@ import {
   useDisclosure,
   useToast,
 } from '@chakra-ui/react';
-import { useReducer, useState, type FormEvent } from 'react';
+import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import {
   Field,
@@ -241,6 +241,19 @@ function ReservationsContent() {
     createModal.onOpen();
   }
 
+  const openedFromQuery = useRef(false);
+  const openCreateRef = useRef(openCreate);
+  openCreateRef.current = openCreate;
+  useEffect(() => {
+    if (openedFromQuery.current) {
+      return;
+    }
+    openedFromQuery.current = true;
+    if (new URLSearchParams(window.location.search).get('new') === '1') {
+      openCreateRef.current();
+    }
+  }, []);
+
   function openDetail(reservation: Reservation): void {
     setSelectedId(reservation.id);
     setAssignRoomId('');
@@ -411,7 +424,7 @@ function ReservationsContent() {
         title="Reservas"
         description="Estadías por fecha calendario con estancia [check-in, check-out) y una habitación por reserva. Los solapamientos los impide PostgreSQL."
         actions={
-          <Button colorScheme="purple" size="sm" onClick={openCreate}>
+          <Button colorScheme="brand" size="sm" onClick={openCreate}>
             Nueva reserva
           </Button>
         }
@@ -563,7 +576,7 @@ function ReservationsContent() {
                             <Button
                               size="xs"
                               variant="ghost"
-                              colorScheme="red"
+                              colorScheme="danger"
                               onClick={() => {
                                 setSelectedId(reservation.id);
                                 setCancelReason('');
@@ -616,7 +629,7 @@ function ReservationsContent() {
                   />
                 </Field>
               </SimpleGrid>
-              <Text fontSize="sm" color={createDatesValid ? 'gray.600' : 'red.500'}>
+              <Text fontSize="sm" color={createDatesValid ? 'gray.600' : 'danger.500'}>
                 {createDatesValid
                   ? `${createNights} ${createNights === 1 ? 'noche' : 'noches'}`
                   : 'La estadía debe tener entre 1 y 366 noches.'}
@@ -648,7 +661,7 @@ function ReservationsContent() {
                 </Select>
               </Field>
               {lookup.data !== null && filteredGuests.length === 0 && (
-                <Text fontSize="xs" color="orange.600">
+                <Text fontSize="xs" color="warning.600">
                   No hay huéspedes activos que coincidan. Creá uno desde Huéspedes.
                 </Text>
               )}
@@ -705,11 +718,11 @@ function ReservationsContent() {
                       Consultando…
                     </Text>
                   ) : availability.error !== null ? (
-                    <Text fontSize="xs" color="red.500">
+                    <Text fontSize="xs" color="danger.500">
                       {errorMessage(availability.error)}
                     </Text>
                   ) : (availability.data?.items.length ?? 0) === 0 ? (
-                    <Text fontSize="xs" color="orange.600">
+                    <Text fontSize="xs" color="warning.600">
                       No hay habitaciones libres de este tipo para el rango elegido.
                     </Text>
                   ) : (
@@ -761,7 +774,7 @@ function ReservationsContent() {
             <Button variant="ghost" mr={3} onClick={createModal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={saving}>
+            <Button type="submit" colorScheme="brand" isLoading={saving}>
               Crear reserva
             </Button>
           </ModalFooter>
@@ -836,7 +849,7 @@ function ReservationsContent() {
             <Button variant="ghost" mr={3} onClick={editModal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={saving}>
+            <Button type="submit" colorScheme="brand" isLoading={saving}>
               Guardar
             </Button>
           </ModalFooter>
@@ -868,7 +881,7 @@ function ReservationsContent() {
             <Button variant="ghost" mr={3} onClick={cancelModal.onClose}>
               Volver
             </Button>
-            <Button type="submit" colorScheme="red" isLoading={saving}>
+            <Button type="submit" colorScheme="danger" isLoading={saving}>
               Confirmar cancelación
             </Button>
           </ModalFooter>
@@ -978,7 +991,7 @@ function ReservationsContent() {
                           </Select>
                           <Button
                             size="sm"
-                            colorScheme="purple"
+                            colorScheme="brand"
                             onClick={() => void handleAssign()}
                             isLoading={saving}
                             isDisabled={assignRoomId === ''}
@@ -988,7 +1001,7 @@ function ReservationsContent() {
                         </HStack>
                         {(detailAvailability.data?.items.length ?? 0) === 0 &&
                           !detailAvailability.loading && (
-                            <Text fontSize="xs" color="orange.600" mt={2}>
+                            <Text fontSize="xs" color="warning.600" mt={2}>
                               No hay habitaciones libres de este tipo para estas fechas.
                             </Text>
                           )}
@@ -1021,7 +1034,7 @@ function ReservationsContent() {
                     >
                       <Stack spacing={2} maxH="320px" overflowY="auto">
                         {detail.data?.history.map((entry) => (
-                          <Box key={entry.id} borderLeftWidth="3px" borderColor="purple.200" pl={3}>
+                          <Box key={entry.id} borderLeftWidth="3px" borderColor="brand.200" pl={3}>
                             <Text fontSize="sm" fontWeight="medium">
                               {ACTION_LABELS[entry.action] ?? entry.action}
                             </Text>

@@ -135,7 +135,7 @@ function SettingsContent() {
                   </Field>
                   <Button
                     type="submit"
-                    colorScheme="purple"
+                    colorScheme="brand"
                     isLoading={saving}
                     alignSelf="flex-start"
                   >
@@ -168,7 +168,7 @@ function SettingsContent() {
               <SectionCard>
                 <HStack justify="space-between" mb={3}>
                   <Text fontWeight="semibold">Metadatos</Text>
-                  <Badge colorScheme={data.property.status === 'ACTIVE' ? 'green' : 'gray'}>
+                  <Badge colorScheme={data.property.status === 'ACTIVE' ? 'mint' : 'gray'}>
                     {data.property.status}
                   </Badge>
                 </HStack>

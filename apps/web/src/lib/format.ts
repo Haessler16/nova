@@ -19,9 +19,9 @@ export const RECORD_STATUS_LABELS: Record<string, string> = {
 };
 
 export const RECORD_STATUS_COLORS: Record<string, string> = {
-  ACTIVE: 'green',
-  SUSPENDED: 'orange',
-  INVITED: 'blue',
+  ACTIVE: 'mint',
+  SUSPENDED: 'warning',
+  INVITED: 'sky',
   DISABLED: 'gray',
 };
 
@@ -33,10 +33,10 @@ export const HOUSEKEEPING_LABELS: Record<HousekeepingState, string> = {
 };
 
 export const HOUSEKEEPING_COLORS: Record<HousekeepingState, string> = {
-  DIRTY: 'red',
-  CLEANING: 'orange',
-  CLEAN: 'blue',
-  INSPECTED: 'green',
+  DIRTY: 'danger',
+  CLEANING: 'warning',
+  CLEAN: 'sky',
+  INSPECTED: 'mint',
 };
 
 export const OPERATIONAL_LABELS: Record<RoomOperationalState, string> = {
@@ -46,9 +46,9 @@ export const OPERATIONAL_LABELS: Record<RoomOperationalState, string> = {
 };
 
 export const OPERATIONAL_COLORS: Record<RoomOperationalState, string> = {
-  AVAILABLE: 'green',
-  OUT_OF_ORDER: 'red',
-  OUT_OF_SERVICE: 'orange',
+  AVAILABLE: 'mint',
+  OUT_OF_ORDER: 'danger',
+  OUT_OF_SERVICE: 'warning',
 };
 
 export const BLOCK_TYPE_LABELS: Record<RoomBlockType, string> = {
@@ -71,11 +71,11 @@ export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
 };
 
 export const RESERVATION_STATUS_COLORS: Record<ReservationStatus, string> = {
-  CONFIRMED: 'blue',
-  CHECKED_IN: 'green',
-  CHECKED_OUT: 'purple',
-  CANCELLED: 'red',
-  NO_SHOW: 'orange',
+  CONFIRMED: 'sky',
+  CHECKED_IN: 'mint',
+  CHECKED_OUT: 'brand',
+  CANCELLED: 'danger',
+  NO_SHOW: 'warning',
 };
 
 export const DOCUMENT_TYPE_LABELS: Record<GuestDocumentType, string> = {
@@ -86,9 +86,9 @@ export const DOCUMENT_TYPE_LABELS: Record<GuestDocumentType, string> = {
 };
 
 export const SEVERITY_COLORS: Record<SecuritySeverity, string> = {
-  INFO: 'blue',
-  WARNING: 'orange',
-  CRITICAL: 'red',
+  INFO: 'sky',
+  WARNING: 'warning',
+  CRITICAL: 'danger',
 };
 
 export const INCIDENT_TYPE_LABELS: Record<IncidentType, string> = {
@@ -106,9 +106,9 @@ export const INCIDENT_SEVERITY_LABELS: Record<IncidentSeverity, string> = {
 };
 
 export const INCIDENT_SEVERITY_COLORS: Record<IncidentSeverity, string> = {
-  LOW: 'blue',
-  MEDIUM: 'orange',
-  HIGH: 'red',
+  LOW: 'sky',
+  MEDIUM: 'warning',
+  HIGH: 'danger',
 };
 
 export const INCIDENT_STATUS_LABELS: Record<IncidentStatus, string> = {
@@ -139,6 +139,22 @@ export function formatCalendarDate(value: string): string {
     return value;
   }
   return `${day}/${month}/${year}`;
+}
+
+/** Human date for calendar values (YYYY-MM-DD), e.g. "domingo, 8 de noviembre de 2026". */
+export function formatLongDate(value: string): string {
+  const [year, month, day] = value.split('-').map(Number);
+  if (year === undefined || month === undefined || day === undefined) {
+    return value;
+  }
+  const formatted = new Intl.DateTimeFormat('es-AR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
 export function todayISO(offsetDays = 0): string {

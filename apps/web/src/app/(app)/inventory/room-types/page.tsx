@@ -138,7 +138,7 @@ function RoomTypesContent() {
         title="Tipos de habitación"
         description="Tipologías de la propiedad con capacidad y estado. Se usan al crear habitaciones y reservas."
         actions={
-          <Button colorScheme="purple" size="sm" onClick={openCreate}>
+          <Button colorScheme="brand" size="sm" onClick={openCreate}>
             Nuevo tipo
           </Button>
         }
@@ -307,7 +307,7 @@ function RoomTypesContent() {
             <Button variant="ghost" mr={3} onClick={modal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={saving}>
+            <Button type="submit" colorScheme="brand" isLoading={saving}>
               Guardar
             </Button>
           </ModalFooter>

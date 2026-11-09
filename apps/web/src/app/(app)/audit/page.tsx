@@ -133,7 +133,7 @@ function AuditContent() {
                       )}
                     </Td>
                     <Td>
-                      <Badge colorScheme="purple" textTransform="none">
+                      <Badge colorScheme="brand" textTransform="none">
                         {event.entityType}
                       </Badge>
                       <Text fontFamily="mono" fontSize="xs" color="gray.500">

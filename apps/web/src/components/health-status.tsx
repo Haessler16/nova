@@ -1,7 +1,8 @@
 'use client';
 
-import { Badge, Box, Button, Code, HStack, Heading, Spinner, Stack, Text } from '@chakra-ui/react';
+import { Badge, Box, Button, Code, HStack, Stack, Text } from '@chakra-ui/react';
 import { useCallback, useEffect, useState } from 'react';
+import { SectionCard } from './ui';
 
 interface ReadinessResponse {
   status: 'ok' | 'error';
@@ -19,6 +20,29 @@ type State =
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
+function DependencyBadge({ label, value }: { label: string; value: 'up' | 'down' | undefined }) {
+  const ok = value === 'up';
+  return (
+    <HStack
+      spacing={2}
+      px={3}
+      py={2}
+      borderWidth="1px"
+      borderColor={ok ? 'mint.100' : 'danger.100'}
+      borderRadius="lg"
+      bg={ok ? 'mint.50' : 'danger.50'}
+    >
+      <Box boxSize="7px" borderRadius="full" bg={ok ? 'mint.500' : 'danger.500'} />
+      <Text fontSize="xs" fontWeight="semibold">
+        {label}
+      </Text>
+      <Badge colorScheme={ok ? 'mint' : 'danger'} ml="auto">
+        {value ?? 'unknown'}
+      </Badge>
+    </HStack>
+  );
+}
+
 export function HealthStatus() {
   const [state, setState] = useState<State>({ kind: 'loading' });
 
@@ -35,7 +59,7 @@ export function HealthStatus() {
       } else {
         setState({
           kind: 'unavailable',
-          message: `API respondió ${response.status}. Revisa PostgreSQL y Redis.`,
+          message: `API respondió ${response.status}. Revisá PostgreSQL y Redis.`,
         });
       }
     } catch {
@@ -51,46 +75,62 @@ export function HealthStatus() {
   }, [load]);
 
   return (
-    <Box borderWidth="1px" borderRadius="lg" p={6}>
-      <HStack justify="space-between" align="center" mb={4}>
-        <Heading size="md">Estado de dependencias</Heading>
-        <Button size="sm" onClick={() => void load()} isLoading={state.kind === 'loading'}>
-          Reintentar
-        </Button>
+    <SectionCard>
+      <HStack justify="space-between" align="center" mb={4} gap={3} wrap="wrap">
+        <Box>
+          <Text fontWeight="semibold" fontSize="sm">
+            Dependencias de la plataforma
+          </Text>
+          <Text fontSize="xs" color="textSecondary">
+            Readiness de API, PostgreSQL y Redis.
+          </Text>
+        </Box>
+        <HStack spacing={2}>
+          {state.kind === 'ready' && <Badge colorScheme="mint">API ready</Badge>}
+          {state.kind === 'unavailable' && <Badge colorScheme="danger">API not ready</Badge>}
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => void load()}
+            isLoading={state.kind === 'loading'}
+          >
+            Reintentar
+          </Button>
+        </HStack>
       </HStack>
 
       {state.kind === 'loading' && (
-        <HStack>
-          <Spinner size="sm" />
-          <Text>Consultando readiness…</Text>
-        </HStack>
+        <Text fontSize="sm" color="textSecondary">
+          Consultando readiness…
+        </Text>
       )}
 
       {state.kind === 'ready' && (
         <Stack spacing={2}>
-          <HStack>
-            <Badge colorScheme="green">API ready</Badge>
-            <Text fontSize="sm" color="gray.600">
-              {state.data.timestamp}
-            </Text>
-          </HStack>
-          <Text>
-            PostgreSQL: <Badge>{state.data.checks?.database ?? 'unknown'}</Badge>
-          </Text>
-          <Text>
-            Redis: <Badge>{state.data.checks?.redis ?? 'unknown'}</Badge>
+          <SimpleDependencies checks={state.data.checks} />
+          <Text fontSize="xs" color="textSecondary">
+            Última verificación: {new Date(state.data.timestamp).toLocaleString('es-AR')}
           </Text>
         </Stack>
       )}
 
       {state.kind === 'unavailable' && (
         <Stack spacing={2}>
-          <Badge colorScheme="red" width="fit-content">
-            API not ready
-          </Badge>
-          <Text>{state.message}</Text>
+          <Text fontSize="sm">{state.message}</Text>
+          <Text fontSize="xs" color="textSecondary">
+            Configuración esperada: <Code>{API_URL}</Code>
+          </Text>
         </Stack>
       )}
-    </Box>
+    </SectionCard>
+  );
+}
+
+function SimpleDependencies({ checks }: { checks?: ReadinessResponse['checks'] }) {
+  return (
+    <HStack spacing={3} wrap="wrap">
+      <DependencyBadge label="PostgreSQL" value={checks?.database} />
+      <DependencyBadge label="Redis" value={checks?.redis} />
+    </HStack>
   );
 }

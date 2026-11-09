@@ -167,7 +167,7 @@ function AccountContent() {
           <SectionCard>
             <HStack justify="space-between" mb={3}>
               <Text fontWeight="semibold">Identidad</Text>
-              <Badge colorScheme={authMode === 'local-session' ? 'purple' : 'orange'}>
+              <Badge colorScheme={authMode === 'local-session' ? 'brand' : 'warning'}>
                 {authMode === 'local-session' ? 'Sesión local' : 'dev-header'}
               </Badge>
             </HStack>
@@ -219,7 +219,7 @@ function AccountContent() {
                   >
                     <Box>
                       <HStack spacing={2}>
-                        {session.current === true && <Badge colorScheme="green">Actual</Badge>}
+                        {session.current === true && <Badge colorScheme="mint">Actual</Badge>}
                         <Text fontSize="xs" color="gray.600">
                           Última actividad {formatDateTime(session.lastSeenAt)}
                         </Text>
@@ -298,7 +298,7 @@ function AccountContent() {
                     </Field>
                     <Button
                       type="submit"
-                      colorScheme="purple"
+                      colorScheme="brand"
                       alignSelf="flex-start"
                       isLoading={changingPassword}
                     >
@@ -346,7 +346,7 @@ function AccountContent() {
                       />
                       <Button
                         size="sm"
-                        colorScheme="purple"
+                        colorScheme="brand"
                         onClick={() => void enableMfa()}
                         isLoading={mfaBusy}
                         isDisabled={!/^\d{6}$/.test(mfaCode)}

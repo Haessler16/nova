@@ -28,9 +28,16 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import NextLink from 'next/link';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
-import { Field, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
+import {
+  Field,
+  MetricCard,
+  PageHeader,
+  QueryFeedback,
+  SectionCard,
+  StatusBadge,
+} from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
 import {
@@ -65,23 +72,13 @@ interface IncidentList {
 
 type IncidentScope = 'none' | 'stay' | 'room';
 
-function MetricCard({ label, value, hint }: { label: string; value: number; hint?: string }) {
-  return (
-    <Box borderWidth="1px" borderRadius="lg" bg="white" px={4} py={3}>
-      <Text fontSize="xs" color="gray.500" textTransform="uppercase" letterSpacing="wide">
-        {label}
-      </Text>
-      <Text fontSize="2xl" fontWeight="bold" lineHeight="1.2">
-        {value}
-      </Text>
-      {hint !== undefined && (
-        <Text fontSize="xs" color="gray.500">
-          {hint}
-        </Text>
-      )}
-    </Box>
-  );
-}
+const TAB_INDEX: Record<string, number> = {
+  arrivals: 0,
+  'in-house': 1,
+  departures: 2,
+  rack: 3,
+  incidents: 4,
+};
 
 function StayCard({
   stay,
@@ -108,12 +105,12 @@ function StayCard({
             {stay.moveCount > 0 ? ` · ${stay.moveCount} cambio(s)` : ''}
           </Text>
         </Box>
-        <StatusBadge color="green" label="En casa" />
+        <StatusBadge color="mint" label="En casa" />
       </HStack>
       <HStack spacing={1} mt={2} wrap="wrap">
         <Button
           size="xs"
-          colorScheme="purple"
+          colorScheme="brand"
           onClick={() => onCheckOut(stay)}
           isLoading={busy === `check-out:${stay.id}`}
         >
@@ -139,6 +136,14 @@ function FrontOfficeContent() {
 
   const [incidentFilter, setIncidentFilter] = useState<IncidentStatus | ''>('OPEN');
   const [busy, setBusy] = useState<string | null>(null);
+  const [tabIndex, setTabIndex] = useState(0);
+
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab !== null && TAB_INDEX[tab] !== undefined) {
+      setTabIndex(TAB_INDEX[tab]);
+    }
+  }, []);
 
   const overview = useAsyncData<FrontOfficeOverview>(
     () => api<FrontOfficeOverview>('/api/v1/front-office/overview', { tenant }),
@@ -431,19 +436,20 @@ function FrontOfficeContent() {
         {data !== null && (
           <Stack spacing={5}>
             <SimpleGrid columns={{ base: 2, md: 3, xl: 6 }} spacing={3}>
-              <MetricCard label="Llegadas" value={data.counts.arrivals} />
-              <MetricCard label="En casa" value={data.counts.inHouse} />
-              <MetricCard label="Salidas" value={data.counts.departures} />
-              <MetricCard label="Libres" value={data.counts.vacantRooms} />
-              <MetricCard label="Ocupadas" value={data.counts.occupiedRooms} />
+              <MetricCard label="Llegadas" value={data.counts.arrivals} accent="sky" />
+              <MetricCard label="En casa" value={data.counts.inHouse} accent="mint" />
+              <MetricCard label="Salidas" value={data.counts.departures} accent="warning" />
+              <MetricCard label="Libres" value={data.counts.vacantRooms} accent="mint" />
+              <MetricCard label="Ocupadas" value={data.counts.occupiedRooms} accent="brand" />
               <MetricCard
                 label="No-show por marcar"
                 value={data.counts.noShowCandidates}
                 hint="llegadas vencidas"
+                accent="danger"
               />
             </SimpleGrid>
 
-            <Tabs colorScheme="purple" isLazy>
+            <Tabs colorScheme="brand" index={tabIndex} onChange={setTabIndex} isLazy>
               <TabList>
                 <Tab>Llegadas ({data.counts.arrivals})</Tab>
                 <Tab>En casa ({data.counts.inHouse})</Tab>
@@ -493,12 +499,12 @@ function FrontOfficeContent() {
                                       label={RESERVATION_STATUS_LABELS[reservation.status]}
                                     />
                                     {late && (
-                                      <Badge colorScheme="orange" textTransform="none">
+                                      <Badge colorScheme="warning" textTransform="none">
                                         Llegada vencida
                                       </Badge>
                                     )}
                                     {missingRoom && (
-                                      <Badge colorScheme="red" textTransform="none">
+                                      <Badge colorScheme="danger" textTransform="none">
                                         Sin habitación
                                       </Badge>
                                     )}
@@ -534,7 +540,7 @@ function FrontOfficeContent() {
                                   ) : (
                                     <Button
                                       size="xs"
-                                      colorScheme="purple"
+                                      colorScheme="brand"
                                       onClick={() => checkIn(reservation)}
                                       isLoading={busy === `check-in:${reservation.id}`}
                                     >
@@ -545,7 +551,7 @@ function FrontOfficeContent() {
                                     <Button
                                       size="xs"
                                       variant="outline"
-                                      colorScheme="orange"
+                                      colorScheme="warning"
                                       onClick={() => openNoShow(reservation)}
                                     >
                                       No-show
@@ -623,7 +629,7 @@ function FrontOfficeContent() {
                               <HStack spacing={1}>
                                 <Button
                                   size="xs"
-                                  colorScheme="purple"
+                                  colorScheme="brand"
                                   onClick={() => openCheckOut(stay)}
                                   isLoading={busy === `check-out:${stay.id}`}
                                 >
@@ -656,13 +662,13 @@ function FrontOfficeContent() {
                       </Box>
                       <HStack spacing={3}>
                         <HStack spacing={1}>
-                          <Box boxSize="10px" borderRadius="full" bg="green.500" />
+                          <Box boxSize="10px" borderRadius="full" bg="mint.500" />
                           <Text fontSize="xs" color="gray.600">
                             Libre
                           </Text>
                         </HStack>
                         <HStack spacing={1}>
-                          <Box boxSize="10px" borderRadius="full" bg="orange.500" />
+                          <Box boxSize="10px" borderRadius="full" bg="warning.500" />
                           <Text fontSize="xs" color="gray.600">
                             Ocupada
                           </Text>
@@ -674,12 +680,12 @@ function FrontOfficeContent() {
                         <Box
                           key={room.id}
                           borderWidth="1px"
-                          borderColor={room.occupancy === 'OCCUPIED' ? 'orange.300' : 'green.200'}
+                          borderColor={room.occupancy === 'OCCUPIED' ? 'warning.300' : 'mint.200'}
                           borderLeftWidth="4px"
                           borderRadius="md"
                           px={3}
                           py={2}
-                          bg={room.occupancy === 'OCCUPIED' ? 'orange.50' : 'white'}
+                          bg={room.occupancy === 'OCCUPIED' ? 'warning.50' : 'white'}
                         >
                           <HStack justify="space-between" align="flex-start">
                             <Box>
@@ -692,7 +698,7 @@ function FrontOfficeContent() {
                               </Text>
                             </Box>
                             <Badge
-                              colorScheme={room.occupancy === 'OCCUPIED' ? 'orange' : 'green'}
+                              colorScheme={room.occupancy === 'OCCUPIED' ? 'warning' : 'mint'}
                               textTransform="none"
                             >
                               {room.occupancy === 'OCCUPIED' ? 'Ocupada' : 'Libre'}
@@ -710,7 +716,7 @@ function FrontOfficeContent() {
                               />
                             )}
                             {room.activeBlock !== null && (
-                              <Badge colorScheme="red" textTransform="none">
+                              <Badge colorScheme="danger" textTransform="none">
                                 Bloqueo hasta {formatDateTime(room.activeBlock.endsAt)}
                               </Badge>
                             )}
@@ -788,7 +794,7 @@ function FrontOfficeContent() {
                           <option value="RESOLVED">Resueltas</option>
                           <option value="">Todas</option>
                         </Select>
-                        <Button size="sm" colorScheme="purple" onClick={() => openIncident()}>
+                        <Button size="sm" colorScheme="brand" onClick={() => openIncident()}>
                           Nueva incidencia
                         </Button>
                       </HStack>
@@ -810,10 +816,10 @@ function FrontOfficeContent() {
                             borderLeftWidth="4px"
                             borderLeftColor={
                               incident.severity === 'HIGH'
-                                ? 'red.400'
+                                ? 'danger.400'
                                 : incident.severity === 'MEDIUM'
-                                  ? 'orange.400'
-                                  : 'blue.400'
+                                  ? 'warning.400'
+                                  : 'sky.400'
                             }
                             px={3}
                             py={2}
@@ -825,7 +831,7 @@ function FrontOfficeContent() {
                                     {incident.title}
                                   </Text>
                                   <StatusBadge
-                                    color={incident.status === 'OPEN' ? 'orange' : 'green'}
+                                    color={incident.status === 'OPEN' ? 'warning' : 'mint'}
                                     label={INCIDENT_STATUS_LABELS[incident.status]}
                                   />
                                   <StatusBadge
@@ -853,7 +859,7 @@ function FrontOfficeContent() {
                                   {incident.description}
                                 </Text>
                                 {incident.resolution !== null && (
-                                  <Box mt={1} borderLeftWidth="2px" borderColor="green.300" pl={2}>
+                                  <Box mt={1} borderLeftWidth="2px" borderColor="mint.300" pl={2}>
                                     <Text fontSize="xs" color="gray.500">
                                       Resolución
                                       {incident.resolvedBy !== null
@@ -869,7 +875,7 @@ function FrontOfficeContent() {
                                 <Button
                                   size="xs"
                                   variant="outline"
-                                  colorScheme="green"
+                                  colorScheme="mint"
                                   onClick={() => openResolve(incident)}
                                 >
                                   Resolver
@@ -919,7 +925,7 @@ function FrontOfficeContent() {
             <Button variant="ghost" mr={3} onClick={checkoutModal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={busy?.startsWith('check-out')}>
+            <Button type="submit" colorScheme="brand" isLoading={busy?.startsWith('check-out')}>
               Confirmar check-out
             </Button>
           </ModalFooter>
@@ -957,7 +963,7 @@ function FrontOfficeContent() {
                   </Select>
                 </Field>
                 {moveCandidates.length === 0 && (
-                  <Text fontSize="xs" color="orange.600">
+                  <Text fontSize="xs" color="warning.600">
                     No hay habitaciones libres del mismo tipo en este momento.
                   </Text>
                 )}
@@ -978,7 +984,7 @@ function FrontOfficeContent() {
             </Button>
             <Button
               type="submit"
-              colorScheme="purple"
+              colorScheme="brand"
               isLoading={busy?.startsWith('move')}
               isDisabled={moveRoomId === ''}
             >
@@ -1019,7 +1025,7 @@ function FrontOfficeContent() {
             <Button variant="ghost" mr={3} onClick={noShowModal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="orange" isLoading={busy?.startsWith('no-show')}>
+            <Button type="submit" colorScheme="warning" isLoading={busy?.startsWith('no-show')}>
               Confirmar no-show
             </Button>
           </ModalFooter>
@@ -1162,7 +1168,7 @@ function FrontOfficeContent() {
             <Button variant="ghost" mr={3} onClick={incidentModal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={busy === 'incident:create'}>
+            <Button type="submit" colorScheme="brand" isLoading={busy === 'incident:create'}>
               Registrar
             </Button>
           </ModalFooter>
@@ -1201,7 +1207,7 @@ function FrontOfficeContent() {
             </Button>
             <Button
               type="submit"
-              colorScheme="green"
+              colorScheme="mint"
               isLoading={busy?.startsWith('incident:resolve')}
               isDisabled={resolution.trim().length < 3}
             >

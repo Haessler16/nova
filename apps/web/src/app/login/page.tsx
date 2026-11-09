@@ -95,17 +95,36 @@ export default function LoginPage() {
   }
 
   return (
-    <Center minH="100vh" bg="gray.50" px={4} py={10}>
+    <Center minH="100vh" bg="canvas" px={4} py={10}>
       <Box w="100%" maxW="480px">
-        <HStack spacing={2} mb={6} justify="center">
-          <Box bg="purple.600" color="white" borderRadius="md" px={2} py={1} fontWeight="bold">
+        <HStack spacing={3} mb={6} justify="center">
+          <Box
+            bgGradient="linear(to-br, brand.400, mint.400)"
+            color="sidebar"
+            borderRadius="xl"
+            boxSize="40px"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            fontWeight="800"
+            fontSize="lg"
+          >
             N
           </Box>
-          <Heading size="md">NOVA PMS</Heading>
-          <Badge colorScheme="purple">Phase 1–3</Badge>
+          <Heading size="md" letterSpacing="0.06em">
+            NOVA PMS
+          </Heading>
+          <Badge colorScheme="mint">Hotel Management</Badge>
         </HStack>
 
-        <Box bg="white" borderWidth="1px" borderRadius="lg" p={{ base: 5, md: 7 }} shadow="sm">
+        <Box
+          bg="surface"
+          borderWidth="1px"
+          borderColor="line"
+          borderRadius="2xl"
+          p={{ base: 5, md: 7 }}
+          boxShadow="card"
+        >
           <Heading size="md" mb={1}>
             Iniciar sesión
           </Heading>
@@ -191,7 +210,7 @@ export default function LoginPage() {
                     </Button>
                   </>
                 )}
-                <Button type="submit" colorScheme="purple" isLoading={busy}>
+                <Button type="submit" colorScheme="brand" isLoading={busy}>
                   {challengeToken === null ? 'Entrar' : 'Validar código'}
                 </Button>
               </Stack>
@@ -250,7 +269,7 @@ export default function LoginPage() {
               <Code>{DEMO_PASSWORD}</Code>
             </Text>
           )}
-          <Link as={NextLink} href="/dashboard" color="purple.600">
+          <Link as={NextLink} href="/dashboard" color="brand.600">
             Ir al panel
           </Link>
         </Stack>

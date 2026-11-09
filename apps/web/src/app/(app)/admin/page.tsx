@@ -318,7 +318,7 @@ function AdminContent() {
         description="Membresías, roles y eventos de seguridad. Esta pantalla usa contexto de organización, sin propiedad seleccionada."
       />
 
-      <Tabs colorScheme="purple" variant="enclosed">
+      <Tabs colorScheme="brand" variant="enclosed">
         <TabList>
           <Tab>Miembros</Tab>
           <Tab>Roles</Tab>
@@ -333,7 +333,7 @@ function AdminContent() {
                   <Button size="sm" variant="ghost" onClick={memberships.reload}>
                     Actualizar
                   </Button>
-                  <Button size="sm" colorScheme="purple" onClick={openCreateMember}>
+                  <Button size="sm" colorScheme="brand" onClick={openCreateMember}>
                     Nuevo miembro
                   </Button>
                 </HStack>
@@ -433,7 +433,7 @@ function AdminContent() {
             <SectionCard>
               <HStack justify="space-between" mb={4}>
                 <Text fontWeight="semibold">Roles de organización</Text>
-                <Button size="sm" colorScheme="purple" onClick={openCreateRole}>
+                <Button size="sm" colorScheme="brand" onClick={openCreateRole}>
                   Nuevo rol
                 </Button>
               </HStack>
@@ -467,7 +467,7 @@ function AdminContent() {
                           <Td isNumeric>{role.membershipCount}</Td>
                           <Td>
                             <Badge
-                              colorScheme={role.system ? 'purple' : 'gray'}
+                              colorScheme={role.system ? 'brand' : 'gray'}
                               textTransform="none"
                             >
                               {role.system ? 'Sistema' : 'Personalizado'}
@@ -657,7 +657,7 @@ function AdminContent() {
             <Button variant="ghost" mr={3} onClick={memberModal.onClose}>
               {invitationToken !== null ? 'Cerrar' : 'Cancelar'}
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={saving}>
+            <Button type="submit" colorScheme="brand" isLoading={saving}>
               {editingMember === null ? 'Crear membresía' : 'Guardar'}
             </Button>
           </ModalFooter>
@@ -741,7 +741,7 @@ function AdminContent() {
                 El backend valida que el rol sea subconjunto de tus permisos y que el usuario sea
                 miembro de la organización.
               </Text>
-              <Button type="submit" size="sm" colorScheme="purple" mt={3} isLoading={saving}>
+              <Button type="submit" size="sm" colorScheme="brand" mt={3} isLoading={saving}>
                 Agregar asignación
               </Button>
             </Box>
@@ -874,7 +874,7 @@ function AdminContent() {
             <Button variant="ghost" mr={3} onClick={roleModal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={saving}>
+            <Button type="submit" colorScheme="brand" isLoading={saving}>
               Guardar
             </Button>
           </ModalFooter>

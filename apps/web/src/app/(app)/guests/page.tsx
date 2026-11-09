@@ -174,7 +174,7 @@ function GuestsContent() {
         title="Huéspedes"
         description="Perfiles minimizados por propiedad: datos de contacto y documento opcionales. No se fusionan perfiles automáticamente."
         actions={
-          <Button colorScheme="purple" size="sm" onClick={openCreate}>
+          <Button colorScheme="brand" size="sm" onClick={openCreate}>
             Nuevo huésped
           </Button>
         }
@@ -379,7 +379,7 @@ function GuestsContent() {
             <Button variant="ghost" mr={3} onClick={modal.onClose}>
               Cancelar
             </Button>
-            <Button type="submit" colorScheme="purple" isLoading={saving}>
+            <Button type="submit" colorScheme="brand" isLoading={saving}>
               Guardar
             </Button>
           </ModalFooter>

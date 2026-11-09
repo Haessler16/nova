@@ -559,3 +559,24 @@ These choices should be confirmed against the existing repository and current st
 - Validation required:
   - usability test with housekeeping/auditor roles;
   - decide whether to add capability flags to the session response.
+
+### ADR-030 — Sky & Mint design system is implemented as a centralized Chakra theme
+
+- Status: accepted for the transitional web app.
+- Date: 2026-11-08.
+- Context: the Phase 1–4 UI used ad-hoc purple/gray styling. `docs/DESIGN_SYSTEM.md` defines Sky & Mint as the visual source of truth, with navy navigation, sky primary actions and mint status accents.
+- Options:
+  1. restyle screens individually (rejected: token drift and inconsistent states);
+  2. keep the prototype palette (rejected: contradicts the approved design direction);
+  3. centralize tokens and component defaults in a Chakra theme, then apply them to the shell and screens (chosen).
+- Decision:
+  - `apps/web/src/theme` owns colors, typography, radii, shadows, focus rings and Chakra component defaults. Components do not use raw hex values.
+  - The application shell uses the navy sidebar (`sidebar`/`sidebarHover`), sky active indicators, property/organization selectors and a responsive drawer.
+  - Status colors map to `mint` (positive), `warning` (attention), `danger` (error/critical) and `sky` (informational), always paired with text labels.
+  - The Dashboard uses real `/front-office/overview` data for occupancy, arrivals, departures, ready rooms, arrivals list and operational alerts. It does not invent KPIs or trends; unavailable data renders loading, empty or error states.
+  - Quick actions only link to implemented flows. Cashier remains omitted until its module exists.
+  - Connectivity shows real browser online/offline state. Syncing/degraded states are deferred until the API exposes a global synchronization channel.
+- Consequences:
+  - Existing screens inherit the palette through shared components and token replacements; future screens must reuse the same theme.
+  - Deep links `?tab=arrivals|rack|incidents` and `?new=1` open the relevant Front Office/Reservations flows.
+  - Occupancy trends and Cashier remain documented gaps, not mock UI.

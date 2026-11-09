@@ -34,39 +34,73 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useSession } from '@/context/session';
 import { errorMessage } from '@/lib/api';
-import { initials } from '@/lib/format';
+import { ConnectionStatus } from './connection-status';
+import {
+  AccountIcon,
+  AdminIcon,
+  AuditIcon,
+  CalendarIcon,
+  ChevronDownIcon,
+  DashboardIcon,
+  FrontDeskIcon,
+  GuestsIcon,
+  LogoutIcon,
+  MenuIcon,
+  PropertyIcon,
+  ReservationIcon,
+  RoomTypesIcon,
+  RoomsIcon,
+} from './icons';
 import { SectionCard } from './ui';
 
 const NAV_SECTIONS = [
   {
     title: 'Operación',
     items: [
-      { href: '/dashboard', label: 'Panel' },
-      { href: '/front-office', label: 'Front Office' },
-      { href: '/calendar', label: 'Calendario' },
-      { href: '/reservations', label: 'Reservas' },
-      { href: '/guests', label: 'Huéspedes' },
+      { href: '/dashboard', label: 'Panel', icon: <DashboardIcon boxSize={4} /> },
+      { href: '/front-office', label: 'Front Office', icon: <FrontDeskIcon boxSize={4} /> },
+      { href: '/calendar', label: 'Calendario', icon: <CalendarIcon boxSize={4} /> },
+      { href: '/reservations', label: 'Reservas', icon: <ReservationIcon boxSize={4} /> },
+      { href: '/guests', label: 'Huéspedes', icon: <GuestsIcon boxSize={4} /> },
     ],
   },
   {
     title: 'Configuración',
     items: [
-      { href: '/inventory/rooms', label: 'Habitaciones' },
-      { href: '/inventory/room-types', label: 'Tipos de habitación' },
-      { href: '/settings', label: 'Propiedad' },
+      { href: '/inventory/rooms', label: 'Habitaciones', icon: <RoomsIcon boxSize={4} /> },
+      {
+        href: '/inventory/room-types',
+        label: 'Tipos de habitación',
+        icon: <RoomTypesIcon boxSize={4} />,
+      },
+      { href: '/settings', label: 'Propiedad', icon: <PropertyIcon boxSize={4} /> },
     ],
   },
   {
     title: 'Seguridad',
     items: [
-      { href: '/audit', label: 'Auditoría' },
-      { href: '/admin', label: 'Administración' },
-      { href: '/account', label: 'Mi cuenta' },
+      { href: '/audit', label: 'Auditoría', icon: <AuditIcon boxSize={4} /> },
+      { href: '/admin', label: 'Administración', icon: <AdminIcon boxSize={4} /> },
+      { href: '/account', label: 'Mi cuenta', icon: <AccountIcon boxSize={4} /> },
     ],
   },
 ] as const;
 
-function NavItem({ href, label, onClick }: { href: string; label: string; onClick?: () => void }) {
+const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap((section) =>
+  section.items.map((item) => ({ ...item, section: section.title })),
+);
+
+function NavItem({
+  href,
+  label,
+  icon,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  onClick?: () => void;
+}) {
   const pathname = usePathname();
   const active = pathname === href || pathname.startsWith(`${href}/`);
 
@@ -76,33 +110,52 @@ function NavItem({ href, label, onClick }: { href: string; label: string; onClic
       href={href}
       onClick={onClick}
       display="block"
+      position="relative"
       px={3}
-      py={2}
-      borderRadius="md"
+      py={2.5}
+      borderRadius="lg"
       fontSize="sm"
-      fontWeight={active ? 'semibold' : 'normal'}
-      bg={active ? 'purple.50' : 'transparent'}
-      color={active ? 'purple.700' : 'gray.700'}
-      _hover={{ bg: active ? 'purple.50' : 'gray.100' }}
+      fontWeight={active ? 'semibold' : 'medium'}
+      bg={active ? 'sidebarHover' : 'transparent'}
+      color={active ? 'white' : 'whiteAlpha.700'}
+      _hover={{ bg: active ? 'sidebarHover' : 'whiteAlpha.100', color: 'white' }}
+      _focusVisible={{ boxShadow: '0 0 0 2px #57B3EA', outline: 'none' }}
+      aria-current={active ? 'page' : undefined}
     >
-      {label}
+      {active && (
+        <Box
+          position="absolute"
+          left={0}
+          top="22%"
+          h="56%"
+          w="3px"
+          borderRadius="full"
+          bg="brand.400"
+        />
+      )}
+      <HStack spacing={3}>
+        <Box color={active ? 'brand.300' : 'whiteAlpha.600'} display="flex">
+          {icon}
+        </Box>
+        <Text noOfLines={1}>{label}</Text>
+      </HStack>
     </Link>
   );
 }
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <Stack spacing={5}>
+    <Stack spacing={5} aria-label="Navegación principal">
       {NAV_SECTIONS.map((section) => (
         <Box key={section.title}>
           <Text
-            fontSize="xs"
-            fontWeight="semibold"
-            color="gray.500"
+            fontSize="10px"
+            fontWeight="bold"
+            color="whiteAlpha.500"
             textTransform="uppercase"
-            letterSpacing="wide"
+            letterSpacing="0.16em"
             px={3}
-            mb={1}
+            mb={2}
           >
             {section.title}
           </Text>
@@ -112,6 +165,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
                 key={item.href}
                 href={item.href}
                 label={item.label}
+                icon={item.icon}
                 {...(onNavigate !== undefined ? { onClick: onNavigate } : {})}
               />
             ))}
@@ -124,31 +178,40 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 
 function Brand() {
   return (
-    <HStack spacing={2}>
-      <Box
-        bg="purple.600"
-        color="white"
-        borderRadius="md"
-        px={2}
-        py={1}
-        fontSize="sm"
-        fontWeight="bold"
+    <HStack spacing={3}>
+      <Flex
+        boxSize="40px"
+        flexShrink={0}
+        align="center"
+        justify="center"
+        borderRadius="xl"
+        bgGradient="linear(to-br, brand.400, mint.400)"
+        color="sidebar"
+        fontSize="lg"
+        fontWeight="800"
+        boxShadow="0 8px 20px rgba(57, 167, 232, 0.25)"
       >
         N
-      </Box>
-      <Box>
-        <Text fontWeight="bold" lineHeight="1">
+      </Flex>
+      <Box minW={0}>
+        <Text fontWeight="800" letterSpacing="0.08em" lineHeight="1.1" fontSize="sm">
           NOVA PMS
         </Text>
-        <Text fontSize="xs" color="gray.500">
-          Operaciones hoteleras
+        <Text
+          fontSize="10px"
+          color="whiteAlpha.600"
+          letterSpacing="0.14em"
+          textTransform="uppercase"
+          mt={1}
+        >
+          Hotel management
         </Text>
       </Box>
     </HStack>
   );
 }
 
-function SessionSelectors() {
+function TenantSelector() {
   const {
     organizations,
     organizationId,
@@ -178,16 +241,39 @@ function SessionSelectors() {
     }
   }
 
+  const fieldProps = {
+    size: 'sm' as const,
+    bg: 'whiteAlpha.100',
+    borderColor: 'whiteAlpha.200',
+    color: 'white',
+    borderRadius: 'lg',
+    _hover: { borderColor: 'whiteAlpha.300' },
+    _focusVisible: {
+      borderColor: 'brand.300',
+      boxShadow: '0 0 0 1px #79C7F1',
+    },
+    sx: { option: { color: '#172B4D', bg: '#FFFFFF' } },
+  };
+
   return (
-    <Stack spacing={1} minW={{ base: '100%', md: '420px' }}>
-      <HStack spacing={2} w="100%">
+    <Stack spacing={3}>
+      <Box>
+        <Text
+          fontSize="10px"
+          fontWeight="bold"
+          color="whiteAlpha.500"
+          textTransform="uppercase"
+          letterSpacing="0.14em"
+          mb={1.5}
+        >
+          Organización
+        </Text>
         <Select
-          size="sm"
+          {...fieldProps}
           aria-label="Organización"
           value={organizationId ?? ''}
           onChange={(event) => void handleOrganization(event.target.value)}
           isDisabled={switching || organizations.length === 0}
-          bg="white"
         >
           {organizations.length === 0 && <option value="">Sin organizaciones</option>}
           {organizations.map((organization) => (
@@ -196,13 +282,24 @@ function SessionSelectors() {
             </option>
           ))}
         </Select>
+      </Box>
+      <Box>
+        <Text
+          fontSize="10px"
+          fontWeight="bold"
+          color="whiteAlpha.500"
+          textTransform="uppercase"
+          letterSpacing="0.14em"
+          mb={1.5}
+        >
+          Propiedad activa
+        </Text>
         <Select
-          size="sm"
+          {...fieldProps}
           aria-label="Propiedad"
           value={propertyId ?? ''}
           onChange={(event) => selectProperty(event.target.value)}
           isDisabled={switching || properties.length === 0}
-          bg="white"
         >
           {properties.length === 0 && <option value="">Sin propiedades</option>}
           {properties.map((property) => (
@@ -211,11 +308,16 @@ function SessionSelectors() {
             </option>
           ))}
         </Select>
-        {switching && <Spinner size="sm" />}
-      </HStack>
+      </Box>
+      {switching && (
+        <HStack spacing={2} color="whiteAlpha.700">
+          <Spinner size="xs" color="brand.300" />
+          <Text fontSize="xs">Cambiando contexto…</Text>
+        </HStack>
+      )}
       {error !== null && (
-        <Alert status="error" borderRadius="md" py={1}>
-          <AlertIcon boxSize={3} />
+        <Alert status="error" borderRadius="lg" py={1} bg="danger.900" color="white">
+          <AlertIcon boxSize={3} color="danger.200" />
           <AlertDescription fontSize="xs">{errorMessage(error)}</AlertDescription>
         </Alert>
       )}
@@ -223,8 +325,157 @@ function SessionSelectors() {
   );
 }
 
+function UserCard({ onLogout, loggingOut }: { onLogout: () => void; loggingOut: boolean }) {
+  const { actor, organization, property } = useSession();
+
+  return (
+    <HStack spacing={3} align="center">
+      <Avatar size="sm" name={actor?.name} bg="mint.400" color="sidebar" fontWeight="bold" />
+      <Box flex="1" minW={0}>
+        <Text fontSize="sm" fontWeight="semibold" color="white" noOfLines={1}>
+          {actor?.name}
+        </Text>
+        <Text fontSize="xs" color="whiteAlpha.600" noOfLines={1}>
+          {organization?.role?.name ?? 'Staff'} · {property?.code ?? 'sin propiedad'}
+        </Text>
+      </Box>
+      <IconButton
+        aria-label="Cerrar sesión"
+        icon={<LogoutIcon boxSize={4} />}
+        size="sm"
+        variant="ghost"
+        color="whiteAlpha.700"
+        isLoading={loggingOut}
+        onClick={onLogout}
+        _hover={{ bg: 'whiteAlpha.200', color: 'white' }}
+        _focusVisible={{ boxShadow: '0 0 0 2px #57B3EA' }}
+      />
+    </HStack>
+  );
+}
+
+function SidebarContent({
+  onNavigate,
+  onLogout,
+  loggingOut,
+}: {
+  onNavigate?: () => void;
+  onLogout: () => void;
+  loggingOut: boolean;
+}) {
+  return (
+    <Flex direction="column" h="100%" bg="sidebar" color="white" px={4} py={5}>
+      <Brand />
+      <Box mt={6}>
+        <TenantSelector />
+      </Box>
+      <Divider borderColor="whiteAlpha.200" my={5} />
+      <Box flex="1" overflowY="auto" mx={-1} px={1} pb={4}>
+        <Navigation {...(onNavigate !== undefined ? { onNavigate } : {})} />
+      </Box>
+      <Divider borderColor="whiteAlpha.200" mb={4} />
+      <UserCard onLogout={onLogout} loggingOut={loggingOut} />
+    </Flex>
+  );
+}
+
+function Topbar({
+  onOpenNavigation,
+  onLogout,
+  loggingOut,
+}: {
+  onOpenNavigation: () => void;
+  onLogout: () => void;
+  loggingOut: boolean;
+}) {
+  const { actor, organization } = useSession();
+  const pathname = usePathname();
+  const current =
+    ALL_NAV_ITEMS.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ??
+    null;
+
+  return (
+    <Flex
+      as="header"
+      bg="rgba(255, 255, 255, 0.92)"
+      backdropFilter="blur(10px)"
+      borderBottomWidth="1px"
+      borderColor="line"
+      px={{ base: 4, md: 6, lg: 8 }}
+      py={3}
+      align="center"
+      justify="space-between"
+      gap={3}
+      position="sticky"
+      top={0}
+      zIndex={10}
+    >
+      <HStack spacing={3} minW={0}>
+        <IconButton
+          aria-label="Abrir navegación"
+          icon={<MenuIcon boxSize={5} />}
+          onClick={onOpenNavigation}
+          variant="outline"
+          size="sm"
+          display={{ base: 'inline-flex', lg: 'none' }}
+        />
+        <Box minW={0}>
+          <Text fontSize="xs" color="textSecondary" noOfLines={1}>
+            {current?.section ?? 'NOVA PMS'}
+          </Text>
+          <Text fontSize="sm" fontWeight="semibold" noOfLines={1}>
+            {current?.label ?? 'Panel'}
+          </Text>
+        </Box>
+      </HStack>
+
+      <HStack spacing={{ base: 2, md: 4 }}>
+        <Box display={{ base: 'none', sm: 'block' }}>
+          <ConnectionStatus />
+        </Box>
+        <Menu placement="bottom-end">
+          <MenuButton
+            as={Button}
+            variant="ghost"
+            size="sm"
+            px={2}
+            borderRadius="full"
+            rightIcon={<ChevronDownIcon boxSize={3.5} color="textSecondary" />}
+          >
+            <HStack spacing={2}>
+              <Avatar
+                size="xs"
+                name={actor?.name}
+                bg="brand.100"
+                color="brand.700"
+                fontWeight="bold"
+              />
+              <Box display={{ base: 'none', md: 'block' }} textAlign="left">
+                <Text fontSize="sm" fontWeight="semibold" lineHeight="1.2">
+                  {actor?.name}
+                </Text>
+                <Text fontSize="10px" color="textSecondary" lineHeight="1.2">
+                  {organization?.role?.name ?? 'Staff'}
+                </Text>
+              </Box>
+            </HStack>
+          </MenuButton>
+          <MenuList fontSize="sm" minW="200px">
+            <MenuItem as={NextLink} href="/account" icon={<AccountIcon boxSize={4} />}>
+              Mi cuenta
+            </MenuItem>
+            <MenuItem icon={<LogoutIcon boxSize={4} />} onClick={onLogout} isDisabled={loggingOut}>
+              Cerrar sesión
+            </MenuItem>
+          </MenuList>
+        </Menu>
+      </HStack>
+    </Flex>
+  );
+}
+
 function AppShell({ children }: { children: ReactNode }) {
-  const { actor, organization, property, logout } = useSession();
+  const { logout } = useSession();
   const router = useRouter();
   const drawer = useDisclosure();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -240,125 +491,50 @@ function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Flex minH="100vh" bg="gray.50">
+    <Flex minH="100vh" bg="canvas">
       <Box
         as="aside"
-        display={{ base: 'none', lg: 'flex' }}
-        flexDirection="column"
-        w="240px"
-        borderRightWidth="1px"
-        borderColor="gray.200"
-        bg="white"
-        px={4}
-        py={5}
+        display={{ base: 'none', lg: 'block' }}
+        w="264px"
+        flexShrink={0}
         position="sticky"
         top={0}
         h="100vh"
+        bg="sidebar"
       >
-        <Brand />
-        <Divider my={5} />
-        <Box flex="1" overflowY="auto">
-          <Navigation />
-        </Box>
-        <Divider my={4} />
-        <Stack spacing={1} fontSize="xs" color="gray.600">
-          <Text fontWeight="semibold">{actor?.name}</Text>
-          <Text noOfLines={1}>{actor?.email}</Text>
-          {organization !== null && (
-            <Text>
-              Rol: {organization.role?.name ?? 'Staff'} · {property?.code ?? 'sin propiedad'}
-            </Text>
-          )}
-          <Button
-            size="xs"
-            variant="outline"
-            mt={2}
-            onClick={() => void handleLogout()}
-            isLoading={loggingOut}
-          >
-            Cerrar sesión
-          </Button>
-        </Stack>
+        <SidebarContent onLogout={() => void handleLogout()} loggingOut={loggingOut} />
       </Box>
 
       <Box flex="1" minW={0}>
-        <Flex
-          as="header"
-          bg="white"
-          borderBottomWidth="1px"
-          borderColor="gray.200"
-          px={{ base: 4, md: 6 }}
-          py={3}
-          align={{ base: 'stretch', md: 'center' }}
-          justify="space-between"
-          gap={3}
-          direction={{ base: 'column', md: 'row' }}
-          position="sticky"
-          top={0}
-          zIndex={10}
+        <Topbar
+          onOpenNavigation={drawer.onOpen}
+          onLogout={() => void handleLogout()}
+          loggingOut={loggingOut}
+        />
+        <Box
+          px={{ base: 4, md: 6, lg: 8 }}
+          py={{ base: 5, md: 7 }}
+          maxW="1600px"
+          mx="auto"
+          w="100%"
         >
-          <HStack spacing={3} display={{ base: 'flex', lg: 'none' }}>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={drawer.onOpen}
-              aria-label="Abrir navegación"
-            >
-              ☰
-            </Button>
-            <Brand />
-          </HStack>
-
-          <SessionSelectors />
-
-          <HStack spacing={2} justify={{ base: 'space-between', md: 'flex-end' }}>
-            <Menu>
-              <MenuButton
-                as={Button}
-                variant="ghost"
-                size="sm"
-                rightIcon={<Text fontSize="xs">▾</Text>}
-              >
-                <HStack spacing={2}>
-                  <Avatar size="xs" name={actor?.name} bg="purple.600" color="white" />
-                  <Text fontSize="sm" display={{ base: 'none', sm: 'block' }}>
-                    {actor?.name}
-                  </Text>
-                </HStack>
-              </MenuButton>
-              <MenuList fontSize="sm">
-                <MenuItem as={NextLink} href="/account">
-                  Mi cuenta
-                </MenuItem>
-                <MenuItem onClick={() => void handleLogout()}>Cerrar sesión</MenuItem>
-              </MenuList>
-            </Menu>
-          </HStack>
-        </Flex>
-
-        <Box px={{ base: 4, md: 6 }} py={{ base: 5, md: 7 }} maxW="1600px" mx="auto">
           {children}
         </Box>
       </Box>
 
-      <Drawer isOpen={drawer.isOpen} placement="left" onClose={drawer.onClose}>
-        <DrawerOverlay />
-        <DrawerContent>
-          <DrawerCloseButton />
-          <DrawerBody pt={10}>
-            <Navigation onNavigate={drawer.onClose} />
-            <Divider my={4} />
-            <Button
-              size="sm"
-              variant="outline"
-              width="100%"
-              onClick={() => {
+      <Drawer isOpen={drawer.isOpen} placement="left" onClose={drawer.onClose} size="xs">
+        <DrawerOverlay bg="blackAlpha.600" />
+        <DrawerContent bg="sidebar" maxW="300px">
+          <DrawerCloseButton color="white" top={5} right={4} />
+          <DrawerBody p={0}>
+            <SidebarContent
+              onNavigate={drawer.onClose}
+              onLogout={() => {
                 drawer.onClose();
                 void handleLogout();
               }}
-            >
-              Cerrar sesión
-            </Button>
+              loggingOut={loggingOut}
+            />
           </DrawerBody>
         </DrawerContent>
       </Drawer>
@@ -378,7 +554,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
 
   if (status !== 'authenticated') {
     return (
-      <Center minH="100vh">
+      <Center minH="100vh" bg="canvas">
         <Spinner />
       </Center>
     );
@@ -386,12 +562,12 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
 
   if (organizationId === null) {
     return (
-      <Center minH="100vh" px={4}>
+      <Center minH="100vh" px={4} bg="canvas">
         <SectionCard maxW="lg" textAlign="center">
           <Text fontWeight="semibold" mb={2}>
             Tu usuario no tiene una organización activa
           </Text>
-          <Text fontSize="sm" color="gray.600">
+          <Text fontSize="sm" color="textSecondary">
             Pedile a un administrador que cree o reactive tu membresía. Organizaciones detectadas:{' '}
             {organizations.length}.
           </Text>
@@ -412,10 +588,10 @@ export function PropertyGate({ children }: { children: ReactNode }) {
         <Text fontWeight="semibold" mb={1}>
           No hay una propiedad seleccionada
         </Text>
-        <Text fontSize="sm" color="gray.600">
+        <Text fontSize="sm" color="textSecondary">
           {properties.length === 0
             ? 'Tu rol no tiene acceso a ninguna propiedad activa en esta organización.'
-            : 'Elegí una propiedad en el selector superior para continuar.'}
+            : 'Elegí una propiedad en el selector de la barra lateral para continuar.'}
         </Text>
       </SectionCard>
     );
