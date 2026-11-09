@@ -130,6 +130,17 @@ async function ensureCsrfToken(): Promise<string> {
  */
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const method = options.method ?? 'GET';
+
+  // Phase 7 has no write outbox: block mutations explicitly while offline so a
+  // critical operation is never shown as committed without reaching the API.
+  if (method !== 'GET' && typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new ApiError(
+      0,
+      'offline',
+      'Sin conexión: la operación no se envió. Reintentá cuando vuelvas a estar en línea.',
+    );
+  }
+
   const headers: Record<string, string> = { Accept: 'application/json' };
 
   if (options.body !== undefined) {

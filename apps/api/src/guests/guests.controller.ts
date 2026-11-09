@@ -22,7 +22,14 @@ import {
 } from '../common/http/request-context';
 import { PermissionsGuard } from '../tenancy/permissions.guard';
 import { TenantContextGuard } from '../tenancy/tenant-context.guard';
-import { CreateGuestDto, ListGuestsQueryDto, UpdateGuestDto } from './dto/guest.dto';
+import {
+  CommitGuestImportDto,
+  CreateGuestDto,
+  ListGuestsQueryDto,
+  PreviewGuestImportDto,
+  UpdateGuestDto,
+} from './dto/guest.dto';
+import { GuestImportService } from './guest-import.service';
 import { GuestsService } from './guests.service';
 
 @ApiTags('guests')
@@ -32,12 +39,27 @@ import { GuestsService } from './guests.service';
 @Controller('guests')
 @UseGuards(AuthenticationGuard, TenantContextGuard, PermissionsGuard)
 export class GuestsController {
-  constructor(private readonly guests: GuestsService) {}
+  constructor(
+    private readonly guests: GuestsService,
+    private readonly guestImport: GuestImportService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.GUESTS_READ)
   list(@Tenant() tenant: TenantContext, @Query() query: ListGuestsQueryDto) {
     return this.guests.list(tenant, query);
+  }
+
+  @Post('import/preview')
+  @RequirePermissions(PERMISSIONS.GUESTS_MANAGE)
+  previewImport(@Body() dto: PreviewGuestImportDto) {
+    return this.guestImport.preview(dto.csv);
+  }
+
+  @Post('import')
+  @RequirePermissions(PERMISSIONS.GUESTS_MANAGE)
+  commitImport(@Tenant() tenant: TenantContext, @Body() dto: CommitGuestImportDto) {
+    return this.guestImport.commit(tenant, dto.csv, dto.idempotencyKey);
   }
 
   @Post()

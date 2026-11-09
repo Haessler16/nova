@@ -40,12 +40,16 @@ import {
   AdminIcon,
   AuditIcon,
   CalendarIcon,
+  CashIcon,
   ChevronDownIcon,
   DashboardIcon,
+  FolioIcon,
   FrontDeskIcon,
   GuestsIcon,
+  ImportIcon,
   LogoutIcon,
   MenuIcon,
+  PilotIcon,
   PropertyIcon,
   ReservationIcon,
   RoomTypesIcon,
@@ -59,9 +63,13 @@ const NAV_SECTIONS = [
     items: [
       { href: '/dashboard', label: 'Panel', icon: <DashboardIcon boxSize={4} /> },
       { href: '/front-office', label: 'Front Office', icon: <FrontDeskIcon boxSize={4} /> },
+      { href: '/folios', label: 'Folios', icon: <FolioIcon boxSize={4} /> },
+      { href: '/cashier', label: 'Caja y cierre', icon: <CashIcon boxSize={4} /> },
+      { href: '/pilot', label: 'Piloto', icon: <PilotIcon boxSize={4} /> },
       { href: '/calendar', label: 'Calendario', icon: <CalendarIcon boxSize={4} /> },
       { href: '/reservations', label: 'Reservas', icon: <ReservationIcon boxSize={4} /> },
       { href: '/guests', label: 'Huéspedes', icon: <GuestsIcon boxSize={4} /> },
+      { href: '/imports', label: 'Importaciones', icon: <ImportIcon boxSize={4} /> },
     ],
   },
   {
@@ -491,54 +499,77 @@ function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Flex minH="100vh" bg="canvas">
-      <Box
-        as="aside"
-        display={{ base: 'none', lg: 'block' }}
-        w="264px"
-        flexShrink={0}
-        position="sticky"
-        top={0}
-        h="100vh"
-        bg="sidebar"
+    <>
+      <Link
+        as={NextLink}
+        href="#main-content"
+        position="fixed"
+        top={2}
+        left={-9999}
+        zIndex={2000}
+        px={4}
+        py={2}
+        bg="surface"
+        color="brand.700"
+        fontWeight="semibold"
+        borderRadius="md"
+        boxShadow="card"
+        _focusVisible={{ left: 2, outline: 'none', boxShadow: 'focus' }}
       >
-        <SidebarContent onLogout={() => void handleLogout()} loggingOut={loggingOut} />
-      </Box>
-
-      <Box flex="1" minW={0}>
-        <Topbar
-          onOpenNavigation={drawer.onOpen}
-          onLogout={() => void handleLogout()}
-          loggingOut={loggingOut}
-        />
+        Saltar al contenido principal
+      </Link>
+      <Flex minH="100vh" bg="canvas">
         <Box
-          px={{ base: 4, md: 6, lg: 8 }}
-          py={{ base: 5, md: 7 }}
-          maxW="1600px"
-          mx="auto"
-          w="100%"
+          as="aside"
+          display={{ base: 'none', lg: 'block' }}
+          w="264px"
+          flexShrink={0}
+          position="sticky"
+          top={0}
+          h="100vh"
+          bg="sidebar"
         >
-          {children}
+          <SidebarContent onLogout={() => void handleLogout()} loggingOut={loggingOut} />
         </Box>
-      </Box>
 
-      <Drawer isOpen={drawer.isOpen} placement="left" onClose={drawer.onClose} size="xs">
-        <DrawerOverlay bg="blackAlpha.600" />
-        <DrawerContent bg="sidebar" maxW="300px">
-          <DrawerCloseButton color="white" top={5} right={4} />
-          <DrawerBody p={0}>
-            <SidebarContent
-              onNavigate={drawer.onClose}
-              onLogout={() => {
-                drawer.onClose();
-                void handleLogout();
-              }}
-              loggingOut={loggingOut}
-            />
-          </DrawerBody>
-        </DrawerContent>
-      </Drawer>
-    </Flex>
+        <Box flex="1" minW={0}>
+          <Topbar
+            onOpenNavigation={drawer.onOpen}
+            onLogout={() => void handleLogout()}
+            loggingOut={loggingOut}
+          />
+          <Box
+            as="main"
+            id="main-content"
+            tabIndex={-1}
+            px={{ base: 4, md: 6, lg: 8 }}
+            py={{ base: 5, md: 7 }}
+            maxW="1600px"
+            mx="auto"
+            w="100%"
+          >
+            {children}
+          </Box>
+        </Box>
+
+        <Drawer isOpen={drawer.isOpen} placement="left" onClose={drawer.onClose} size="xs">
+          <DrawerOverlay bg="blackAlpha.600" />
+          <DrawerContent bg="sidebar" maxW="300px">
+            <DrawerCloseButton color="white" top={5} right={4} />
+            <DrawerBody p={0}>
+              <SidebarContent
+                onNavigate={drawer.onClose}
+                onLogout={() => {
+                  drawer.onClose();
+                  void handleLogout();
+                }}
+                loggingOut={loggingOut}
+              />
+            </DrawerBody>
+          </DrawerContent>
+        </Drawer>
+      </Flex>
+    </>
   );
 }
 

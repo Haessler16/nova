@@ -580,3 +580,121 @@ These choices should be confirmed against the existing repository and current st
   - Existing screens inherit the palette through shared components and token replacements; future screens must reuse the same theme.
   - Deep links `?tab=arrivals|rack|incidents` and `?new=1` open the relevant Front Office/Reservations flows.
   - Occupancy trends and Cashier remain documented gaps, not mock UI.
+
+### ADR-031 — Money is stored as DECIMAL(10,2) with an explicit currency and exchanged as decimal strings
+
+- Status: accepted for Phase 5.
+- Date: 2026-11-09.
+- Context: `AGENTS.md` forbids binary floating point for persisted amounts and requires an explicit currency. Phase 5 introduces charges, payments, cash movements and cash reconciliation, where rounding errors become financial discrepancies.
+- Options:
+  1. store integer minor units (rejected: every adapter and report would convert, and the pilot may need currencies with different exponents);
+  2. store `float`/`number` (rejected: violates the financial invariant);
+  3. store PostgreSQL `DECIMAL(10,2)` through `Prisma.Decimal` and transport amounts as validated decimal strings (chosen).
+- Decision:
+  - `FolioLine.amount`, `Payment.amount`, `CashMovement.amount` and the cash session amounts are `DECIMAL(10,2)`; every financial row carries `currencyCode` constrained to `^[A-Z]{3}$`.
+  - Input accepts only `MONEY_PATTERN` strings (up to two decimals) parsed by `parseMoney`; over-precision or out-of-range input is a validation error, never silent rounding.
+  - Arithmetic uses `Prisma.Decimal` inside the API; responses format with exactly two decimals. Amounts are compared with `equals`/`greaterThan`, never `===`.
+  - Charges and payments inherit the folio currency; cash movements inherit the cash session currency. A conflicting payload currency returns `400 currency_mismatch`; Phase 5 does not convert currencies.
+- Consequences:
+  - Billing integrations must send decimal strings plus a currency; multi-currency settlement and FX are out of scope.
+  - Changing precision later requires a migration and a documented rounding policy.
+
+### ADR-032 — Folio is a header with posted lines; settlement is transactional and history preserving
+
+- Status: accepted for Phase 5.
+- Date: 2026-11-09.
+- Context: a folio must accumulate charges while a guest is in house, accept partial payments, keep voids auditable and prevent double billing.
+- Decision:
+  - `Folio` is the header (`OPEN`, `SETTLED`, `CANCELLED`); `FolioLine` holds posted charges and is never deleted. A void sets `status = VOID`, `voidedAt` and `voidReason` (`FolioLine_void_check`), keeping the original amount visible.
+  - A folio must link to a stay or a reservation (`Folio_link_check`) in the same organization and property; composite tenant FKs reject cross-tenant links.
+  - Partial unique indexes allow at most one non-cancelled folio per reservation and per stay, so a cancelled folio remains history.
+  - Mutations lock the `Folio` row with `SELECT ... FOR UPDATE`, recompute charges and completed payments inside the transaction and reject overpayment (`409 payment_exceeds_balance`) and voids that would leave payments above charges (`409 void_would_underfund_payments`).
+  - Reaching a zero balance records the final payment, sets `SETTLED` and `closedAt` in the same transaction; cancellation is refused while payments exist.
+  - Every mutation writes an `AuditEvent` in the same transaction and accepts an `idempotencyKey` unique per property; replaying a key with a different payload returns `409 idempotency_key_reuse`.
+- Consequences:
+  - Corrections are void + new charge, never edits; reporting must sum `POSTED` lines and `COMPLETED` payments.
+  - Folios are not invoices and carry no fiscal numbering (`OPEN QUESTION` with the pilot).
+
+### ADR-033 — Cash sessions and the operational close are property-scoped, idempotent and explicit about variance
+
+- Status: accepted for Phase 5.
+- Date: 2026-11-09.
+- Context: reception needs one cash drawer per property and a night audit that cannot silently duplicate or skip financial state.
+- Decision:
+  - A property has at most one `OPEN` cash session (`CashSession_one_open_per_property_key` partial unique index); the service checks first and maps the unique violation to `409 cash_session_already_open`.
+  - A session captures the property currency and the operational date at open. Opening for a future operational day is rejected (`409 cash_session_future_date`).
+  - Movement types map to signed deltas (`CASH_IN`/`ADJUSTMENT` positive, `CASH_OUT`/`REFUND` negative); expected cash is `openingAmount + movements` and is stored at close.
+  - Closing requires the counted amount; a non-zero difference requires a variance reason (`400 cash_variance_reason_required`) and is audited. Replaying the same closing amount returns the session; a different amount returns `409 cash_session_already_closed`.
+  - The operational close stores a JSON snapshot per operational date, is unique per property and date, replays by idempotency key and refuses to close while blockers exist unless `force` plus a reason is provided. Reopen requires a reason, records the actor and allows a later re-close.
+  - Operational dates come from property `timezone` + `operationalDayStart`, never from server midnight.
+- Consequences:
+  - Night audit is triggered by an authorized user, not by a scheduler yet; a missed close is visible as an open operational day.
+  - Adjusting a closed day means reopen + re-close; separate adjusting entries are future scope.
+
+### ADR-034 — Pilot feedback is property-scoped operational input, not an operational record
+
+- Status: accepted for Phase 6.
+- Date: 2026-11-09.
+- Context: the pilot needs a traceable feedback channel that is tenant-safe and cannot become an editable note attached to folios, stays or reservations.
+- Decision:
+  - `PilotFeedback` stores category, message, optional rating and optional JSON context for one organization/property and one author.
+  - Messages are immutable through the API; review only sets `status = REVIEWED`, `reviewedAt` and `reviewedByUserId`.
+  - Submission and review each write an `AuditEvent`; context is capped at 4 KB and the UI sends only the route and app version.
+  - Permissions are separate: `pilot.feedback.submit`, `pilot.feedback.read` and `pilot.feedback.manage`.
+- Consequences:
+  - Feedback cannot mutate operational or financial state by design.
+  - Editing, deletion and retention must be defined with the pilot (LGPD).
+
+### ADR-035 — The demo sandbox isolates by PostgreSQL schema
+
+- Status: accepted for Phase 6 (first version).
+- Date: 2026-11-09.
+- Context: pilots need a resettable demo with synthetic data and zero risk to the working dataset, without adding infrastructure.
+- Options:
+  1. reuse the development schema (rejected: demos would mutate working data);
+  2. provision a second database or cluster (deferred: more operational cost than needed for the first version);
+  3. create a dedicated `demo_sandbox` schema with the same migrations and seed (chosen).
+- Decision:
+  - `pnpm demo:sandbox` requires `CONFIRM_DEMO_SANDBOX=1` and a local `DATABASE_URL`, creates the schema if missing, runs `prisma migrate deploy` and the synthetic seed against it, and prints the sandbox URL and demo users.
+  - Re-running is idempotent; the working `public` schema is never touched.
+  - The sandbox is explicitly a local/demo facility, not a production hosting strategy.
+- Consequences:
+  - The sandbox shares the PostgreSQL instance and its resource limits.
+  - A dedicated database or cluster remains future work if pilots need stronger isolation.
+
+### ADR-036 — Guest CSV imports are previewed, then committed all-or-nothing with an idempotency key
+
+- Status: accepted for Phase 7.
+- Date: 2026-11-09.
+- Context: onboarding needs bulk guest loading without partial imports, duplicate retries or new PII retention surfaces.
+- Options:
+  1. create valid rows and report failures (rejected: partial state is hard to reconcile);
+  2. import each row independently (rejected: no clear confirmation boundary);
+  3. preview the whole file, reject it if any row is invalid, then commit atomically with an idempotency key (chosen).
+- Decision:
+  - Parsing and validation happen server-side on preview and again on commit; the preview is never trusted.
+  - CSV limits: 512 KB, 500 data rows, comma or semicolon delimiter, quoted fields supported.
+  - `GuestImport` stores only the property, idempotency key, row/created counts and actor; CSV content and guest PII are never stored in it or in audit metadata.
+  - `(propertyId, idempotencyKey)` is unique; a replay with the same row count returns the original result, and reuse with different content returns `409 idempotency_key_reused`.
+- Consequences:
+  - Retries are safe and no partial import is possible.
+  - Larger files need chunking or XLSX support in a later slice.
+  - Duplicate guests across different files remain a human dedupe decision.
+
+### ADR-037 — Offline mode blocks writes instead of queueing them
+
+- Status: accepted for Phase 7 (first slice).
+- Date: 2026-11-09.
+- Context: a buggy or optimistic offline flow could show financial or stay operations as committed when the server never received them.
+- Options:
+  1. optimistic UI plus an outbox with per-domain reconciliation (deferred: requires conflict rules for folios, cash, stays and reservations);
+  2. queue only non-financial notes (deferred: still needs conflict handling);
+  3. cache the shell, show connection state and reject mutations while offline (chosen).
+- Decision:
+  - The service worker caches only the offline page and static assets; it never caches `/api` responses.
+  - The shared API client throws `offline` for non-GET requests when `navigator.onLine` is false, before any request is sent.
+  - Idempotency keys remain the mechanism for safe retries once connectivity returns.
+- Consequences:
+  - Reception cannot operate offline; the UI states this explicitly.
+  - A future outbox must define per-operation conflict and reconciliation rules before it is introduced.
+  - Local read caching and offline notes remain future work.

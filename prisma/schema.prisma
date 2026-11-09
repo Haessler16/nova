@@ -82,6 +82,103 @@ enum IncidentStatus {
   RESOLVED
 }
 
+enum FolioStatus {
+  OPEN
+  SETTLED
+  CANCELLED
+}
+
+enum FolioLineStatus {
+  POSTED
+  VOID
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  CASH_IN
+  CASH_OUT
+  REFUND
+  ADJUSTMENT
+}
+
+enum OperationalCloseStatus {
+  CLOSED
+  REOPENED
+}
+
+enum PilotFeedbackCategory {
+  BUG
+  UX
+  QUESTION
+  OTHER
+}
+
+enum PilotFeedbackStatus {
+  OPEN
+  REVIEWED
+  ARCHIVED
+}
+
+// Phase 6 — pilot onboarding feedback. Messages are property-scoped, written by
+// a member of the organization and reviewed explicitly; they never mutate
+// operational records.
+/// Idempotency and audit header for a confirmed guest CSV import. Guest rows
+/// live in Guest; this table only records the import outcome and never stores
+/// the CSV or personal data.
+model GuestImport {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  propertyId      String   @db.Uuid
+  idempotencyKey  String   @db.VarChar(64)
+  rowCount        Int
+  createdCount    Int
+  createdByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property        Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  createdBy       User?        @relation("GuestImportCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([propertyId, idempotencyKey])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, createdAt])
+}
+
+model PilotFeedback {
+  id               String                @id @default(uuid()) @db.Uuid
+  organizationId   String                @db.Uuid
+  propertyId       String                @db.Uuid
+  userId           String                @db.Uuid
+  category         PilotFeedbackCategory @default(OTHER)
+  message          String
+  rating           Int?
+  context          Json?
+  status           PilotFeedbackStatus   @default(OPEN)
+  reviewedAt       DateTime?
+  reviewedByUserId String?               @db.Uuid
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  user         User         @relation("PilotFeedbackAuthor", fields: [userId], references: [id], onDelete: Restrict)
+  reviewedBy   User?        @relation("PilotFeedbackReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status])
+  @@index([organizationId, propertyId, createdAt])
+}
+
 model Organization {
   id                  String               @id @default(uuid()) @db.Uuid
   name                String
@@ -102,12 +199,16 @@ model Organization {
   reservationHistory  ReservationHistory[]
   stays               Stay[]
   incidents           Incident[]
+  folios              Folio[]
+  folioLines          FolioLine[]
+  payments            Payment[]
+  cashSessions        CashSession[]
+  cashMovements       CashMovement[]
+  operationalCloses   OperationalClose[]
+  pilotFeedback       PilotFeedback[]
+  guestImports        GuestImport[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
-  Folio               Folio[]
-  Payment             Payment[]
-  CashSession         CashSession[]
-  CashMovement        CashMovement[]
 
   @@index([status])
 }
@@ -133,12 +234,16 @@ model Property {
   reservationHistory  ReservationHistory[]
   stays               Stay[]
   incidents           Incident[]
+  folios              Folio[]
+  folioLines          FolioLine[]
+  payments            Payment[]
+  cashSessions        CashSession[]
+  cashMovements       CashMovement[]
+  operationalCloses   OperationalClose[]
+  pilotFeedback       PilotFeedback[]
+  guestImports        GuestImport[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
-  Folio               Folio[]
-  Payment             Payment[]
-  CashSession         CashSession[]
-  CashMovement        CashMovement[]
 
   @@unique([organizationId, code])
   @@unique([organizationId, id])
@@ -175,6 +280,17 @@ model User {
   staysCheckedOut         Stay[]                   @relation("StayCheckedOutBy")
   incidentsCreated        Incident[]               @relation("IncidentCreatedBy")
   incidentsResolved       Incident[]               @relation("IncidentResolvedBy")
+  foliosOpened            Folio[]                  @relation("FolioOpenedBy")
+  folioLinesCreated       FolioLine[]              @relation("FolioLineCreatedBy")
+  paymentsReceived        Payment[]                @relation("PaymentReceivedBy")
+  cashSessionsOpened      CashSession[]            @relation("CashSessionOpenedBy")
+  cashSessionsClosed      CashSession[]            @relation("CashSessionClosedBy")
+  cashMovements           CashMovement[]           @relation("CashMovementRecordedBy")
+  operationalCloses       OperationalClose[]       @relation("OperationalCloseClosedBy")
+  operationalReopens      OperationalClose[]       @relation("OperationalCloseReopenedBy")
+  pilotFeedback           PilotFeedback[]          @relation("PilotFeedbackAuthor")
+  pilotFeedbackReviewed   PilotFeedback[]          @relation("PilotFeedbackReviewer")
+  guestImports            GuestImport[]            @relation("GuestImportCreatedBy")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -452,10 +568,10 @@ model Reservation {
   history            ReservationHistory[]
   stay               Stay?
   incidents          Incident[]
+  folios             Folio[]
+  payments           Payment[]
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
-  Folio              Folio[]
-  Payment            Payment[]
 
   @@unique([propertyId, code])
   @@unique([propertyId, idempotencyKey])
@@ -513,10 +629,10 @@ model Stay {
   checkedInBy        User?        @relation("StayCheckedInBy", fields: [checkedInByUserId], references: [id], onDelete: SetNull)
   checkedOutBy       User?        @relation("StayCheckedOutBy", fields: [checkedOutByUserId], references: [id], onDelete: SetNull)
   incidents          Incident[]
+  folios             Folio[]
+  payments           Payment[]
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
-  Folio              Folio[]
-  Payment            Payment[]
 
   @@unique([organizationId, propertyId, id])
   @@index([organizationId, propertyId, status])
@@ -610,108 +726,190 @@ model SecurityEvent {
   @@index([type, occurredAt])
 }
 
-// Phase 5 — Folio, cash and operational day
+// Phase 5 — Folio, cash and operational day.
+//
+// Folio is the account header; FolioLine stores each charge. Payments are
+// linked to a folio only, so the database can always reconcile a payment with
+// its account. Money is persisted as DECIMAL(10,2) with an explicit currency.
 model Folio {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  propertyId     String   @db.Uuid
-  stayId         String?  @db.Uuid
-  reservationId  String?  @db.Uuid
-  number         String   @db.VarChar(32)
-  concept        String   @db.VarChar(120)
-  amount         Decimal  @db.Decimal(10, 2)
-  currencyCode   String   @default("BRL") @db.VarChar(3)
-  status         String   @default("PENDING")
-  description    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  propertyId     String      @db.Uuid
+  stayId         String?     @db.Uuid
+  reservationId  String?     @db.Uuid
+  number         String      @db.VarChar(32)
+  status         FolioStatus @default(OPEN)
+  currencyCode   String      @default("BRL") @db.VarChar(3)
+  notes          String?
+  idempotencyKey String      @db.VarChar(64)
+  openedByUserId String?     @db.Uuid
+  closedAt       DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   stay         Stay?        @relation(fields: [stayId], references: [id], onDelete: Restrict)
   reservation  Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
-  Payment      Payment[]
+  openedBy     User?        @relation("FolioOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
+  lines        FolioLine[]
+  payments     Payment[]
 
+  @@unique([propertyId, number])
+  @@unique([propertyId, idempotencyKey])
   @@unique([organizationId, propertyId, id])
   @@index([organizationId, propertyId, status])
+  @@index([organizationId, propertyId, createdAt])
   @@index([propertyId, stayId])
   @@index([propertyId, reservationId])
+}
+
+model FolioLine {
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @db.Uuid
+  propertyId      String          @db.Uuid
+  folioId         String          @db.Uuid
+  description     String          @db.VarChar(120)
+  amount          Decimal         @db.Decimal(10, 2)
+  currencyCode    String          @default("BRL") @db.VarChar(3)
+  status          FolioLineStatus @default(POSTED)
+  postedAt        DateTime        @default(now())
+  voidedAt        DateTime?
+  voidReason      String?
+  idempotencyKey  String          @db.VarChar(64)
+  createdByUserId String?         @db.Uuid
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  folio        Folio        @relation(fields: [folioId], references: [id], onDelete: Restrict)
+  createdBy    User?        @relation("FolioLineCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([propertyId, idempotencyKey])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, folioId, status])
   @@index([organizationId, propertyId, createdAt])
 }
 
 model Payment {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  propertyId     String   @db.Uuid
-  folioId        String?  @db.Uuid
-  stayId         String?  @db.Uuid
-  reservationId  String?  @db.Uuid
-  amount         Decimal  @db.Decimal(10, 2)
-  currencyCode   String   @default("BRL") @db.VarChar(3)
-  method         String   @db.VarChar(32)
-  status         String   @default("PENDING")
-  referenceId    String?  @db.VarChar(64)
-  description    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @db.Uuid
+  propertyId       String        @db.Uuid
+  folioId          String        @db.Uuid
+  amount           Decimal       @db.Decimal(10, 2)
+  currencyCode     String        @default("BRL") @db.VarChar(3)
+  method           String        @db.VarChar(32)
+  status           PaymentStatus @default(COMPLETED)
+  referenceId      String?       @db.VarChar(64)
+  description      String?
+  idempotencyKey   String        @db.VarChar(64)
+  receivedByUserId String?       @db.Uuid
+  receivedAt       DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  folio        Folio?       @relation(fields: [folioId], references: [id], onDelete: Restrict)
-  stay         Stay?        @relation(fields: [stayId], references: [id], onDelete: Restrict)
-  reservation  Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property      Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  folio         Folio        @relation(fields: [folioId], references: [id], onDelete: Restrict)
+  receivedBy    User?        @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
+  Reservation   Reservation? @relation(fields: [reservationId], references: [id])
+  reservationId String?      @db.Uuid
+  Stay          Stay?        @relation(fields: [stayId], references: [id])
+  stayId        String?      @db.Uuid
 
+  @@unique([propertyId, idempotencyKey])
   @@unique([organizationId, propertyId, id])
   @@index([organizationId, propertyId, status])
-  @@index([folioId])
-  @@index([stayId])
-  @@index([reservationId])
+  @@index([organizationId, propertyId, folioId])
   @@index([organizationId, propertyId, createdAt])
 }
 
 model CashSession {
-  id              String    @id @default(uuid()) @db.Uuid
-  organizationId  String    @db.Uuid
-  propertyId      String    @db.Uuid
-  name            String    @db.VarChar(120)
-  operationalDate DateTime  @db.Date
-  openingAmount   Decimal   @db.Decimal(10, 2)
-  closingAmount   Decimal?  @db.Decimal(10, 2)
-  openingByUserId String?   @db.Uuid
-  closedAt        DateTime?
-  closedByUserId  String?   @db.Uuid
-  status          String    @default("OPEN")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String            @db.Uuid
+  propertyId         String            @db.Uuid
+  name               String            @db.VarChar(120)
+  operationalDate    DateTime          @db.Date
+  openingAmount      Decimal           @db.Decimal(10, 2)
+  closingAmount      Decimal?          @db.Decimal(10, 2)
+  expectedCashAmount Decimal?          @db.Decimal(10, 2)
+  openingByUserId    String?           @db.Uuid
+  openedAt           DateTime          @default(now())
+  closedAt           DateTime?
+  closedByUserId     String?           @db.Uuid
+  status             CashSessionStatus @default(OPEN)
+  idempotencyKey     String            @db.VarChar(64)
+  currencyCode       String            @default("BRL") @db.VarChar(3)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property     Property       @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  openedBy     User?          @relation("CashSessionOpenedBy", fields: [openingByUserId], references: [id], onDelete: SetNull)
+  closedBy     User?          @relation("CashSessionClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
   movements    CashMovement[]
 
+  @@unique([propertyId, idempotencyKey])
   @@unique([organizationId, propertyId, id])
   @@index([organizationId, propertyId, operationalDate])
-  @@index([propertyId, status])
+  @@index([organizationId, propertyId, status])
   @@index([organizationId, propertyId, createdAt])
 }
 
 model CashMovement {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  propertyId     String   @db.Uuid
-  cashSessionId  String   @db.Uuid
-  type           String   @db.VarChar(32)
-  amount         Decimal  @db.Decimal(10, 2)
-  currencyCode   String   @default("BRL") @db.VarChar(3)
-  description    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @db.Uuid
+  propertyId       String           @db.Uuid
+  cashSessionId    String           @db.Uuid
+  type             CashMovementType
+  amount           Decimal          @db.Decimal(10, 2)
+  currencyCode     String           @default("BRL") @db.VarChar(3)
+  description      String?
+  idempotencyKey   String           @db.VarChar(64)
+  recordedByUserId String?          @db.Uuid
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   cashSession  CashSession  @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("CashMovementRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull)
 
+  @@unique([propertyId, idempotencyKey])
   @@unique([organizationId, propertyId, id])
-  @@index([cashSessionId])
+  @@index([organizationId, propertyId, cashSessionId])
   @@index([organizationId, propertyId, type])
+  @@index([organizationId, propertyId, createdAt])
+}
+
+/// One close/reopen row per property and operational date. `snapshot` keeps the
+/// totals computed at close time so later edits cannot rewrite history.
+model OperationalClose {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String                 @db.Uuid
+  propertyId       String                 @db.Uuid
+  operationalDate  DateTime               @db.Date
+  status           OperationalCloseStatus @default(CLOSED)
+  idempotencyKey   String                 @db.VarChar(64)
+  snapshot         Json
+  notes            String?
+  closedByUserId   String?                @db.Uuid
+  closedAt         DateTime
+  reopenedByUserId String?                @db.Uuid
+  reopenedAt       DateTime?
+  reopenReason     String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  closedBy     User?        @relation("OperationalCloseClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  reopenedBy   User?        @relation("OperationalCloseReopenedBy", fields: [reopenedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, propertyId, operationalDate])
+  @@unique([propertyId, idempotencyKey])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, status])
   @@index([organizationId, propertyId, createdAt])
 }

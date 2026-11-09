@@ -23,6 +23,17 @@ export const PERMISSIONS = {
   FRONT_OFFICE_MANAGE: 'front_office.manage',
   INCIDENTS_READ: 'incidents.read',
   INCIDENTS_MANAGE: 'incidents.manage',
+  FOLIO_READ: 'folio.read',
+  FOLIO_MANAGE: 'folio.manage',
+  PAYMENT_READ: 'payment.read',
+  PAYMENT_MANAGE: 'payment.manage',
+  CASH_READ: 'cash.read',
+  CASH_MANAGE: 'cash.manage',
+  NIGHT_AUDIT_READ: 'night_audit.read',
+  NIGHT_AUDIT_MANAGE: 'night_audit.manage',
+  PILOT_FEEDBACK_SUBMIT: 'pilot.feedback.submit',
+  PILOT_FEEDBACK_READ: 'pilot.feedback.read',
+  PILOT_FEEDBACK_MANAGE: 'pilot.feedback.manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

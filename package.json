@@ -27,6 +27,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:verify": "ts-node --project tsconfig.seed.json scripts/verify-db-integrity.ts",
+    "demo:sandbox": "ts-node --project tsconfig.seed.json scripts/demo-sandbox.ts",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
     "db:backup": "bash scripts/backup-db.sh",

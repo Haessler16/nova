@@ -316,7 +316,7 @@ pnpm test:e2e:auth
 - Los tokens de reset/verificación solo se registran/devuelven fuera de producción según `AUTH_TOKEN_DELIVERY`; en producción se requiere proveedor de correo.
 - La administración tiene UI (`/admin`) pero aplica reglas conservadoras en API (subset de permisos del actor y protección del último administrador); no incluye aprobaciones de cambios sensibles.
 - El estado operativo se reconcilia en lecturas y mediante un scheduler in-process con advisory lock PostgreSQL; no sustituye observabilidad/alertas operativas.
-- La UI cubre listas, calendario, Front Office y administración, pero no folios, caja, night audit, reportes, OCR, offline ni Edge.
+- La UI cubre listas, calendario, Front Office, folios, caja, night audit, onboarding/feedback de piloto, importación CSV de huéspedes y shell offline de solo lectura; no reportes avanzados, OCR, outbox offline ni Edge.
 - Una reserva admite una sola habitación y las estancias usan granularidad de fecha calendario. El check-in se habilita por fecha local; las horas exactas de llegada/salida y los conflictos con bloqueos a nivel de instante siguen pendientes de validación con el hotel piloto.
 - El room rack y las acciones de Front Office se validan en backend, pero la UI no oculta acciones según permisos: un rol de solo lectura recibe el `403` de la API.
 - El conflicto reserva↔bloqueo se serializa por el lock de la fila `Room`, pero no existe una constraint única que relacione ambas tablas.
@@ -326,7 +326,7 @@ pnpm test:e2e:auth
 
 ## Siguiente paso recomendado
 
-Phase 5 — Folio, caja y night audit: cargos/pagos sin datos de tarjeta, sesiones de caja, cierre del día operativo idempotente y reportes operativos básicos. Antes de implementarlo, definir la estrategia decimal/menor unidad, moneda e idempotencia financiera con el hotel piloto.
+Fase 6 quedó implementada localmente: checklist de onboarding y feedback en `/pilot`, sandbox demo aislado por schema, runbook y checklist de piloto, drill de restore exitoso y pruebas de concurrencia. Fase 7 tiene su primer corte: importación CSV de huéspedes con preview, confirmación todo-o-nada e idempotencia, más shell offline que bloquea escrituras en lugar de encolarlas. El siguiente paso es validar ambas fases con el hotel piloto y, con esa evidencia, evaluar outbox offline, XLSX/OCR y reportes/exportaciones avanzados.
 
 Pendiente inmediato de producto: validar con el piloto las horas de check-in/out, no-show y la política de overbooking antes de refinar la granularidad de fechas.
 
@@ -344,4 +344,9 @@ Pendiente inmediato de producto: validar con el piloto las horas de check-in/out
 - `docs/PHASE_2_REPORT.md`
 - `docs/PHASE_3_REPORT.md`
 - `docs/PHASE_4_REPORT.md`
+- `docs/PHASE_5_REPORT.md`
+- `docs/PHASE_6_REPORT.md`
+- `docs/PHASE_7_REPORT.md`
+- `docs/PILOT_RUNBOOK.md`
+- `docs/PILOT_CHECKLIST.md`
 - `prompts/PROMPT_01_FOUNDATION.md`

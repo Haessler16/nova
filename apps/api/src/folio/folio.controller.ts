@@ -1,87 +1,164 @@
 import {
   Body,
   Controller,
-  Post,
   Get,
-  Param,
-  UseGuards,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { TenantContext } from '../common/http/request-context';
+import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { PERMISSIONS } from '../access/permissions';
+import { AuthenticationGuard } from '../auth/authentication.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { Tenant } from '../common/decorators/tenant.decorator';
+import {
+  DEV_USER_HEADER,
+  ORGANIZATION_HEADER,
+  PROPERTY_HEADER,
+  TenantContext,
+} from '../common/http/request-context';
+import { PermissionsGuard } from '../tenancy/permissions.guard';
+import { TenantContextGuard } from '../tenancy/tenant-context.guard';
+import { CashService } from './cash.service';
+import {
+  AddFolioChargeDto,
+  CancelFolioDto,
+  CloseCashSessionDto,
+  CreateFolioDto,
+  ListCashSessionsQueryDto,
+  ListFoliosQueryDto,
+  OpenCashSessionDto,
+  RecordCashMovementDto,
+  RecordPaymentDto,
+  VoidFolioChargeDto,
+} from './dto/folio.dto';
 import { FolioService } from './folio.service';
-import { CreateFolioDto } from './dto/create-folio.dto';
-import { CreatePaymentDto } from './dto/create-payment.dto';
-import { CreateCashSessionDto } from './dto/create-cash-session.dto';
-import { CreateCashMovementDto } from './dto/create-cash-movement.dto';
 
-@ApiTags('Folio')
-@ApiBearerAuth()
-@UseGuards()
-@Controller('folio')
+@ApiTags('folios')
+@ApiHeader({ name: DEV_USER_HEADER, required: false })
+@ApiHeader({ name: ORGANIZATION_HEADER, required: true })
+@ApiHeader({ name: PROPERTY_HEADER, required: true })
+@Controller('folios')
+@UseGuards(AuthenticationGuard, TenantContextGuard, PermissionsGuard)
 export class FolioController {
-  constructor(private readonly folioService: FolioService) {}
+  constructor(private readonly folios: FolioService) {}
+
+  @Get()
+  @RequirePermissions(PERMISSIONS.FOLIO_READ)
+  list(@Tenant() tenant: TenantContext, @Query() query: ListFoliosQueryDto) {
+    return this.folios.list(tenant, query);
+  }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new folio' })
-  @ApiResponse({ status: 201, description: 'Folio created' })
+  @RequirePermissions(PERMISSIONS.FOLIO_MANAGE)
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() body: { organizationId: string; propertyId: string; createFolioDto: CreateFolioDto }) {
-    return this.folioService.createFolio(body.organizationId, body.propertyId, body.createFolioDto);
+  create(@Tenant() tenant: TenantContext, @Body() dto: CreateFolioDto) {
+    return this.folios.create(tenant, dto);
   }
 
-  @Get(':folioId')
-  @ApiOperation({ summary: 'Get folio details' })
-  @ApiResponse({ status: 200, description: 'Folio retrieved' })
-  async get(@Param('folioId') folioId: string) {
-    return this.folioService.getFolio(folioId);
+  @Get(':id')
+  @RequirePermissions(PERMISSIONS.FOLIO_READ)
+  get(@Tenant() tenant: TenantContext, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.folios.get(tenant, id);
   }
 
-  @Post('payments')
-  @ApiOperation({ summary: 'Record a payment' })
-  @ApiResponse({ status: 201, description: 'Payment recorded' })
+  @Post(':id/charges')
+  @RequirePermissions(PERMISSIONS.FOLIO_MANAGE)
   @HttpCode(HttpStatus.CREATED)
-  async recordPayment(
-    @Body() body: { organizationId: string; propertyId: string; createPaymentDto: CreatePaymentDto },
+  addCharge(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AddFolioChargeDto,
   ) {
-    return this.folioService.recordPayment(body.organizationId, body.propertyId, body.createPaymentDto);
+    return this.folios.addCharge(tenant, id, dto);
   }
 
-  @Post('cash-sessions')
-  @ApiOperation({ summary: 'Create a cash session' })
-  @ApiResponse({ status: 201, description: 'Cash session created' })
+  @Post(':id/charges/:lineId/void')
+  @RequirePermissions(PERMISSIONS.FOLIO_MANAGE)
   @HttpCode(HttpStatus.CREATED)
-  async createCashSession(
-    @Body() body: { organizationId: string; propertyId: string; createCashSessionDto: CreateCashSessionDto },
+  voidCharge(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('lineId', new ParseUUIDPipe()) lineId: string,
+    @Body() dto: VoidFolioChargeDto,
   ) {
-    return this.folioService.createCashSession(body.organizationId, body.propertyId, body.createCashSessionDto);
+    return this.folios.voidCharge(tenant, id, lineId, dto);
   }
 
-  @Post('cash-sessions/:cashSessionId/close')
-  @ApiOperation({ summary: 'Close a cash session' })
-  @ApiResponse({ status: 200, description: 'Cash session closed' })
-  async closeCashSession(
-    @Param('cashSessionId') cashSessionId: string,
-    @Body() body: { closingAmount: number; closedByUserId: string },
-  ) {
-    return this.folioService.closeCashSession(cashSessionId, body.closingAmount, body.closedByUserId);
-  }
-
-  @Post('cash-movements')
-  @ApiOperation({ summary: 'Record a cash movement' })
-  @ApiResponse({ status: 201, description: 'Cash movement recorded' })
+  @Post(':id/payments')
+  @RequirePermissions(PERMISSIONS.PAYMENT_MANAGE)
   @HttpCode(HttpStatus.CREATED)
-  async recordCashMovement(
-    @Body() body: { organizationId: string; propertyId: string; createCashMovementDto: CreateCashMovementDto },
+  recordPayment(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: RecordPaymentDto,
   ) {
-    return this.folioService.recordCashMovement(body.organizationId, body.propertyId, body.createCashMovementDto);
+    return this.folios.recordPayment(tenant, id, dto);
   }
 
-  @Get('cash-sessions/:cashSessionId')
-  @ApiOperation({ summary: 'Get cash session details' })
-  @ApiResponse({ status: 200, description: 'Cash session retrieved' })
-  async getCashSession(@Param('cashSessionId') cashSessionId: string) {
-    return this.folioService.getCashSession(cashSessionId);
+  @Post(':id/cancel')
+  @RequirePermissions(PERMISSIONS.FOLIO_MANAGE)
+  @HttpCode(HttpStatus.CREATED)
+  cancel(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CancelFolioDto,
+  ) {
+    return this.folios.cancel(tenant, id, dto);
+  }
+}
+
+@ApiTags('cash-sessions')
+@ApiHeader({ name: DEV_USER_HEADER, required: false })
+@ApiHeader({ name: ORGANIZATION_HEADER, required: true })
+@ApiHeader({ name: PROPERTY_HEADER, required: true })
+@Controller('cash-sessions')
+@UseGuards(AuthenticationGuard, TenantContextGuard, PermissionsGuard)
+export class CashSessionController {
+  constructor(private readonly cash: CashService) {}
+
+  @Get()
+  @RequirePermissions(PERMISSIONS.CASH_READ)
+  list(@Tenant() tenant: TenantContext, @Query() query: ListCashSessionsQueryDto) {
+    return this.cash.list(tenant, query);
+  }
+
+  @Post()
+  @RequirePermissions(PERMISSIONS.CASH_MANAGE)
+  @HttpCode(HttpStatus.CREATED)
+  open(@Tenant() tenant: TenantContext, @Body() dto: OpenCashSessionDto) {
+    return this.cash.open(tenant, dto);
+  }
+
+  @Get(':id')
+  @RequirePermissions(PERMISSIONS.CASH_READ)
+  get(@Tenant() tenant: TenantContext, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.cash.get(tenant, id);
+  }
+
+  @Post(':id/movements')
+  @RequirePermissions(PERMISSIONS.CASH_MANAGE)
+  @HttpCode(HttpStatus.CREATED)
+  recordMovement(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: RecordCashMovementDto,
+  ) {
+    return this.cash.recordMovement(tenant, id, dto);
+  }
+
+  @Post(':id/close')
+  @RequirePermissions(PERMISSIONS.CASH_MANAGE)
+  @HttpCode(HttpStatus.CREATED)
+  close(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CloseCashSessionDto,
+  ) {
+    return this.cash.close(tenant, id, dto);
   }
 }

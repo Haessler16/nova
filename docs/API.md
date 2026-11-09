@@ -166,17 +166,24 @@ Notas:
 
 ### Guests
 
-| Método | Ruta                 | Guard         | Permiso         | Status |
-| ------ | -------------------- | ------------- | --------------- | ------ |
-| GET    | `/api/v1/guests`     | auth + tenant | `guests.read`   | 200    |
-| POST   | `/api/v1/guests`     | auth + tenant | `guests.manage` | 201    |
-| GET    | `/api/v1/guests/:id` | auth + tenant | `guests.read`   | 200    |
-| PATCH  | `/api/v1/guests/:id` | auth + tenant | `guests.manage` | 200    |
+| Método | Ruta                            | Guard         | Permiso         | Status |
+| ------ | ------------------------------- | ------------- | --------------- | ------ |
+| GET    | `/api/v1/guests`                | auth + tenant | `guests.read`   | 200    |
+| POST   | `/api/v1/guests`                | auth + tenant | `guests.manage` | 201    |
+| GET    | `/api/v1/guests/:id`            | auth + tenant | `guests.read`   | 200    |
+| PATCH  | `/api/v1/guests/:id`            | auth + tenant | `guests.manage` | 200    |
+| POST   | `/api/v1/guests/import/preview` | auth + tenant | `guests.manage` | 201    |
+| POST   | `/api/v1/guests/import`         | auth + tenant | `guests.manage` | 201    |
 
 - Campos: `fullName` (2–160), `email` (normalizado a minúsculas), `phone`, `documentType` + `documentNumber` (solo juntos) y `notes` (≤ 2000).
 - `GET /guests` acepta `search` (nombre/email/teléfono/documento), `status`, `cursor`, `limit`. La búsqueda es asistida: no fusiona perfiles automáticamente.
 - No hay borrado físico; el ciclo de vida usa `status = DISABLED`.
 - Cada alta/edición escribe `AuditEvent` sin copiar contacto ni documento al trail.
+- `POST /guests/import/preview` parsea y valida el CSV sin persistir nada; `POST /guests/import` revalida, exige `idempotencyKey` (8–64) y confirma todo o nada. Límite: 512 KB y 500 filas; delimita con coma o punto y coma.
+- La clave es única por propiedad: repetir el mismo contenido devuelve el mismo `importId` con `replayed: true`; usarla con otro contenido responde `409 idempotency_key_reused`.
+- `GuestImport` no almacena el CSV; la auditoría `guest.imported` guarda solo conteos.
+
+Errores de importación: `guest_import_invalid_rows`, `guest_import_too_large`, `guest_import_too_many_rows`, `guest_import_empty`, `guest_import_unknown_column`, `guest_import_missing_column`, `guest_import_unterminated_quote`, `idempotency_key_reused`.
 
 ### Reservations
 
@@ -226,6 +233,53 @@ Errores específicos: `guest_not_found`, `invalid_guest_document`, `invalid_cale
 - Cada acción escribe `ReservationHistory` (check-in/out/move/no-show) y `AuditEvent` en la misma transacción.
 
 Errores específicos: `reservation_room_required`, `check_in_too_early`, `check_in_window_elapsed`, `room_out_of_service`, `room_occupied`, `stay_inconsistent`, `reservation_not_check_in_eligible`, `stay_not_check_out_eligible`, `stay_not_in_house`, `no_show_too_early`, `reservation_has_stay`, `reservation_not_no_show_eligible`, `stay_not_found`, `incident_not_found`, `incident_scope_mismatch`.
+
+### Folio, caja y night audit
+
+| Método | Ruta                                      | Guard         | Permiso              | Status |
+| ------ | ----------------------------------------- | ------------- | -------------------- | ------ |
+| GET    | `/api/v1/folios`                          | auth + tenant | `folio.read`         | 200    |
+| POST   | `/api/v1/folios`                          | auth + tenant | `folio.manage`       | 201    |
+| GET    | `/api/v1/folios/:id`                      | auth + tenant | `folio.read`         | 200    |
+| POST   | `/api/v1/folios/:id/charges`              | auth + tenant | `folio.manage`       | 201    |
+| POST   | `/api/v1/folios/:id/charges/:lineId/void` | auth + tenant | `folio.manage`       | 201    |
+| POST   | `/api/v1/folios/:id/payments`             | auth + tenant | `payment.manage`     | 201    |
+| POST   | `/api/v1/folios/:id/cancel`               | auth + tenant | `folio.manage`       | 201    |
+| GET    | `/api/v1/cash-sessions`                   | auth + tenant | `cash.read`          | 200    |
+| POST   | `/api/v1/cash-sessions`                   | auth + tenant | `cash.manage`        | 201    |
+| GET    | `/api/v1/cash-sessions/:id`               | auth + tenant | `cash.read`          | 200    |
+| POST   | `/api/v1/cash-sessions/:id/movements`     | auth + tenant | `cash.manage`        | 201    |
+| POST   | `/api/v1/cash-sessions/:id/close`         | auth + tenant | `cash.manage`        | 201    |
+| GET    | `/api/v1/operational-days`                | auth + tenant | `night_audit.read`   | 200    |
+| GET    | `/api/v1/operational-days/:id`            | auth + tenant | `night_audit.read`   | 200    |
+| POST   | `/api/v1/operational-days/close`          | auth + tenant | `night_audit.manage` | 201    |
+| POST   | `/api/v1/operational-days/:id/reopen`     | auth + tenant | `night_audit.manage` | 201    |
+
+- Un folio se vincula a una estancia o reserva de la misma propiedad; un vínculo cruzado responde `404 stay_not_found`/`reservation_not_found` y un segundo folio activo `409 folio_already_exists`.
+- Los cargos son líneas `POSTED`; un void exige motivo y conserva el importe original. Se rechaza si dejaría los pagos por encima de los cargos (`409 void_would_underfund_payments`).
+- Los pagos se registran por `method` (`CASH`, `CREDIT_CARD`, `BANK_TRANSFER`, …) sin datos de tarjeta; no se admite sobrepago (`409 payment_exceeds_balance`). Al llegar a saldo cero el folio pasa a `SETTLED` y registra `closedAt`.
+- Cancelar exige motivo y cero pagos (`409 folio_has_payments`).
+- Una propiedad admite una sola caja abierta (`409 cash_session_already_open`); abrir una fecha operativa futura responde `409 cash_session_future_date`, y mover o cerrar una caja cerrada `409 cash_session_closed`/`cash_session_already_closed`.
+- Al cerrar, una diferencia contra el esperado exige `varianceReason` (`400 cash_variance_reason_required`); `expectedCashAmount` se persiste para auditoría.
+- `POST /operational-days/close` acepta `force` + `forceReason` para cerrar con bloqueos (`409 night_audit_blocked`), es idempotente por `idempotencyKey` y rechaza un segundo cierre (`409 operational_day_already_closed`). El reopen exige motivo y permite un re-cierre posterior.
+- Todas las mutaciones escriben `AuditEvent` en la misma transacción.
+
+Errores específicos: `folio_not_found`, `folio_already_exists`, `folio_not_open`, `folio_link_required`, `folio_link_mismatch`, `folio_cancelled`, `folio_already_settled`, `folio_has_payments`, `folio_line_not_found`, `charge_already_voided`, `payment_exceeds_balance`, `void_would_underfund_payments`, `currency_mismatch`, `cash_session_not_found`, `cash_session_already_open`, `cash_session_already_closed`, `cash_session_closed`, `cash_session_future_date`, `cash_variance_reason_required`, `night_audit_blocked`, `operational_day_already_closed`, `operational_day_in_future`, `operational_close_not_found`.
+
+### Piloto
+
+| Método | Ruta                                | Guard         | Permiso                 | Status |
+| ------ | ----------------------------------- | ------------- | ----------------------- | ------ |
+| GET    | `/api/v1/pilot/feedback`            | auth + tenant | `pilot.feedback.read`   | 200    |
+| POST   | `/api/v1/pilot/feedback`            | auth + tenant | `pilot.feedback.submit` | 201    |
+| GET    | `/api/v1/pilot/feedback/:id`        | auth + tenant | `pilot.feedback.read`   | 200    |
+| PATCH  | `/api/v1/pilot/feedback/:id/review` | auth + tenant | `pilot.feedback.manage` | 200    |
+
+- El feedback se limita a la organización y propiedad activas; `message` 8–4000, `rating` opcional 1–5 y `context` JSON opcional de hasta 4 KB.
+- Revisar es idempotente: un feedback ya revisado se devuelve sin cambios y el mensaje original no se puede editar desde la API.
+- No modifica folios, caja ni reservas; cada envío y revisión genera `AuditEvent`.
+
+Errores específicos: `pilot_feedback_not_found`, `pilot_feedback_context_too_large`.
 
 ### Admin
 
@@ -326,6 +380,30 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 | 404  | `stay_not_found`                            | Estancia inexistente en la propiedad                      |
 | 404  | `incident_not_found`                        | Incidencia inexistente en la propiedad                    |
 | 422  | `invalid_housekeeping_transition`           | Transición de housekeeping no permitida                   |
+| 400  | `folio_link_required`                       | Folio sin estancia ni reserva                             |
+| 400  | `folio_link_mismatch`                       | Estancia y reserva no se corresponden                     |
+| 400  | `currency_mismatch`                         | Moneda distinta a la del folio o caja                     |
+| 400  | `cash_variance_reason_required`             | Cierre de caja con diferencia sin motivo                  |
+| 404  | `folio_not_found`                           | Folio inexistente en la propiedad                         |
+| 404  | `folio_line_not_found`                      | Cargo inexistente en el folio                             |
+| 404  | `cash_session_not_found`                    | Sesión de caja inexistente en la propiedad                |
+| 404  | `operational_close_not_found`               | Cierre operativo inexistente en la propiedad              |
+| 409  | `folio_already_exists`                      | Ya existe un folio activo para la reserva o estancia      |
+| 409  | `folio_not_open`                            | Cargo o void sobre un folio no abierto                    |
+| 409  | `folio_cancelled`                           | Pago sobre un folio cancelado                             |
+| 409  | `folio_already_settled`                     | Pago sobre un folio ya liquidado                          |
+| 409  | `folio_has_payments`                        | Cancelar un folio con pagos                               |
+| 409  | `charge_already_voided`                     | Void repetido con un motivo distinto                      |
+| 409  | `payment_exceeds_balance`                   | Pago superior al saldo pendiente                          |
+| 409  | `void_would_underfund_payments`             | El void dejaría pagos por encima de los cargos            |
+| 409  | `cash_session_already_open`                 | La propiedad ya tiene una caja abierta                    |
+| 409  | `cash_session_closed`                       | Movimiento sobre una caja cerrada                         |
+| 409  | `cash_session_already_closed`               | Cierre repetido con un importe distinto                   |
+| 409  | `cash_session_future_date`                  | Apertura para un día operativo futuro                     |
+| 409  | `night_audit_blocked`                       | Cierre operativo con bloqueos; `details.blockers`         |
+| 409  | `operational_day_already_closed`            | Día operativo ya cerrado                                  |
+| 400  | `pilot_feedback_context_too_large`          | Contexto de feedback mayor a 4 KB                         |
+| 404  | `pilot_feedback_not_found`                  | Feedback inexistente en la propiedad                      |
 | 429  | `rate_limited`                              | Demasiados intentos de login; `details.retryAfterSeconds` |
 | 503  | `auth_mode_unavailable`                     | Login local deshabilitado                                 |
 
@@ -338,18 +416,20 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 - Misma key + payload distinto: `409 idempotency_key_reuse`.
 - La reserva y su historial se crean en la misma transacción.
 
-El resto de endpoints de escritura todavía no acepta `Idempotency-Key`; los duplicados se cubren con constraints únicas y la exclusión de solapamientos.
+Los endpoints financieros de Phase 5 también reciben `idempotencyKey` por body (8–64): `POST /folios`, `/folios/:id/charges`, `/folios/:id/payments`, `/folios/:id/cancel`, `POST /cash-sessions`, `/cash-sessions/:id/close` y `/operational-days/close`.
+
+- La key es única por propiedad y por tabla (`Folio`, `FolioLine`, `Payment`, `CashSession`, `CashMovement`, `OperationalClose`).
+- Repetir la misma key con el mismo payload devuelve el resultado original sin duplicar filas.
+- Misma key con payload distinto responde `409 idempotency_key_reuse`.
+- El cierre de caja y el cierre operativo registran el replay en auditoría.
+
+El resto de endpoints de escritura no financieros todavía no acepta `Idempotency-Key`; los duplicados se cubren con constraints únicas y la exclusión de solapamientos.
 
 ## Endpoints previstos (no implementados)
 
-### Folio / Cash / Night audit
-
-- `GET /api/v1/folios/:id`
-- `POST /api/v1/folios/:id/charges`
-- `POST /api/v1/folios/:id/payments`
-- `POST /api/v1/cash-sessions`
-- `POST /api/v1/cash-sessions/:id/close`
-- `POST /api/v1/operational-days/:id/close`
+- reportes operativos avanzados y exportaciones;
+- conciliación bancaria y tokenización de tarjetas;
+- facturación/fiscal y numeración de comprobantes.
 
 ## API acceptance principles
 

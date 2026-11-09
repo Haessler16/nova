@@ -13,7 +13,9 @@ import { GuestsModule } from './guests/guests.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { NightAuditModule } from './night-audit/night-audit.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { PilotModule } from './pilot/pilot.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PropertiesModule } from './properties/properties.module';
 import { RedisModule } from './redis/redis.module';
@@ -51,6 +53,8 @@ import { TenancyModule } from './tenancy/tenancy.module';
     ReservationsModule,
     FrontOfficeModule,
     FolioModule,
+    NightAuditModule,
+    PilotModule,
     AuditModule,
   ],
   providers: [

@@ -391,3 +391,118 @@ export interface Page<T> {
   items: T[];
   nextCursor: string | null;
 }
+
+export type FolioStatus = 'OPEN' | 'SETTLED' | 'CANCELLED';
+export type FolioLineStatus = 'POSTED' | 'VOID';
+export type PaymentStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
+export type CashSessionStatus = 'OPEN' | 'CLOSED';
+export type CashMovementType = 'CASH_IN' | 'CASH_OUT' | 'REFUND' | 'ADJUSTMENT';
+export type OperationalCloseStatus = 'CLOSED' | 'REOPENED';
+
+export interface FolioLine {
+  id: string;
+  description: string;
+  amount: string;
+  currencyCode: string;
+  status: FolioLineStatus;
+  postedAt: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+  createdByUserId: string | null;
+}
+
+export interface FolioPayment {
+  id: string;
+  amount: string;
+  currencyCode: string;
+  method: string;
+  status: PaymentStatus;
+  referenceId: string | null;
+  description: string | null;
+  receivedByUserId: string | null;
+  receivedAt: string;
+}
+
+export interface Folio {
+  id: string;
+  number: string;
+  status: FolioStatus;
+  currencyCode: string;
+  stayId: string | null;
+  reservationId: string | null;
+  notes: string | null;
+  openedByUserId: string | null;
+  closedAt: string | null;
+  totals: { charges: string; payments: string; balance: string };
+  lines: FolioLine[];
+  payments: FolioPayment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CashMovement {
+  id: string;
+  type: CashMovementType;
+  amount: string;
+  currencyCode: string;
+  description: string | null;
+  recordedByUserId: string | null;
+  createdAt: string;
+}
+
+export interface CashSession {
+  id: string;
+  name: string;
+  operationalDate: string;
+  openingAmount: string;
+  closingAmount: string | null;
+  expectedCashAmount: string;
+  status: CashSessionStatus;
+  currencyCode: string;
+  openingByUserId: string | null;
+  openedAt: string;
+  closedAt: string | null;
+  closedByUserId: string | null;
+  variance: string;
+  movements: CashMovement[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NightAuditBlocker {
+  code: string;
+  count: number;
+  message: string;
+}
+
+export interface NightAuditSnapshot {
+  generatedAt: string;
+  operationalDate: string;
+  timezone: string;
+  operationalDayStart: string;
+  currencyCode: string;
+  counts: {
+    openCashSessions: number;
+    openFolios: number;
+    confirmedArrivalsBeforeDate: number;
+    inHousePastCheckout: number;
+  };
+  totals: { openFolioBalance: string };
+  blockers: NightAuditBlocker[];
+  forced: boolean;
+}
+
+export interface OperationalClose {
+  id: string;
+  operationalDate: string;
+  status: OperationalCloseStatus;
+  snapshot: NightAuditSnapshot;
+  notes: string | null;
+  closedByUserId: string | null;
+  closedAt: string;
+  reopenedByUserId: string | null;
+  reopenedAt: string | null;
+  reopenReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

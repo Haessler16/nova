@@ -404,9 +404,75 @@ Applied in `prisma/migrations/20261108230000_phase4_front_office/migration.sql`.
 - El room rack combina `occupancy` (derivada de `Stay`) con `housekeepingState` y `operationalState` (derivados de inventario/bloqueos). Son dimensiones separadas y no se sincronizan entre sí.
 - El check-out no fuerza un estado de housekeeping: la habitación queda `VACANT` para ocupación y conserva su estado de limpieza hasta que el equipo lo transicione.
 
+## Phase 5 implementation notes — Folio, caja y night audit
+
+Applied in `20261109030000_phase5_folio_hardening`, `20261109032000_cash_session_currency` y `20261109033000_folio_active_unique` (la migración `20261109021002_phase5_folio_cash` fue un draft reemplazado por ellas).
+
+### Folio y FolioLine
+
+- `Folio` conserva el estado (`OPEN`, `SETTLED`, `CANCELLED`) y debe vincularse a una estancia o reserva (`Folio_link_check`).
+- Los cargos viven en `FolioLine` y nunca se borran. Un void conserva el importe, `voidedAt` y `voidReason` (`FolioLine_void_check`).
+- Los índices únicos parciales `Folio_one_active_per_reservation_key` y `Folio_one_active_per_stay_key` permiten un solo folio no cancelado por reserva y por estancia.
+- `Folio_propertyId_number_key` y `Folio_propertyId_idempotencyKey_key` evitan números duplicados y dobles aperturas.
+- Importes `DECIMAL(10,2)` positivos en líneas (`FolioLine_amount_check`) y moneda `^[A-Z]{3}$`.
+
+### Payment
+
+- `Payment` referencia siempre un `Folio` (`folioId NOT NULL`) y no almacena datos de tarjeta: solo `method`, `referenceId` y `description`.
+- `Payment_amount_check` exige importe positivo; `Payment_method_check` exige un código `^[A-Z][A-Z0-9_]{1,31}$`.
+- `Payment_propertyId_idempotencyKey_key` protege contra doble registro.
+
+### CashSession y CashMovement
+
+- `CashSession_one_open_per_property_key` (índice único parcial sobre `status = 'OPEN'`) impide dos cajas abiertas por propiedad.
+- `CashSession_close_check` exige coherencia entre `status`, `closedAt`, `closedByUserId` y `closingAmount`.
+- `CashSession_currency_code_check` y `CashMovement_currency_code_check` fijan moneda ISO; los movimientos heredan la moneda de la sesión.
+- `CashMovement_amount_check` exige importe positivo; el signo se deriva del `type` en el servicio.
+- Las mutaciones bloquean la sesión con `SELECT ... FOR UPDATE` antes de crear movimientos o cerrar.
+
+### OperationalClose
+
+- Una fila por propiedad y día operativo (`OperationalClose_organizationId_propertyId_operationalDate_key`).
+- `snapshot` es JSONB objeto (`OperationalClose_snapshot_check`); el reopen exige `reopenedAt` y `reopenReason` (`OperationalClose_reopen_check`).
+- `OperationalClose_propertyId_idempotencyKey_key` hace el cierre repetible sin duplicar filas.
+
+### Integridad multi-tenant
+
+- FKs compuestas: `Folio_property_tenant_fkey`, `Folio_tenant_stay_fkey`, `Folio_tenant_reservation_fkey`, `FolioLine_property_tenant_fkey`, `FolioLine_tenant_folio_fkey`, `Payment_property_tenant_fkey`, `Payment_tenant_folio_fkey`, `CashSession_property_tenant_fkey`, `CashMovement_property_tenant_fkey`, `CashMovement_tenant_cash_session_fkey` y `OperationalClose_property_tenant_fkey`.
+- `pnpm db:verify` incluye estas constraints, los checks financieros y los índices únicos parciales.
+
+## Phase 6 implementation notes — piloto y sandbox
+
+Aplicado en `prisma/migrations/20261109120000_phase6_pilot_feedback/migration.sql`.
+
+### PilotFeedback
+
+- `PilotFeedback` pertenece a una organización y propiedad (`PilotFeedback_property_tenant_fkey`); su autor debe ser miembro (`PilotFeedback_author_membership_fkey`) y el revisor, si existe, también (`PilotFeedback_reviewer_membership_fkey`).
+- `message` 8–4000 (`PilotFeedback_message_check`), `rating` 1–5 o nulo (`PilotFeedback_rating_check`) y `context` objeto JSON o nulo (`PilotFeedback_context_check`).
+- `status = REVIEWED` exige `reviewedAt` y `reviewedByUserId` (`PilotFeedback_review_check`); el mensaje original no se actualiza desde la API.
+- El índice único `PilotFeedback_organizationId_propertyId_id_key` sostiene la clave compuesta usada por las FKs de tenant y las búsquedas por propiedad.
+
+### Sandbox demo
+
+- `pnpm demo:sandbox` crea el schema `demo_sandbox` en la misma instancia PostgreSQL, aplica las migraciones y ejecuta el seed sintético.
+- El aislamiento es por schema, no por cluster; el script rechaza URLs no locales y exige `CONFIRM_DEMO_SANDBOX=1`.
+
+## Phase 7 implementation notes — importación CSV
+
+Aplicado en `prisma/migrations/20261109150000_phase7_guest_import/migration.sql`.
+
+### GuestImport
+
+- Cabecera de idempotencia y auditoría de una importación de huéspedes confirmada; **no almacena el CSV ni datos personales**.
+- `(propertyId, idempotencyKey)` es único; `(organizationId, propertyId, id)` sostiene la FK compuesta de tenant.
+- `rowCount` entre 1 y 500 (`GuestImport_row_count_check`) y `createdCount = rowCount` (`GuestImport_created_count_check`), porque la importación es todo o nada.
+- `idempotencyKey` cumple `^[A-Za-z0-9_-]{8,64}$` (`GuestImport_idempotency_key_check`).
+- FKs simples a organización/propiedad/usuario, FK compuesta a propiedad y FK de membresía para el creador.
+- Los huéspedes creados viven en `Guest`; la auditoría `guest.imported` guarda solo conteos.
+
 ## Prisma
 
-`prisma/schema.prisma` modela la foundation, el inventario, las reservas y Front Office. Las constraints avanzadas de PostgreSQL se agregan como SQL manual en las migraciones; documentarlas y probarlas. No simular una constraint compleja solo en TypeScript.
+`prisma/schema.prisma` modela la foundation, el inventario, las reservas, Front Office, folios, caja, night audit, feedback de piloto e importaciones de huéspedes. Las constraints avanzadas de PostgreSQL se agregan como SQL manual en las migraciones; documentarlas y probarlas. No simular una constraint compleja solo en TypeScript.
 
 Reglas para futuras migraciones:
 

@@ -139,66 +139,89 @@ Known Phase 4 gaps:
 
 ## Phase 5 — Folio, cash and operational day (approx. 4–6 weeks)
 
-Status: **in progress**.
+Status: **implemented locally on 2026-11-09** (API and web UI); remote CI not yet observed.
 
-- [x] Prisma schema additions: `Folio`, `Payment`, `CashSession`, `CashMovement` models with relations.
-- [x] Migration `20261109021002_phase5_folio_cash` applied.
-- [ ] API controllers and services for folio creation/charge recording.
-- [ ] API controllers and services for payment registration by method.
-- [ ] API controllers and services for cash session management (open/close, movements).
-- [ ] Web UI for folio view and cash session dashboard.
-- [ ] `pnpm db:verify` update expected: new constraints for Phase 5 models.
-- [ ] E2E tests for folio/payment/cash session flows.
+- [x] Prisma schema: `Folio`, `FolioLine`, `Payment`, `CashSession`, `CashMovement`, `OperationalClose` and status enums.
+- [x] Migrations `20261109021002_phase5_folio_cash` (draft), `20261109030000_phase5_folio_hardening` (final model, restored tenant constraints, money/status checks), `20261109032000_cash_session_currency` and `20261109033000_folio_active_unique`.
+- [x] API service/controller for folios: open, charge, void charge, payment and cancel; header plus posted/void line history.
+- [x] API service/controller for payments by method, without card data and with overpayment protection.
+- [x] API service/controller for cash sessions: open, movements and close with counted amount and variance reason.
+- [x] Night audit: `POST /api/v1/operational-days/close` with blockers, forced close with reason, idempotent replay and controlled reopen.
+- [x] Web UI: `/folios`, `/folios/[id]` and `/cashier` (session list, open/close, movements and folio search).
+- [x] `pnpm db:verify` tracks Phase 5 tenant FKs, money/status/idempotency checks and partial unique indexes.
+- [x] E2E tests for folio, payment, cash session, night audit, permissions and tenant isolation.
+
+Exit:
+
+- [x] financial invariants and reconciliation tests (no overpayment, no underfunded void, variance reason on close);
+- [x] closeout replay does not duplicate entries;
+- [x] audit trail complete for every financial mutation.
 
 Known Phase 5 gaps (pilot validation):
 
-- folio/charge amounts and settlement policy;
-- payment methods and reconciliation with bank records;
-- cash session opening/closing procedures and idempotency;
-- no folio/charge/payment data model changes required for billing integration yet.
-
-## Phase 5 — Folio, cash and operational day (approx. 4–6 weeks)
-
-- folio and charge records.
-- payment records (no card data).
-- cash sessions and movements.
-- closeout/night audit with idempotency and controlled exception path.
-- basic operational dashboard/reports.
-
-Exit:
-
-- financial invariants and reconciliation tests;
-- closeout replay does not duplicate entries;
-- audit trail complete.
+- folio/charge amounts, settlement and cancellation policy need pilot validation;
+- payment methods are free-form uppercase codes; bank reconciliation and card/PSP tokenization are not integrated;
+- a cash session captures one currency from the property at open; multi-currency cash is out of scope;
+- night audit closes the operational day from a request-time snapshot; no scheduler triggers it automatically;
+- corrections to a closed day rely on reopen + re-close, without separate adjusting entries;
+- the UI does not hide actions by permission; the API returns `403`;
+- remote CI was not observed from this environment.
 
 ## Phase 6 — Pilot hardening and onboarding (approx. 3–5 weeks)
 
-- operational onboarding.
-- guided tour and isolated demo sandbox (small first version).
-- monitoring, backup/restore drill, load/concurrency tests.
-- accessibility and UX polish.
-- pilot instrumentation and feedback workflow.
+Status: **implemented locally on 2026-11-09** (first version); pilot sign-off and remote CI pending.
+
+- [x] operational onboarding checklist (`/pilot`) with persisted progress and links to implemented flows.
+- [x] isolated demo sandbox (first version): `pnpm demo:sandbox` provisions a `demo_sandbox` PostgreSQL schema with migrations and synthetic seed, local-only and confirmation-gated.
+- [x] monitoring baseline verified: `/health/live`, `/health/ready`, `/metrics`, structured request logs and audit/security surfaces.
+- [x] backup plus restore drill executed successfully against a temporary database.
+- [x] concurrency tests: parallel folio opening, competing payments and concurrent cash session opening; P2002 races now map to `409` instead of `500`.
+- [x] accessibility polish: skip link, `<main>` landmark, focus-visible styles and labeled controls.
+- [x] pilot feedback workflow: property-scoped `PilotFeedback`, submit/read/review permissions, API and `/pilot` UI.
+- [x] runbook (`docs/PILOT_RUNBOOK.md`) and sign-off checklist (`docs/PILOT_CHECKLIST.md`).
 
 Exit:
 
-- pilot checklist signed off;
-- support/runbook prepared;
-- restore test successful.
+- [ ] pilot checklist signed off by the hotel pilot (pending real session);
+- [x] support/runbook prepared;
+- [x] restore test successful.
+
+Known Phase 6 gaps:
+
+- onboarding is a checklist, not a step-by-step overlay tour;
+- the sandbox isolates by PostgreSQL schema, not by cluster;
+- no external load-testing tool or multi-replica metrics aggregation;
+- monitoring alerts are documented thresholds, not automated paging;
+- pilot sign-off and remote CI observation remain pending;
+- the `/pilot` UI was built and compiled but not visually reviewed in a browser in this run.
 
 ## Phase 7 — Limited offline and imports (separate scope, approx. 4–8+ weeks)
 
-- PWA shell caching.
-- explicit online/offline status.
-- limited safe local reads and notes.
-- outbox/idempotency/reconciliation.
-- import pipeline CSV/XLSX first; OCR/PDF/images later.
-- security/retention review.
+Status: **first slice implemented locally on 2026-11-09**. No offline write outbox yet.
+
+- [x] CSV guest import with server-side preview, row errors and explicit confirmation.
+- [x] all-or-nothing commit with a property-scoped idempotency key (`GuestImport`); retries do not duplicate guests.
+- [x] CSV limits (500 rows / 512 KB), quoted fields, comma or semicolon delimiters.
+- [x] PWA shell caching: service worker caches the offline page and static assets, never API responses.
+- [x] explicit online/offline status (existing indicator) plus a central guard that blocks mutations while offline.
+- [ ] limited safe local reads and notes (deferred).
+- [ ] outbox/reconciliation (deferred: requires per-domain conflict rules).
+- [ ] XLSX and OCR/PDF/images (deferred; CSV first by design).
+- [x] security/retention review for imports: no CSV stored, audit holds counts only, synthetic demo data only.
 
 Exit:
 
-- simulated disconnections do not duplicate operations;
-- conflicts are visible and recoverable;
-- no critical operation is falsely shown as committed offline.
+- [x] simulated disconnections do not duplicate operations (idempotency replay plus offline write blocking);
+- [x] conflicts are visible and recoverable (preview lists row errors; idempotency reuse returns `409`);
+- [x] no critical operation is falsely shown as committed offline (mutations are rejected before the request).
+
+Known Phase 7 gaps:
+
+- the service worker is registered only in production builds and was not exercised in a browser in this run;
+- there is no offline outbox, so writes require connectivity by design;
+- no XLSX/OCR import, local read cache or offline notes yet;
+- imports are capped at 500 rows and upload the whole CSV in one request;
+- duplicate guests across separate files are allowed and remain a human dedupe decision.
 
 ## Phase 8 — NOVA Edge / integrations (discovery then estimate)
 

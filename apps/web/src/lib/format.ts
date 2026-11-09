@@ -1,9 +1,14 @@
 import type {
+  CashMovementType,
+  CashSessionStatus,
+  FolioStatus,
   GuestDocumentType,
   HousekeepingState,
   IncidentSeverity,
   IncidentStatus,
   IncidentType,
+  OperationalCloseStatus,
+  PaymentStatus,
   ReservationStatus,
   RoomBlockStatus,
   RoomBlockType,
@@ -203,3 +208,68 @@ export function formatJson(value: unknown): string {
   }
   return JSON.stringify(value, null, 2);
 }
+
+export function formatMoney(value: string | null | undefined, currencyCode = 'BRL'): string {
+  const amount = Number(value ?? '0');
+  if (!Number.isFinite(amount)) {
+    return `${value ?? '0'} ${currencyCode}`;
+  }
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: currencyCode,
+    minimumFractionDigits: 2,
+  }).format(amount);
+}
+
+export const FOLIO_STATUS_LABELS: Record<FolioStatus, string> = {
+  OPEN: 'Abierto',
+  SETTLED: 'Saldado',
+  CANCELLED: 'Cancelado',
+};
+
+export const FOLIO_STATUS_COLORS: Record<FolioStatus, string> = {
+  OPEN: 'sky',
+  SETTLED: 'mint',
+  CANCELLED: 'danger',
+};
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PENDING: 'Pendiente',
+  COMPLETED: 'Completado',
+  FAILED: 'Fallido',
+  REFUNDED: 'Reintegrado',
+};
+
+export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
+  PENDING: 'warning',
+  COMPLETED: 'mint',
+  FAILED: 'danger',
+  REFUNDED: 'sky',
+};
+
+export const CASH_SESSION_STATUS_LABELS: Record<CashSessionStatus, string> = {
+  OPEN: 'Abierta',
+  CLOSED: 'Cerrada',
+};
+
+export const CASH_SESSION_STATUS_COLORS: Record<CashSessionStatus, string> = {
+  OPEN: 'sky',
+  CLOSED: 'mint',
+};
+
+export const CASH_MOVEMENT_LABELS: Record<CashMovementType, string> = {
+  CASH_IN: 'Ingreso',
+  CASH_OUT: 'Egreso',
+  REFUND: 'Reintegro',
+  ADJUSTMENT: 'Ajuste (+)',
+};
+
+export const OPERATIONAL_CLOSE_LABELS: Record<OperationalCloseStatus, string> = {
+  CLOSED: 'Día cerrado',
+  REOPENED: 'Reabierto',
+};
+
+export const OPERATIONAL_CLOSE_COLORS: Record<OperationalCloseStatus, string> = {
+  CLOSED: 'mint',
+  REOPENED: 'warning',
+};

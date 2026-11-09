@@ -26,6 +26,29 @@ export const DashboardIcon = createIcon({
   ),
 });
 
+export const PilotIcon = createIcon({
+  displayName: 'PilotIcon',
+  viewBox: '0 0 24 24',
+  path: (
+    <>
+      <circle cx="12" cy="12" r="8" {...strokeProps} />
+      <path d="m15.5 8.5-2 5-5 2 2-5z" {...strokeProps} />
+    </>
+  ),
+});
+
+export const ImportIcon = createIcon({
+  displayName: 'ImportIcon',
+  viewBox: '0 0 24 24',
+  path: (
+    <>
+      <path d="M12 3v11" {...strokeProps} />
+      <path d="m7.5 9.5 4.5 4.5 4.5-4.5" {...strokeProps} />
+      <path d="M4 16v4h16v-4" {...strokeProps} />
+    </>
+  ),
+});
+
 export const FrontDeskIcon = createIcon({
   displayName: 'FrontDeskIcon',
   viewBox: '0 0 24 24',
@@ -295,6 +318,40 @@ export const WifiIcon = createIcon({
         {...strokeProps}
       />
       <circle cx="12" cy="19" r="1" fill="currentColor" />
+    </>
+  ),
+});
+
+export const FolioIcon = createIcon({
+  displayName: 'FolioIcon',
+  viewBox: '0 0 24 24',
+  path: (
+    <>
+      <path d="M6 3h9l4 4v14H6z" {...strokeProps} />
+      <path d="M15 3v5h4M9 12h7M9 16h7M9 8h2" {...strokeProps} />
+    </>
+  ),
+});
+
+export const CashIcon = createIcon({
+  displayName: 'CashIcon',
+  viewBox: '0 0 24 24',
+  path: (
+    <>
+      <rect x="3" y="6" width="18" height="12" rx="2" {...strokeProps} />
+      <circle cx="12" cy="12" r="2.6" {...strokeProps} />
+      <path d="M6 9v6M18 9v6" {...strokeProps} />
+    </>
+  ),
+});
+
+export const NightAuditIcon = createIcon({
+  displayName: 'NightAuditIcon',
+  viewBox: '0 0 24 24',
+  path: (
+    <>
+      <path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5z" {...strokeProps} />
+      <path d="M17 4v3M15.5 5.5h3" {...strokeProps} />
     </>
   ),
 });

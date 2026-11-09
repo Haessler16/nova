@@ -1,5 +1,6 @@
 import { GuestDocumentType, RecordStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
+import { GUEST_IMPORT_MAX_BYTES } from '../guest-import';
 import {
   IsEmail,
   IsEnum,
@@ -84,6 +85,21 @@ export class UpdateGuestDto {
   @IsOptional()
   @IsIn([RecordStatus.ACTIVE, RecordStatus.DISABLED])
   status?: RecordStatus;
+}
+
+export class PreviewGuestImportDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(GUEST_IMPORT_MAX_BYTES)
+  csv!: string;
+}
+
+export class CommitGuestImportDto extends PreviewGuestImportDto {
+  @IsString()
+  @MinLength(8)
+  @MaxLength(64)
+  @Matches(/^[A-Za-z0-9_-]+$/, { message: 'idempotencyKey must be URL-safe' })
+  idempotencyKey!: string;
 }
 
 export class ListGuestsQueryDto {
