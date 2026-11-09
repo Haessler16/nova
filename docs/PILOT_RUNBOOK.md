@@ -42,6 +42,15 @@ Límites y privacidad: el CSV no se persiste, la auditoría guarda solo conteos 
 - El shell y la página `/offline` pueden servirse desde cache; las respuestas de API nunca se cachean.
 - Al recuperar conexión, reintentar la operación. Las claves de idempotencia evitan duplicados en folios, caja, cierre e importaciones.
 
+## 2.3 Exportaciones, auditoría y diagnóstico
+
+- Huéspedes, Reservas y Folios tienen **Exportar CSV** en la cabecera; respeta los filtros visibles y descarga un archivo con BOM UTF-8.
+- Límite: 5000 filas por exportación. Si se supera, acotar por fecha, estado o búsqueda; no se trunca en silencio.
+- Cada exportación queda en auditoría como `export.guests`, `export.reservations` o `export.folios`, solo con `rowCount` (sin datos personales).
+- En `/audit` se puede filtrar por acción, entidad, actor y rango de fechas, y cargar más páginas con cursor. Los días se interpretan en UTC.
+- `GET /health/version` informa versión, commit, uptime, timezone y última migración. Es información de soporte: no contiene secretos ni datos de huéspedes.
+- Para soporte, adjuntar la salida de `/health/version`, el `correlationId` del request y el evento de auditoría; nunca adjuntar CSV con datos reales.
+
 ## 3. Sandbox demo aislado
 
 ```bash

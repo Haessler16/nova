@@ -37,6 +37,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { DownloadIcon } from '@/components/icons';
 import {
   Field,
   KeyValue,
@@ -46,7 +47,7 @@ import {
   StatusBadge,
 } from '@/components/ui';
 import { useSession } from '@/context/session';
-import { api, errorMessage } from '@/lib/api';
+import { api, downloadCsv, errorMessage } from '@/lib/api';
 import {
   RESERVATION_STATUS_COLORS,
   RESERVATION_STATUS_LABELS,
@@ -101,6 +102,7 @@ function ReservationsContent() {
     fromDate: '',
     toDate: '',
   });
+  const [exporting, setExporting] = useState(false);
 
   const { data, loading, error, reload } = useAsyncData<ListData>(
     () => {
@@ -418,15 +420,52 @@ function ReservationsContent() {
       );
     }) ?? [];
 
+  async function exportReservations(): Promise<void> {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.search !== '') params.set('search', filters.search);
+      if (filters.status !== '') params.set('status', filters.status);
+      if (filters.fromDate !== '') params.set('fromDate', filters.fromDate);
+      if (filters.toDate !== '') params.set('toDate', filters.toDate);
+      await downloadCsv(
+        `/api/v1/exports/reservations?${params.toString()}`,
+        tenant,
+        `reservas-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast({ title: 'Exportación descargada', status: 'success' });
+    } catch (cause) {
+      toast({
+        title: 'No se pudo exportar',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 7000,
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="Reservas"
         description="Estadías por fecha calendario con estancia [check-in, check-out) y una habitación por reserva. Los solapamientos los impide PostgreSQL."
         actions={
-          <Button colorScheme="brand" size="sm" onClick={openCreate}>
-            Nueva reserva
-          </Button>
+          <HStack spacing={2}>
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<DownloadIcon boxSize={4} />}
+              onClick={() => void exportReservations()}
+              isLoading={exporting}
+            >
+              Exportar CSV
+            </Button>
+            <Button colorScheme="brand" size="sm" onClick={openCreate}>
+              Nueva reserva
+            </Button>
+          </HStack>
         }
       />
 

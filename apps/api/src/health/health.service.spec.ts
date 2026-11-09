@@ -5,6 +5,9 @@ import { RedisService } from '../redis/redis.service';
 function buildService(databaseHealthy: boolean, redisHealthy: boolean): HealthService {
   const prisma = {
     isHealthy: jest.fn().mockResolvedValue(databaseHealthy),
+    $queryRaw: jest
+      .fn()
+      .mockResolvedValue([{ migration_name: '20261109150000_phase7_guest_import' }]),
   } as unknown as PrismaService;
   const redis = {
     isHealthy: jest.fn().mockResolvedValue(redisHealthy),
@@ -31,6 +34,30 @@ describe('HealthService', () => {
 
     expect(result.status).toBe('error');
     expect(result.checks).toEqual({ database: 'up', redis: 'down' });
+  });
+
+  it('reports non-sensitive version and schema diagnostics', async () => {
+    const result = await buildService(true, true).version();
+
+    expect(result.status).toBe('ok');
+    expect(result.version).toEqual(expect.any(String));
+    expect(result.node).toBe(process.version);
+    expect(result.database).toEqual({
+      reachable: true,
+      latestMigration: '20261109150000_phase7_guest_import',
+    });
+  });
+
+  it('keeps version diagnostics available when the database is down', async () => {
+    const prisma = {
+      $queryRaw: jest.fn().mockRejectedValue(new Error('db unavailable')),
+    } as unknown as PrismaService;
+    const redis = { isHealthy: jest.fn() } as unknown as RedisService;
+
+    const result = await new HealthService(prisma, redis).version();
+
+    expect(result.status).toBe('ok');
+    expect(result.database).toEqual({ reachable: false, latestMigration: null });
   });
 
   it('reports database failures as down instead of throwing', async () => {

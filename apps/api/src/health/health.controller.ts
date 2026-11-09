@@ -14,6 +14,12 @@ export class HealthController {
     return this.health.liveness();
   }
 
+  @Get('version')
+  @HttpCode(200)
+  version() {
+    return this.health.version();
+  }
+
   @Get('ready')
   async ready(@Res({ passthrough: true }) response: Response) {
     const result = await this.health.readiness();

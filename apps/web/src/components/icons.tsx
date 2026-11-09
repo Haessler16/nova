@@ -49,6 +49,18 @@ export const ImportIcon = createIcon({
   ),
 });
 
+export const DownloadIcon = createIcon({
+  displayName: 'DownloadIcon',
+  viewBox: '0 0 24 24',
+  path: (
+    <>
+      <path d="M12 3v12" {...strokeProps} />
+      <path d="m7.5 10.5 4.5 4.5 4.5-4.5" {...strokeProps} />
+      <path d="M4 20h16" {...strokeProps} />
+    </>
+  ),
+});
+
 export const FrontDeskIcon = createIcon({
   displayName: 'FrontDeskIcon',
   viewBox: '0 0 24 24',

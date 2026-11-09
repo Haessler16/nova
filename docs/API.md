@@ -2,7 +2,7 @@
 
 ## General
 
-- Base path versionado: `/api/v1` (excepto health: `/health/live`, `/health/ready`).
+- Base path versionado: `/api/v1` (excepto health: `/health/live`, `/health/ready`, `/health/version`).
 - JSON request/response.
 - OpenAPI/Swagger habilitado en desarrollo.
 - DTO validation con whitelist y rechazo de campos desconocidos (`forbidNonWhitelisted`).
@@ -82,10 +82,11 @@ Los permisos de organización son aditivos respecto de los de propiedad. Un rol 
 
 ### Health
 
-| Método | Ruta            | Guard | Notas                     |
-| ------ | --------------- | ----- | ------------------------- |
-| GET    | `/health/live`  | —     | Liveness sin dependencias |
-| GET    | `/health/ready` | —     | PostgreSQL + Redis        |
+| Método | Ruta              | Guard | Notas                                                                          |
+| ------ | ----------------- | ----- | ------------------------------------------------------------------------------ |
+| GET    | `/health/live`    | —     | Liveness sin dependencias                                                      |
+| GET    | `/health/ready`   | —     | PostgreSQL + Redis                                                             |
+| GET    | `/health/version` | —     | Versión, commit, uptime, timezone y última migración; sin secretos ni row data |
 
 ### Auth
 
@@ -136,7 +137,21 @@ Los permisos de organización son aditivos respecto de los de propiedad. Un rol 
 | ------ | ---------------------- | ------------- | ------------ |
 | GET    | `/api/v1/audit-events` | auth + tenant | `audit.read` |
 
-Filtros: `action`, `entityType`, `entityId`, `cursor`, `limit`. Requiere `X-Property-Id`.
+Filtros: `action`, `entityType`, `entityId`, `actorUserId`, `fromDate`, `toDate` (`YYYY-MM-DD`, días UTC), `cursor`, `limit` (≤ 100). Requiere `X-Property-Id`. Devuelve `nextCursor` para feed de soporte/conciliación.
+
+### Exports
+
+| Método | Ruta                           | Guard         | Permiso             | Formato          |
+| ------ | ------------------------------ | ------------- | ------------------- | ---------------- |
+| GET    | `/api/v1/exports/guests`       | auth + tenant | `guests.read`       | `text/csv` UTF-8 |
+| GET    | `/api/v1/exports/reservations` | auth + tenant | `reservations.read` | `text/csv` UTF-8 |
+| GET    | `/api/v1/exports/folios`       | auth + tenant | `folio.read`        | `text/csv` UTF-8 |
+
+- Solo lectura, limitadas a la organización/propiedad autenticadas; `Cache-Control: no-store`.
+- Máximo 5000 filas (`400 export_too_large`); acotar con los mismos filtros de lista (`search`, `status`, fechas).
+- CSV con BOM UTF-8, comillas RFC 4180 y neutralización de fórmulas de hoja de cálculo.
+- Cada exportación escribe un `AuditEvent` (`export.guests`, `export.reservations`, `export.folios`) con `{ rowCount }`, sin datos personales.
+- La UI expone "Exportar CSV" en Huéspedes, Reservas y Folios respetando los filtros visibles.
 
 ### Inventory
 
@@ -403,6 +418,7 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 | 409  | `night_audit_blocked`                       | Cierre operativo con bloqueos; `details.blockers`         |
 | 409  | `operational_day_already_closed`            | Día operativo ya cerrado                                  |
 | 400  | `pilot_feedback_context_too_large`          | Contexto de feedback mayor a 4 KB                         |
+| 400  | `export_too_large`                          | Exportación supera 5000 filas; acotar filtros             |
 | 404  | `pilot_feedback_not_found`                  | Feedback inexistente en la propiedad                      |
 | 429  | `rate_limited`                              | Demasiados intentos de login; `details.retryAfterSeconds` |
 | 503  | `auth_mode_unavailable`                     | Login local deshabilitado                                 |
@@ -427,9 +443,10 @@ El resto de endpoints de escritura no financieros todavía no acepta `Idempotenc
 
 ## Endpoints previstos (no implementados)
 
-- reportes operativos avanzados y exportaciones;
+- reportes operativos agregados y exportación XLSX;
 - conciliación bancaria y tokenización de tarjetas;
-- facturación/fiscal y numeración de comprobantes.
+- facturación/fiscal y numeración de comprobantes;
+- integraciones Edge/OTA/PIX (Fase 8, sujetas a discovery y validación de proveedor).
 
 ## API acceptance principles
 

@@ -8,6 +8,8 @@ Estimaciones relativas para planificación, no compromisos. `S` = pequeño, `M` 
 
 > **Actualización 2026-11-09 (Fase 7, primer corte):** IMP-001 implementado para CSV de huéspedes con preview, confirmación todo-o-nada, límite de 500 filas/512 KB e idempotencia por propiedad. RES-001 cubierto parcialmente: service worker de shell/offline sin cachear API y bloqueo explícito de escrituras sin conexión; RES-002/RES-003 (lecturas locales y outbox) quedan pendientes. IMP-002 (OCR/PDF) sigue fuera de alcance. Ver `docs/PHASE_7_REPORT.md`.
 
+> **Actualización 2026-11-09 (groundwork Fase 8):** IMP-001 amplía su valor con exportaciones CSV auditadas de huéspedes, reservas y folios (hasta 5000 filas). RPT-002 queda cubierto parcialmente: exportación CSV operativa, sin reportes agregados ni XLSX. Se agrega diagnóstico `/health/version` y filtros de actor/fecha con cursor en auditoría. No se inicia coordinador Edge ni integraciones de proveedor: Fase 8 sigue en discovery. Ver `docs/PHASE_8_GROUNDWORK.md`.
+
 **Phase 3 — guests y reservas (backend):** CRUD de huéspedes con minimización, búsqueda asistida, ciclo de vida de reserva (`CONFIRMED`/`CANCELLED`), disponibilidad por fechas, asignación de habitación transaccional, idempotencia de creación, historial append-only y garantía de no-solapamiento con exclusion constraint PostgreSQL. Check-in/check-out pertenecen a Phase 4 (Front Office).
 
 ## P0 — Foundation (bloquea todo)

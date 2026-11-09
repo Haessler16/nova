@@ -106,6 +106,25 @@ export class AuditService {
     if (query.entityId !== undefined) {
       where.entityId = query.entityId;
     }
+    if (query.actorUserId !== undefined) {
+      where.actorUserId = query.actorUserId;
+    }
+    if (query.fromDate !== undefined || query.toDate !== undefined) {
+      const from =
+        query.fromDate !== undefined ? new Date(`${query.fromDate}T00:00:00.000Z`) : undefined;
+      const toStart =
+        query.toDate !== undefined ? new Date(`${query.toDate}T00:00:00.000Z`) : undefined;
+      if (from !== undefined && toStart !== undefined && toStart.getTime() <= from.getTime()) {
+        throw new BadRequestException({
+          code: 'invalid_date_filter',
+          message: 'toDate must be after fromDate.',
+        });
+      }
+      where.occurredAt = {
+        ...(from !== undefined ? { gte: from } : {}),
+        ...(toStart !== undefined ? { lt: new Date(toStart.getTime() + 86_400_000) } : {}),
+      };
+    }
 
     const rows = await this.prisma.auditEvent.findMany({
       where,

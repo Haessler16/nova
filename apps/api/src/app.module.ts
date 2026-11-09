@@ -6,6 +6,7 @@ import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CsrfGuard } from './auth/csrf.guard';
+import { ExportsModule } from './exports/exports.module';
 import { validateEnv } from './config/env.validation';
 import { FrontOfficeModule } from './front-office/front-office.module';
 import { FolioModule } from './folio/folio.module';
@@ -54,6 +55,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     FrontOfficeModule,
     FolioModule,
     NightAuditModule,
+    ExportsModule,
     PilotModule,
     AuditModule,
   ],

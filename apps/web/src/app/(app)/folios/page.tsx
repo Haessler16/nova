@@ -32,9 +32,10 @@ import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { DownloadIcon } from '@/components/icons';
 import { Field, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
 import { useSession } from '@/context/session';
-import { api, errorMessage } from '@/lib/api';
+import { api, downloadCsv, errorMessage } from '@/lib/api';
 import {
   FOLIO_STATUS_COLORS,
   FOLIO_STATUS_LABELS,
@@ -52,6 +53,7 @@ function FoliosContent() {
   const modal = useDisclosure();
 
   const [filters, setFilters] = useState({ status: '', search: '' });
+  const [exporting, setExporting] = useState(false);
   const [reservationId, setReservationId] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -108,6 +110,30 @@ function FoliosContent() {
     }
   }
 
+  async function exportFolios(): Promise<void> {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.status !== '') params.set('status', filters.status);
+      if (filters.search.trim() !== '') params.set('search', filters.search.trim());
+      await downloadCsv(
+        `/api/v1/exports/folios?${params.toString()}`,
+        tenant,
+        `folios-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast({ title: 'Exportación descargada', status: 'success' });
+    } catch (cause) {
+      toast({
+        title: 'No se pudo exportar',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 7000,
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const items = folios.data?.items ?? [];
 
   return (
@@ -117,9 +143,20 @@ function FoliosContent() {
         title="Folios y cuentas"
         description="Cargos y pagos por estancia o reserva. Los importes se guardan en decimal con moneda explícita y nunca se aceptan datos completos de tarjeta."
         actions={
-          <Button colorScheme="brand" onClick={openCreate}>
-            Abrir folio
-          </Button>
+          <HStack spacing={2}>
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<DownloadIcon boxSize={4} />}
+              onClick={() => void exportFolios()}
+              isLoading={exporting}
+            >
+              Exportar CSV
+            </Button>
+            <Button colorScheme="brand" onClick={openCreate}>
+              Abrir folio
+            </Button>
+          </HStack>
         }
       />
 

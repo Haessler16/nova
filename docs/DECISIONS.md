@@ -698,3 +698,31 @@ These choices should be confirmed against the existing repository and current st
   - Reception cannot operate offline; the UI states this explicitly.
   - A future outbox must define per-operation conflict and reconciliation rules before it is introduced.
   - Local read caching and offline notes remain future work.
+
+### ADR-038 — CSV exports are read-only, capped and audited
+
+- Status: accepted as Phase 8 groundwork.
+- Date: 2026-11-09.
+- Context: the pilot and future integrations need portable operational data without exposing another tenant or unbounded dumps.
+- Decision:
+  - Exports are GET endpoints scoped by the authenticated organization/property, reusing list filters and read permissions.
+  - Maximum 5000 rows; larger requests fail with `export_too_large` instead of truncating silently.
+  - CSV is UTF-8 with BOM, RFC 4180 quoting and formula-injection neutralization for text cells.
+  - Every export writes an `AuditEvent` with row counts only; no guest PII is copied to audit.
+  - Responses set `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+- Consequences:
+  - Exports are not a bulk data pipeline; scheduled/streaming exports remain future work.
+  - Date filters use UTC calendar days and must be explained in support material.
+
+### ADR-039 — Version diagnostics are groundwork, not an Edge commitment
+
+- Status: accepted as Phase 8 groundwork.
+- Date: 2026-11-09.
+- Context: support and any future local installation need to identify build and schema versions before Edge topology or provider contracts are validated.
+- Decision:
+  - `GET /health/version` exposes app version, optional commit, environment, Node version, uptime, server timezone and latest applied migration.
+  - It never exposes connection strings, secrets, row data or raw database errors; if the database is down it still answers with `database.reachable = false`.
+  - This does not introduce a coordinator, sync protocol, agent or provider adapter.
+- Consequences:
+  - The endpoint is public like the other health routes; it must stay non-sensitive as it evolves.
+  - Edge architecture, update and reconciliation decisions remain pending hotel/hardware/provider discovery.

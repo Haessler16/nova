@@ -231,6 +231,8 @@ Known Phase 7 gaps:
 - PIX/fiscal/OTA/legacy integrations scoped independently.
 - no commitment before provider/hotel validation.
 
+Status: discovery only. Groundwork implemented locally without committing the Edge architecture: `/health/version` diagnostics, audited CSV exports (guests, reservations, folios) and cursor/date/actor filters for the audit feed. There is no local coordinator, sync, agent or provider integration yet; those remain blocked on hotel/provider validation.
+
 ## Indicative timeline
 
 For one experienced full-stack developer working full-time, a usable pilot-quality Front Office core may take roughly 20–30+ weeks depending on discovery, test depth, design and integration complexity. A broader hardened commercial release may take 30–40+ weeks. Treat these as planning ranges, not promises. Validate with a hotel pilot before fixing a commercial date.

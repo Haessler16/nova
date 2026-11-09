@@ -186,6 +186,57 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   return (await response.json()) as T;
 }
 
+export async function downloadCsv(
+  path: string,
+  tenant: TenantSelection,
+  filename: string,
+): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new ApiError(
+      0,
+      'offline',
+      'Sin conexión: no se puede descargar la exportación. Reintentá cuando vuelvas a estar en línea.',
+    );
+  }
+
+  const headers: Record<string, string> = { Accept: 'text/csv' };
+  if (tenant.organizationId !== undefined && tenant.organizationId !== null) {
+    headers['X-Organization-Id'] = tenant.organizationId;
+  }
+  if (tenant.propertyId !== undefined && tenant.propertyId !== null) {
+    headers['X-Property-Id'] = tenant.propertyId;
+  }
+  const currentDevUser = readDevUser();
+  if (currentDevUser !== null) {
+    headers['X-Dev-User-Id'] = currentDevUser;
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (response.status === 401) {
+    notifyUnauthorized();
+  }
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export async function fetchAuthMode(): Promise<AuthMode> {
   const response = await fetch(`${API_URL}/api/v1/auth/mode`, {
     credentials: 'include',

@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+
+const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export class ListAuditEventsQueryDto {
   @IsOptional()
@@ -16,6 +18,18 @@ export class ListAuditEventsQueryDto {
   @IsString()
   @MaxLength(64)
   entityId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  actorUserId?: string;
+
+  @IsOptional()
+  @Matches(CALENDAR_DATE, { message: 'fromDate must be YYYY-MM-DD' })
+  fromDate?: string;
+
+  @IsOptional()
+  @Matches(CALENDAR_DATE, { message: 'toDate must be YYYY-MM-DD' })
+  toDate?: string;
 
   @IsOptional()
   @IsUUID()

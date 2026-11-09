@@ -362,3 +362,10 @@ Use the following prompt when starting implementation:
 - Dashboard KPIs, arrivals and alerts are driven by the real Front Office overview API. No occupancy trend is shown because the API does not expose a comparison period.
 - Quick Actions link to implemented flows: Front Desk, new reservation (`/reservations?new=1`), check-in (`/front-office?tab=arrivals`), Room Rack (`/front-office?tab=rack`) and Calendar.
 - Intentional gaps: Cashier is not linked until the module exists; connection state exposes real Online/Offline only (no synthetic Syncing/Degraded state).
+
+## Implementation status — 2026-11-09 (exports, audit feed, offline)
+
+- Export actions in Guests, Reservations and Folios use the shared `PageHeader` action slot, small `outline` buttons, the local `DownloadIcon`, visible loading state and the same filters shown on screen. No new raw colors were introduced.
+- The Audit feed uses `SectionCard`, `QueryFeedback`, `ErrorAlert`, `textSecondary`/`line` tokens, labeled date/actor inputs, a wrapped filter bar, an explicit `Cargar más` cursor action and modal detail. Empty, loading and error states are preserved.
+- The offline page is a standalone static document (no Chakra/provider dependency) with semantic heading and link; mutations remain blocked with an explicit message. It intentionally does not fake a synchronization state.
+- No visual browser review was performed in this run; verification was typecheck, lint, build, unit/E2E and manual token/component inspection.

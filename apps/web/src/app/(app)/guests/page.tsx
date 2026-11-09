@@ -27,9 +27,10 @@ import {
 } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { DownloadIcon } from '@/components/icons';
 import { Field, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
 import { useSession } from '@/context/session';
-import { api, errorMessage } from '@/lib/api';
+import { api, downloadCsv, errorMessage } from '@/lib/api';
 import {
   DOCUMENT_TYPE_LABELS,
   RECORD_STATUS_COLORS,
@@ -66,6 +67,7 @@ function GuestsContent() {
   const [saving, setSaving] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({ search: '', status: '' });
+  const [exporting, setExporting] = useState(false);
 
   const { data, loading, error, reload } = useAsyncData<{ items: Guest[] }>(
     () => {
@@ -168,15 +170,50 @@ function GuestsContent() {
     }
   }
 
+  async function exportGuests(): Promise<void> {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.search !== '') params.set('search', filters.search);
+      if (filters.status !== '') params.set('status', filters.status);
+      await downloadCsv(
+        `/api/v1/exports/guests?${params.toString()}`,
+        tenant,
+        `huespedes-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast({ title: 'Exportación descargada', status: 'success' });
+    } catch (cause) {
+      toast({
+        title: 'No se pudo exportar',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 7000,
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="Huéspedes"
         description="Perfiles minimizados por propiedad: datos de contacto y documento opcionales. No se fusionan perfiles automáticamente."
         actions={
-          <Button colorScheme="brand" size="sm" onClick={openCreate}>
-            Nuevo huésped
-          </Button>
+          <HStack spacing={2}>
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<DownloadIcon boxSize={4} />}
+              onClick={() => void exportGuests()}
+              isLoading={exporting}
+            >
+              Exportar CSV
+            </Button>
+            <Button colorScheme="brand" size="sm" onClick={openCreate}>
+              Nuevo huésped
+            </Button>
+          </HStack>
         }
       />
 
