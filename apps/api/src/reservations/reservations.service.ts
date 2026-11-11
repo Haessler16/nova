@@ -683,7 +683,10 @@ export class ReservationsService {
     const propertyId = requirePropertyContext(context);
     const checkInDate = parseCalendarDate(query.checkInDate, 'checkInDate');
     const checkOutDate = parseCalendarDate(query.checkOutDate, 'checkOutDate');
-    assertStayWindow(checkInDate, checkOutDate);
+    // Availability is read-only and also used to assign rooms to reservations
+    // that already started in another calendar timezone, so past windows are
+    // accepted here; create/update still reject them.
+    assertStayWindow(checkInDate, checkOutDate, new Date(), { allowPast: true });
 
     // Expired blocks should not keep rooms out of availability.
     await this.roomState.reconcileProperty({

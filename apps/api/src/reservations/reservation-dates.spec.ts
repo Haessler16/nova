@@ -33,6 +33,18 @@ describe('reservation calendar dates', () => {
     ).not.toThrow();
   });
 
+  it('accepts past windows when the caller only needs availability', () => {
+    const checkIn = parseCalendarDate('2027-01-05', 'checkInDate');
+    const checkOut = parseCalendarDate('2027-01-08', 'checkOutDate');
+
+    expect(() =>
+      assertStayWindow(checkIn, checkOut, new Date('2027-01-10T12:00:00Z'), { allowPast: true }),
+    ).not.toThrow();
+    expect(() =>
+      assertStayWindow(checkIn, checkOut, new Date('2027-01-10T12:00:00Z'), { allowPast: false }),
+    ).toThrow(BadRequestException);
+  });
+
   it('generates reservation codes that satisfy the database format check', () => {
     const code = generateReservationCode(parseCalendarDate('2027-01-05', 'checkInDate'));
     expect(code).toMatch(/^RES-20270105-[A-F0-9]{6}$/);

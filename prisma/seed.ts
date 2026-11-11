@@ -4,6 +4,8 @@ import {
   HousekeepingState,
   RoomOperationalState,
   GuestDocumentType,
+  ReservationStatus,
+  StayStatus,
 } from '@prisma/client';
 import { createHash, scryptSync } from 'node:crypto';
 
@@ -75,6 +77,12 @@ const IDS = {
   guestAna: '00000000-0000-4000-8000-000000000061',
   guestBruno: '00000000-0000-4000-8000-000000000062',
   guestCarla: '00000000-0000-4000-8000-000000000063',
+  guestDiego: '00000000-0000-4000-8000-000000000071',
+  guestElisa: '00000000-0000-4000-8000-000000000072',
+  guestFelipe: '00000000-0000-4000-8000-000000000073',
+  guestGabriela: '00000000-0000-4000-8000-000000000074',
+  guestHenrique: '00000000-0000-4000-8000-000000000075',
+  guestIsabela: '00000000-0000-4000-8000-000000000076',
 
   roomTypeCentroStandard: '00000000-0000-4000-8000-000000000041',
   roomTypeCentroDeluxe: '00000000-0000-4000-8000-000000000042',
@@ -86,7 +94,42 @@ const IDS = {
   roomCentro201: '00000000-0000-4000-8000-000000000054',
   roomPraia101: '00000000-0000-4000-8000-000000000055',
   roomPraia102: '00000000-0000-4000-8000-000000000056',
+  roomCentro104: '00000000-0000-4000-8000-000000000057',
+  roomCentro105: '00000000-0000-4000-8000-000000000058',
+  roomCentro202: '00000000-0000-4000-8000-000000000059',
+
+  reservationInHouse1: '00000000-0000-4000-8000-000000000101',
+  reservationInHouse2: '00000000-0000-4000-8000-000000000102',
+  reservationArrivalToday: '00000000-0000-4000-8000-000000000103',
+  reservationUnassignedToday: '00000000-0000-4000-8000-000000000104',
+  reservationDepartureToday: '00000000-0000-4000-8000-000000000105',
+  reservationFuture1: '00000000-0000-4000-8000-000000000106',
+  reservationPastStay: '00000000-0000-4000-8000-000000000107',
+  reservationFuture2: '00000000-0000-4000-8000-000000000108',
 } as const;
+
+const PROPERTY_TIMEZONE = 'America/Sao_Paulo';
+
+/**
+ * Demo stays are relative to the property's local calendar date so the seed
+ * always produces arrivals, departures and in-house stays for "today".
+ */
+function demoCalendarDate(offsetDays = 0): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: PROPERTY_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((item) => item.type === type)?.value);
+  const base = Date.UTC(part('year'), part('month') - 1, part('day'));
+  return new Date(base + offsetDays * 86_400_000);
+}
+
+function demoInstant(offsetDays = 0, hour = 15): Date {
+  return new Date(demoCalendarDate(offsetDays).getTime() + hour * 3_600_000);
+}
 
 const PERMISSIONS = [
   {
@@ -764,6 +807,39 @@ async function seed(): Promise<void> {
       housekeepingState: HousekeepingState.CLEAN,
     },
     {
+      id: IDS.roomCentro104,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      number: '104',
+      floor: '1',
+      building: 'Main',
+      attributes: ['quiet'],
+      housekeepingState: HousekeepingState.CLEAN,
+    },
+    {
+      id: IDS.roomCentro105,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      number: '105',
+      floor: '1',
+      building: 'Main',
+      attributes: [],
+      housekeepingState: HousekeepingState.CLEAN,
+    },
+    {
+      id: IDS.roomCentro202,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      roomTypeId: IDS.roomTypeCentroDeluxe,
+      number: '202',
+      floor: '2',
+      building: 'Main',
+      attributes: ['balcony'],
+      housekeepingState: HousekeepingState.CLEAN,
+    },
+    {
       id: IDS.roomPraia101,
       organizationId: IDS.organizationA,
       propertyId: IDS.propertyPraia,
@@ -841,6 +917,72 @@ async function seed(): Promise<void> {
       documentNumber: 'DEMO-RG-0003',
       notes: 'Synthetic demo guest. No real personal data.',
     },
+    {
+      id: IDS.guestDiego,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      fullName: 'Diego Almeida (demo)',
+      email: 'diego.almeida@demo.nova.local',
+      phone: '+55 11 90000-0004',
+      documentType: GuestDocumentType.PASSPORT,
+      documentNumber: 'DEMO-P-0004',
+      notes: 'Synthetic demo guest. Early breakfast requested.',
+    },
+    {
+      id: IDS.guestElisa,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      fullName: 'Elisa Prado (demo)',
+      email: 'elisa.prado@demo.nova.local',
+      phone: '+55 11 90000-0005',
+      documentType: GuestDocumentType.NATIONAL_ID,
+      documentNumber: 'DEMO-RG-0005',
+      notes: 'Synthetic demo guest. No real personal data.',
+    },
+    {
+      id: IDS.guestFelipe,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      fullName: 'Felipe Rocha (demo)',
+      email: 'felipe.rocha@demo.nova.local',
+      phone: '+55 11 90000-0006',
+      documentType: null,
+      documentNumber: null,
+      notes: 'Synthetic demo guest. Departing today.',
+    },
+    {
+      id: IDS.guestGabriela,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      fullName: 'Gabriela Nunes (demo)',
+      email: 'gabriela.nunes@demo.nova.local',
+      phone: '+55 11 90000-0007',
+      documentType: GuestDocumentType.DRIVER_LICENSE,
+      documentNumber: 'DEMO-CNH-0007',
+      notes: 'Synthetic demo guest. No real personal data.',
+    },
+    {
+      id: IDS.guestHenrique,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      fullName: 'Henrique Dias (demo)',
+      email: 'henrique.dias@demo.nova.local',
+      phone: '+55 11 90000-0008',
+      documentType: null,
+      documentNumber: null,
+      notes: 'Synthetic demo guest. Already checked out.',
+    },
+    {
+      id: IDS.guestIsabela,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      fullName: 'Isabela Reis (demo)',
+      email: 'isabela.reis@demo.nova.local',
+      phone: '+55 11 90000-0009',
+      documentType: GuestDocumentType.PASSPORT,
+      documentNumber: 'DEMO-P-0009',
+      notes: 'Synthetic demo guest. No real personal data.',
+    },
   ];
 
   for (const guest of guests) {
@@ -857,6 +999,289 @@ async function seed(): Promise<void> {
       },
       create: { ...guest, status: RecordStatus.ACTIVE },
     });
+  }
+
+  const demoReservations = [
+    {
+      id: IDS.reservationInHouse1,
+      code: 'DEMO-1101',
+      status: ReservationStatus.CHECKED_IN,
+      source: 'mostrador',
+      checkInDate: demoCalendarDate(-2),
+      checkOutDate: demoCalendarDate(1),
+      adults: 2,
+      children: 0,
+      guestId: IDS.guestBruno,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      roomId: IDS.roomCentro101,
+      notes: 'Llegó con equipaje extra. Sintético.',
+      stay: { checkedInAt: demoInstant(-2, 15), checkedOutAt: null },
+    },
+    {
+      id: IDS.reservationInHouse2,
+      code: 'DEMO-1102',
+      status: ReservationStatus.CHECKED_IN,
+      source: 'web',
+      checkInDate: demoCalendarDate(-1),
+      checkOutDate: demoCalendarDate(2),
+      adults: 1,
+      children: 1,
+      guestId: IDS.guestDiego,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      roomId: IDS.roomCentro102,
+      notes: 'Solicitó cuna. Sintético.',
+      stay: { checkedInAt: demoInstant(-1, 16), checkedOutAt: null },
+    },
+    {
+      id: IDS.reservationArrivalToday,
+      code: 'DEMO-1103',
+      status: ReservationStatus.CONFIRMED,
+      source: 'teléfono',
+      checkInDate: demoCalendarDate(0),
+      checkOutDate: demoCalendarDate(3),
+      adults: 2,
+      children: 0,
+      guestId: IDS.guestAna,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      roomId: IDS.roomCentro103,
+      notes: 'Llegada de hoy, lista para check-in. Sintético.',
+      stay: null,
+    },
+    {
+      id: IDS.reservationUnassignedToday,
+      code: 'DEMO-1104',
+      status: ReservationStatus.CONFIRMED,
+      source: 'web',
+      checkInDate: demoCalendarDate(0),
+      checkOutDate: demoCalendarDate(2),
+      adults: 2,
+      children: 0,
+      guestId: IDS.guestElisa,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      roomId: null,
+      notes: 'Llegada de hoy sin habitación: sirve para probar la asignación. Sintético.',
+      stay: null,
+    },
+    {
+      id: IDS.reservationDepartureToday,
+      code: 'DEMO-1105',
+      status: ReservationStatus.CHECKED_IN,
+      source: 'mostrador',
+      checkInDate: demoCalendarDate(-3),
+      checkOutDate: demoCalendarDate(0),
+      adults: 1,
+      children: 0,
+      guestId: IDS.guestFelipe,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      roomId: IDS.roomCentro104,
+      notes: 'Salida de hoy. Sintético.',
+      stay: { checkedInAt: demoInstant(-3, 14), checkedOutAt: null },
+    },
+    {
+      id: IDS.reservationFuture1,
+      code: 'DEMO-1106',
+      status: ReservationStatus.CONFIRMED,
+      source: 'web',
+      checkInDate: demoCalendarDate(2),
+      checkOutDate: demoCalendarDate(4),
+      adults: 2,
+      children: 0,
+      guestId: IDS.guestGabriela,
+      roomTypeId: IDS.roomTypeCentroDeluxe,
+      roomId: IDS.roomCentro201,
+      notes: 'Reserva futura. Sintético.',
+      stay: null,
+    },
+    {
+      id: IDS.reservationPastStay,
+      code: 'DEMO-1107',
+      status: ReservationStatus.CHECKED_OUT,
+      source: 'mostrador',
+      checkInDate: demoCalendarDate(-6),
+      checkOutDate: demoCalendarDate(-4),
+      adults: 1,
+      children: 0,
+      guestId: IDS.guestHenrique,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      roomId: IDS.roomCentro105,
+      notes: 'Estadía cerrada. Sintético.',
+      stay: { checkedInAt: demoInstant(-6, 15), checkedOutAt: demoInstant(-4, 11) },
+    },
+    {
+      id: IDS.reservationFuture2,
+      code: 'DEMO-1108',
+      status: ReservationStatus.CONFIRMED,
+      source: 'teléfono',
+      checkInDate: demoCalendarDate(5),
+      checkOutDate: demoCalendarDate(7),
+      adults: 2,
+      children: 1,
+      guestId: IDS.guestIsabela,
+      roomTypeId: IDS.roomTypeCentroStandard,
+      roomId: null,
+      notes: 'Reserva futura sin habitación. Sintético.',
+      stay: null,
+    },
+  ];
+
+  const historyRows: Array<{
+    organizationId: string;
+    propertyId: string;
+    reservationId: string;
+    action: string;
+    fromStatus: ReservationStatus | null;
+    toStatus: ReservationStatus;
+    fromRoomId: string | null;
+    toRoomId: string | null;
+    reason: string | null;
+    actorUserId: string;
+    occurredAt: Date;
+  }> = [];
+
+  for (const demo of demoReservations) {
+    const reservation = await prisma.reservation.upsert({
+      where: { propertyId_code: { propertyId: IDS.propertyCentro, code: demo.code } },
+      update: {
+        status: demo.status,
+        source: demo.source,
+        checkInDate: demo.checkInDate,
+        checkOutDate: demo.checkOutDate,
+        adults: demo.adults,
+        children: demo.children,
+        guestId: demo.guestId,
+        roomTypeId: demo.roomTypeId,
+        roomId: demo.roomId,
+        notes: demo.notes,
+        cancelledAt: null,
+        cancellationReason: null,
+      },
+      create: {
+        id: demo.id,
+        organizationId: IDS.organizationA,
+        propertyId: IDS.propertyCentro,
+        code: demo.code,
+        status: demo.status,
+        source: demo.source,
+        checkInDate: demo.checkInDate,
+        checkOutDate: demo.checkOutDate,
+        adults: demo.adults,
+        children: demo.children,
+        guestId: demo.guestId,
+        roomTypeId: demo.roomTypeId,
+        roomId: demo.roomId,
+        notes: demo.notes,
+        createdByUserId: IDS.userAdmin,
+      },
+    });
+
+    if (demo.stay === null) {
+      // Keep the demo dataset reproducible after someone checks a demo
+      // reservation in from the UI.
+      await prisma.stay.deleteMany({ where: { reservationId: reservation.id } });
+    }
+
+    if (demo.stay !== null) {
+      await prisma.stay.upsert({
+        where: { reservationId: reservation.id },
+        update: {
+          status: demo.stay.checkedOutAt === null ? StayStatus.IN_HOUSE : StayStatus.CHECKED_OUT,
+          roomId: demo.roomId as string,
+          guestId: demo.guestId,
+          checkedInAt: demo.stay.checkedInAt,
+          checkedInByUserId: IDS.userAdmin,
+          checkedOutAt: demo.stay.checkedOutAt,
+          checkedOutByUserId: demo.stay.checkedOutAt === null ? null : IDS.userAdmin,
+          checkOutNotes: demo.stay.checkedOutAt === null ? null : 'Salida de demostración.',
+        },
+        create: {
+          organizationId: IDS.organizationA,
+          propertyId: IDS.propertyCentro,
+          reservationId: reservation.id,
+          guestId: demo.guestId,
+          roomId: demo.roomId as string,
+          status: demo.stay.checkedOutAt === null ? StayStatus.IN_HOUSE : StayStatus.CHECKED_OUT,
+          checkedInAt: demo.stay.checkedInAt,
+          checkedInByUserId: IDS.userAdmin,
+          checkedOutAt: demo.stay.checkedOutAt,
+          checkedOutByUserId: demo.stay.checkedOutAt === null ? null : IDS.userAdmin,
+          checkOutNotes: demo.stay.checkedOutAt === null ? null : 'Salida de demostración.',
+        },
+      });
+    }
+
+    historyRows.push({
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      reservationId: reservation.id,
+      action: 'reservation.created',
+      fromStatus: null,
+      toStatus: ReservationStatus.CONFIRMED,
+      fromRoomId: null,
+      toRoomId: null,
+      reason: null,
+      actorUserId: IDS.userAdmin,
+      occurredAt: demoInstant(-8, 10),
+    });
+
+    if (demo.roomId !== null) {
+      historyRows.push({
+        organizationId: IDS.organizationA,
+        propertyId: IDS.propertyCentro,
+        reservationId: reservation.id,
+        action: 'reservation.room_assigned',
+        fromStatus: ReservationStatus.CONFIRMED,
+        toStatus: ReservationStatus.CONFIRMED,
+        fromRoomId: null,
+        toRoomId: demo.roomId,
+        reason: null,
+        actorUserId: IDS.userAdmin,
+        occurredAt: demoInstant(-8, 11),
+      });
+    }
+
+    if (demo.stay !== null) {
+      historyRows.push({
+        organizationId: IDS.organizationA,
+        propertyId: IDS.propertyCentro,
+        reservationId: reservation.id,
+        action: 'reservation.checked_in',
+        fromStatus: ReservationStatus.CONFIRMED,
+        toStatus: ReservationStatus.CHECKED_IN,
+        fromRoomId: null,
+        toRoomId: demo.roomId,
+        reason: null,
+        actorUserId: IDS.userAdmin,
+        occurredAt: demo.stay.checkedInAt,
+      });
+    }
+
+    if (demo.stay?.checkedOutAt != null) {
+      historyRows.push({
+        organizationId: IDS.organizationA,
+        propertyId: IDS.propertyCentro,
+        reservationId: reservation.id,
+        action: 'reservation.checked_out',
+        fromStatus: ReservationStatus.CHECKED_IN,
+        toStatus: ReservationStatus.CHECKED_OUT,
+        fromRoomId: demo.roomId,
+        toRoomId: demo.roomId,
+        reason: 'Salida de demostración.',
+        actorUserId: IDS.userAdmin,
+        occurredAt: demo.stay.checkedOutAt,
+      });
+    }
+  }
+
+  // ReservationHistory is append-only (a database trigger rejects UPDATE/DELETE),
+  // so seeding checks for an existing event instead of upserting it.
+  for (const row of historyRows) {
+    const existing = await prisma.reservationHistory.findFirst({
+      where: { reservationId: row.reservationId, action: row.action },
+      select: { id: true },
+    });
+    if (existing === null) {
+      await prisma.reservationHistory.create({ data: row });
+    }
   }
 
   const [organizations, properties, usersCount, roles, roomTypesCount, roomsCount, guestsCount] =

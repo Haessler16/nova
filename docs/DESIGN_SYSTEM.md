@@ -369,3 +369,10 @@ Use the following prompt when starting implementation:
 - The Audit feed uses `SectionCard`, `QueryFeedback`, `ErrorAlert`, `textSecondary`/`line` tokens, labeled date/actor inputs, a wrapped filter bar, an explicit `Cargar más` cursor action and modal detail. Empty, loading and error states are preserved.
 - The offline page is a standalone static document (no Chakra/provider dependency) with semantic heading and link; mutations remain blocked with an explicit message. It intentionally does not fake a synchronization state.
 - No visual browser review was performed in this run; verification was typecheck, lint, build, unit/E2E and manual token/component inspection.
+
+## Implementation status — 2026-11-11 (modal and drawer contrast)
+
+- Fixed a theme bug: `components.ModalContent` and `components.DrawerContent` are not valid Chakra v2 override keys, so the previous modal/drawer styling was silently ignored and every dialog kept the default 8 px radius, `shadows.lg` and `blackAlpha.600` overlay. Overrides now live under `components.Modal.baseStyle` and `components.Drawer.baseStyle` using the `overlay`, `dialog`, `header`, `body`, `footer` and `closeButton` parts.
+- Dialog contrast: navy translucent overlay token (`overlay`, `rgba(16, 42, 67, 0.55)`), 1 px `line` border, 18 px radius, dedicated `modal` elevation and clipped corners. Header and footer are separated with `line` borders; the footer uses the `gray.50`/canvas surface so actions read as a distinct region. Drawer dialogs share the overlay, elevation and header/footer separators.
+- The mobile navigation drawer now uses the shared overlay token instead of a one-off `blackAlpha.600`.
+- This is a visual foundation change only: no modal markup, business logic, API contract or routing was modified. Screens still use their existing Modal/Drawer composition, so the visual result is consistent across modules without per-page rewrites.

@@ -743,3 +743,16 @@ These choices should be confirmed against the existing repository and current st
   - Day.js timezone behavior still depends on the platform IANA database; the existing DST and timezone tests stay mandatory.
   - Reservation drafts, report ranges and calendar views can add stores later using the same tenant-key pattern.
   - Reloading the browser clears all stores; no offline or cross-session persistence is promised yet.
+
+### ADR-041 — Availability reads accept past calendar windows
+
+- Status: accepted.
+- Date: 2026-11-11.
+- Context: reservation dates are property calendar dates, but the reservation-creation guard compares them against the server's UTC date. A reservation that starts on "today" in the property timezone can therefore be one day in the past for that guard. The reservation drawer needs availability for the reservation's original window to assign a room, and it failed with `reservation_in_past` for those arrivals.
+- Decision:
+  - `GET /reservations/availability` is read-only and accepts windows that start before today; `POST /reservations` and `PATCH /reservations/:id` keep rejecting them.
+  - No integrity rule is relaxed: assignment still relies on PostgreSQL exclusion constraints, and check-in still validates the property's local date, room state and in-house occupancy.
+  - The underlying UTC-vs-property-timezone comparison for creation remains an open technical debt item, not a reason to weaken mutation guards.
+- Consequences:
+  - Past windows can be queried for availability, which is harmless and useful for late/overdue arrivals.
+  - A property-timezone-aware creation guard is still required before relying on this behavior in production; tracked as follow-up.

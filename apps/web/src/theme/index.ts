@@ -218,6 +218,7 @@ const theme = extendTheme({
     skySoft: '#E8F5FD',
     mintSoft: '#E8F8F2',
     limeSoft: '#F6FDEB',
+    overlay: 'rgba(16, 42, 67, 0.55)',
   },
   fonts: {
     heading:
@@ -244,6 +245,7 @@ const theme = extendTheme({
   shadows: {
     card: '0 1px 2px rgba(16, 42, 67, 0.04), 0 10px 28px rgba(16, 42, 67, 0.05)',
     cardHover: '0 2px 6px rgba(16, 42, 67, 0.06), 0 16px 36px rgba(16, 42, 67, 0.08)',
+    modal: '0 24px 64px rgba(16, 42, 67, 0.22), 0 4px 12px rgba(16, 42, 67, 0.08)',
     focus: focusRing,
   },
   styles: {
@@ -388,16 +390,86 @@ const theme = extendTheme({
         _focus: { bg: 'skySoft' },
       },
     },
-    ModalContent: {
+    // Chakra v2 models Modal and Drawer as multi-part components. Overrides must
+    // live under the component key using part names (dialog, header, body…);
+    // `ModalContent` / `DrawerContent` keys are silently ignored by the theme.
+    Modal: {
       baseStyle: {
-        borderRadius: '2xl',
-        borderColor: 'line',
-        boxShadow: 'cardHover',
+        overlay: { bg: 'overlay' },
+        dialog: {
+          bg: 'surface',
+          color: 'textPrimary',
+          borderWidth: '1px',
+          borderColor: 'line',
+          borderRadius: '2xl',
+          boxShadow: 'modal',
+          overflow: 'hidden',
+        },
+        header: {
+          px: 6,
+          py: 5,
+          fontSize: 'lg',
+          fontWeight: 'semibold',
+          color: 'textPrimary',
+          borderBottomWidth: '1px',
+          borderColor: 'line',
+        },
+        body: {
+          px: 6,
+          py: 5,
+        },
+        footer: {
+          px: 6,
+          py: 4,
+          bg: 'gray.50',
+          borderTopWidth: '1px',
+          borderColor: 'line',
+          gap: 2,
+        },
+        closeButton: {
+          top: 4,
+          insetEnd: 4,
+          borderRadius: 'md',
+          color: 'textSecondary',
+          _hover: { bg: 'gray.100', color: 'textPrimary' },
+          _focusVisible: { boxShadow: focusRing },
+        },
       },
     },
-    DrawerContent: {
+    Drawer: {
       baseStyle: {
-        bg: 'surface',
+        overlay: { bg: 'overlay' },
+        dialog: {
+          bg: 'surface',
+          color: 'textPrimary',
+          borderColor: 'line',
+          boxShadow: 'modal',
+        },
+        header: {
+          px: 6,
+          py: 5,
+          fontSize: 'lg',
+          fontWeight: 'semibold',
+          color: 'textPrimary',
+          borderBottomWidth: '1px',
+          borderColor: 'line',
+        },
+        body: { px: 6, py: 5 },
+        footer: {
+          px: 6,
+          py: 4,
+          bg: 'gray.50',
+          borderTopWidth: '1px',
+          borderColor: 'line',
+        },
+        closeButton: {
+          top: 4,
+          insetEnd: 4,
+          borderRadius: 'md',
+          color: 'textSecondary',
+          _hover: { bg: 'gray.100', color: 'textPrimary' },
+          _focusVisible: { boxShadow: focusRing },
+        },
       },
     },
     Divider: {

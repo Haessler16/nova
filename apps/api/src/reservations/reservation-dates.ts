@@ -39,7 +39,12 @@ export function nightsBetween(checkInDate: Date, checkOutDate: Date): number {
   return Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-export function assertStayWindow(checkInDate: Date, checkOutDate: Date, now = new Date()): void {
+export function assertStayWindow(
+  checkInDate: Date,
+  checkOutDate: Date,
+  now = new Date(),
+  options: { allowPast?: boolean } = {},
+): void {
   if (checkOutDate.getTime() <= checkInDate.getTime()) {
     throw new BadRequestException({
       code: 'invalid_stay_window',
@@ -52,6 +57,10 @@ export function assertStayWindow(checkInDate: Date, checkOutDate: Date, now = ne
       code: 'reservation_too_long',
       message: `A reservation cannot exceed ${MAX_NIGHTS} nights.`,
     });
+  }
+
+  if (options.allowPast === true) {
+    return;
   }
 
   const today = new Date(`${formatCalendarDate(now)}T00:00:00.000Z`);

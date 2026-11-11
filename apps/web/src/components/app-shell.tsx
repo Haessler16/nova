@@ -553,9 +553,14 @@ function AppShell({ children }: { children: ReactNode }) {
         </Box>
 
         <Drawer isOpen={drawer.isOpen} placement="left" onClose={drawer.onClose} size="xs">
-          <DrawerOverlay bg="blackAlpha.600" />
+          <DrawerOverlay />
           <DrawerContent bg="sidebar" maxW="300px">
-            <DrawerCloseButton color="white" top={5} right={4} />
+            <DrawerCloseButton
+              color="white"
+              top={5}
+              right={4}
+              _hover={{ bg: 'sidebarHover', color: 'white' }}
+            />
             <DrawerBody p={0}>
               <SidebarContent
                 onNavigate={drawer.onClose}

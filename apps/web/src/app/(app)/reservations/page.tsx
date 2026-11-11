@@ -4,6 +4,7 @@ import {
   Badge,
   Box,
   Button,
+  Collapse,
   Divider,
   Drawer,
   DrawerBody,
@@ -49,6 +50,7 @@ import {
 import { useSession } from '@/context/session';
 import { api, downloadCsv, errorMessage } from '@/lib/api';
 import {
+  DOCUMENT_TYPE_LABELS,
   RESERVATION_STATUS_COLORS,
   RESERVATION_STATUS_LABELS,
   formatCalendarDate,
@@ -58,7 +60,9 @@ import {
 } from '@/lib/format';
 import type {
   Availability,
+  AvailabilityItem,
   Guest,
+  GuestDocumentType,
   Reservation,
   ReservationHistoryEntry,
   RoomType,
@@ -68,6 +72,170 @@ import { useAsyncData } from '@/lib/use-async-data';
 interface ListData {
   items: Reservation[];
   nextCursor: string | null;
+}
+
+interface GuestFormState {
+  fullName: string;
+  email: string;
+  phone: string;
+  documentType: '' | GuestDocumentType;
+  documentNumber: string;
+}
+
+const EMPTY_GUEST_FORM: GuestFormState = {
+  fullName: '',
+  email: '',
+  phone: '',
+  documentType: '',
+  documentNumber: '',
+};
+
+function guestFormFrom(guest: Guest): GuestFormState {
+  return {
+    fullName: guest.fullName,
+    email: guest.email ?? '',
+    phone: guest.phone ?? '',
+    documentType: guest.documentType ?? '',
+    documentNumber: guest.documentNumber ?? '',
+  };
+}
+
+function guestCreateBody(form: GuestFormState): Record<string, unknown> {
+  return {
+    fullName: form.fullName.trim(),
+    ...(form.email.trim() !== '' ? { email: form.email.trim() } : {}),
+    ...(form.phone.trim() !== '' ? { phone: form.phone.trim() } : {}),
+    ...(form.documentType !== ''
+      ? { documentType: form.documentType, documentNumber: form.documentNumber.trim() }
+      : {}),
+  };
+}
+
+function guestUpdateBody(form: GuestFormState): Record<string, unknown> {
+  return {
+    fullName: form.fullName.trim(),
+    ...(form.email.trim() !== '' ? { email: form.email.trim() } : {}),
+    ...(form.phone.trim() !== '' ? { phone: form.phone.trim() } : {}),
+    ...(form.documentType === ''
+      ? { documentType: null, documentNumber: null }
+      : { documentType: form.documentType, documentNumber: form.documentNumber.trim() }),
+  };
+}
+
+function GuestFields({
+  value,
+  onChange,
+  disabled = false,
+  idPrefix,
+}: {
+  value: GuestFormState;
+  onChange: (patch: Partial<GuestFormState>) => void;
+  disabled?: boolean;
+  idPrefix: string;
+}) {
+  return (
+    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+      <Field label="Nombre completo" isRequired>
+        <Input
+          id={`${idPrefix}-full-name`}
+          value={value.fullName}
+          onChange={(event) => onChange({ fullName: event.target.value })}
+          placeholder="Nombre y apellido"
+          isDisabled={disabled}
+        />
+      </Field>
+      <Field label="Email">
+        <Input
+          id={`${idPrefix}-email`}
+          type="email"
+          value={value.email}
+          onChange={(event) => onChange({ email: event.target.value })}
+          placeholder="huesped@ejemplo.com"
+          isDisabled={disabled}
+        />
+      </Field>
+      <Field label="Teléfono">
+        <Input
+          id={`${idPrefix}-phone`}
+          value={value.phone}
+          onChange={(event) => onChange({ phone: event.target.value })}
+          placeholder="+55 11 90000-0000"
+          isDisabled={disabled}
+        />
+      </Field>
+      <Field label="Tipo de documento">
+        <Select
+          id={`${idPrefix}-document-type`}
+          value={value.documentType}
+          onChange={(event) =>
+            onChange({ documentType: event.target.value as '' | GuestDocumentType })
+          }
+          isDisabled={disabled}
+        >
+          <option value="">Sin documento</option>
+          {(Object.keys(DOCUMENT_TYPE_LABELS) as GuestDocumentType[]).map((type) => (
+            <option key={type} value={type}>
+              {DOCUMENT_TYPE_LABELS[type]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {value.documentType !== '' && (
+        <Field label="Número de documento" isRequired>
+          <Input
+            id={`${idPrefix}-document-number`}
+            value={value.documentNumber}
+            onChange={(event) => onChange({ documentNumber: event.target.value })}
+            placeholder="Número o código"
+            isDisabled={disabled}
+          />
+        </Field>
+      )}
+    </SimpleGrid>
+  );
+}
+
+function RoomChoiceGrid({
+  items,
+  value,
+  onChange,
+  allowUnassigned = false,
+  disabled = false,
+}: {
+  items: AvailabilityItem[];
+  value: string;
+  onChange: (roomId: string) => void;
+  allowUnassigned?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <HStack wrap="wrap" spacing={2}>
+      {allowUnassigned && (
+        <Button
+          size="sm"
+          variant={value === '' ? 'solid' : 'outline'}
+          colorScheme={value === '' ? 'brand' : 'gray'}
+          onClick={() => onChange('')}
+          isDisabled={disabled}
+        >
+          Sin asignar
+        </Button>
+      )}
+      {items.map((item) => (
+        <Button
+          key={item.roomId}
+          size="sm"
+          variant={value === item.roomId ? 'solid' : 'outline'}
+          colorScheme={value === item.roomId ? 'brand' : 'gray'}
+          onClick={() => onChange(item.roomId)}
+          isDisabled={disabled}
+        >
+          Hab. {item.number}
+          {item.floor !== null ? ` · piso ${item.floor}` : ''}
+        </Button>
+      ))}
+    </HStack>
+  );
 }
 
 function newIdempotencyKey(): string {
@@ -137,7 +305,18 @@ function ReservationsContent() {
     notes: '',
     idempotencyKey: newIdempotencyKey(),
   });
-  const [guestFilter, setGuestFilter] = useState('');
+  const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
+  const [guestSearch, setGuestSearch] = useState('');
+  const [debouncedGuestSearch, setDebouncedGuestSearch] = useState('');
+  const [guestPanel, setGuestPanel] = useState<'none' | 'create'>('none');
+  const [guestForm, setGuestForm] = useState<GuestFormState>(EMPTY_GUEST_FORM);
+  const [guestSaving, setGuestSaving] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+
+  const guestEditModal = useDisclosure();
+  const [guestEditTarget, setGuestEditTarget] = useState<Guest | null>(null);
+  const [guestEditSource, setGuestEditSource] = useState<'create' | 'detail'>('create');
+  const [guestEditForm, setGuestEditForm] = useState<GuestFormState>(EMPTY_GUEST_FORM);
 
   const [editForm, setEditForm] = useState({
     checkInDate: '',
@@ -149,19 +328,36 @@ function ReservationsContent() {
   const [cancelReason, setCancelReason] = useState('');
   const [assignRoomId, setAssignRoomId] = useState('');
 
-  const lookup = useAsyncData<{ guests: Guest[]; roomTypes: RoomType[] }>(
+  const lookup = useAsyncData<{ roomTypes: RoomType[] }>(
     async () => {
-      if (!createModal.isOpen && !editModal.isOpen) {
-        return { guests: [], roomTypes: [] };
+      if (!createModal.isOpen) {
+        return { roomTypes: [] };
       }
-      const [guests, roomTypes] = await Promise.all([
-        api<{ items: Guest[] }>('/api/v1/guests?status=ACTIVE&limit=100', { tenant }),
-        api<{ items: RoomType[] }>('/api/v1/inventory/room-types?status=ACTIVE', { tenant }),
-      ]);
-      return { guests: guests.items, roomTypes: roomTypes.items };
+      const roomTypes = await api<{ items: RoomType[] }>(
+        '/api/v1/inventory/room-types?status=ACTIVE',
+        { tenant },
+      );
+      return { roomTypes: roomTypes.items };
     },
-    `${tenant.organizationId}:${tenant.propertyId}:lookups:${String(createModal.isOpen)}:${String(editModal.isOpen)}`,
+    `${tenant.organizationId}:${tenant.propertyId}:room-types:${String(createModal.isOpen)}`,
   );
+
+  const guestLookup = useAsyncData<{ items: Guest[] }>(
+    async () => {
+      if (!createModal.isOpen) {
+        return { items: [] };
+      }
+      const params = new URLSearchParams({ status: 'ACTIVE', limit: '8' });
+      if (debouncedGuestSearch !== '') params.set('search', debouncedGuestSearch);
+      return api<{ items: Guest[] }>(`/api/v1/guests?${params.toString()}`, { tenant });
+    },
+    `${tenant.organizationId}:${tenant.propertyId}:guest-search:${String(createModal.isOpen)}:${debouncedGuestSearch}`,
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedGuestSearch(guestSearch.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [guestSearch]);
 
   const createNights = nightsBetween(createForm.checkInDate, createForm.checkOutDate);
   const createDatesValid =
@@ -189,24 +385,35 @@ function ReservationsContent() {
     `${String(createModal.isOpen)}:${createForm.checkInDate}:${createForm.checkOutDate}:${createForm.roomTypeId}`,
   );
 
-  const detail = useAsyncData<{ reservation: Reservation; history: ReservationHistoryEntry[] }>(
+  const detail = useAsyncData<{
+    reservation: Reservation;
+    history: ReservationHistoryEntry[];
+    guest: Guest;
+  }>(
     async () => {
       if (selectedId === null) {
         throw new Error('Sin reserva seleccionada');
       }
-      const [reservation, history] = await Promise.all([
-        api<Reservation>(`/api/v1/reservations/${selectedId}`, { tenant }),
+      const reservation = await api<Reservation>(`/api/v1/reservations/${selectedId}`, { tenant });
+      const [history, guest] = await Promise.all([
         api<{ items: ReservationHistoryEntry[] }>(
           `/api/v1/reservations/${selectedId}/history?limit=100`,
           { tenant },
         ),
+        api<Guest>(`/api/v1/guests/${reservation.guest.id}`, { tenant }),
       ]);
-      return { reservation, history: history.items };
+      return { reservation, history: history.items, guest };
     },
     `${selectedId ?? 'none'}:${detailVersion}`,
   );
 
   const selectedReservation = detail.data?.reservation ?? null;
+  const detailGuest = detail.data?.guest ?? null;
+  const today = todayISO();
+  const checkInEligible =
+    selectedReservation !== null &&
+    selectedReservation.checkInDate <= today &&
+    selectedReservation.checkOutDate > today;
 
   const detailAvailability = useAsyncData<Availability>(
     async () => {
@@ -239,7 +446,12 @@ function ReservationsContent() {
       notes: '',
       idempotencyKey: newIdempotencyKey(),
     });
-    setGuestFilter('');
+    setSelectedGuest(null);
+    setGuestSearch('');
+    setDebouncedGuestSearch('');
+    setGuestPanel('none');
+    setGuestForm(EMPTY_GUEST_FORM);
+    setShowDetails(false);
     createModal.onOpen();
   }
 
@@ -409,16 +621,114 @@ function ReservationsContent() {
     }
   }
 
-  const filteredGuests =
-    lookup.data?.guests.filter((guest) => {
-      const term = guestFilter.trim().toLowerCase();
-      if (term === '') return true;
-      return (
-        guest.fullName.toLowerCase().includes(term) ||
-        (guest.email ?? '').toLowerCase().includes(term) ||
-        (guest.phone ?? '').toLowerCase().includes(term)
-      );
-    }) ?? [];
+  function selectGuest(guest: Guest): void {
+    setSelectedGuest(guest);
+    setCreateForm((current) => ({ ...current, guestId: guest.id }));
+    setGuestPanel('none');
+    setGuestSearch('');
+  }
+
+  async function handleCreateGuest(): Promise<void> {
+    const fullName = guestForm.fullName.trim();
+    if (fullName.length < 2) {
+      toast({ title: 'El nombre debe tener al menos 2 caracteres', status: 'warning' });
+      return;
+    }
+    if (guestForm.documentType !== '' && guestForm.documentNumber.trim().length < 3) {
+      toast({ title: 'Completá el número de documento', status: 'warning' });
+      return;
+    }
+    setGuestSaving(true);
+    try {
+      const guest = await api<Guest>('/api/v1/guests', {
+        method: 'POST',
+        tenant,
+        body: guestCreateBody(guestForm),
+      });
+      selectGuest(guest);
+      setGuestForm(EMPTY_GUEST_FORM);
+      toast({ title: 'Huésped creado y seleccionado', status: 'success' });
+    } catch (cause) {
+      toast({
+        title: 'No se pudo crear el huésped',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 8000,
+      });
+    } finally {
+      setGuestSaving(false);
+    }
+  }
+
+  function openGuestEdit(guest: Guest, source: 'create' | 'detail'): void {
+    setGuestEditTarget(guest);
+    setGuestEditSource(source);
+    setGuestEditForm(guestFormFrom(guest));
+    guestEditModal.onOpen();
+  }
+
+  async function handleGuestEdit(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (guestEditTarget === null) {
+      return;
+    }
+    if (guestEditForm.fullName.trim().length < 2) {
+      toast({ title: 'El nombre debe tener al menos 2 caracteres', status: 'warning' });
+      return;
+    }
+    if (guestEditForm.documentType !== '' && guestEditForm.documentNumber.trim().length < 3) {
+      toast({ title: 'Completá el número de documento', status: 'warning' });
+      return;
+    }
+    setGuestSaving(true);
+    try {
+      const guest = await api<Guest>(`/api/v1/guests/${guestEditTarget.id}`, {
+        method: 'PATCH',
+        tenant,
+        body: guestUpdateBody(guestEditForm),
+      });
+      if (guestEditSource === 'create' && selectedGuest?.id === guest.id) {
+        setSelectedGuest(guest);
+      }
+      toast({ title: 'Datos del huésped actualizados', status: 'success' });
+      guestEditModal.onClose();
+      if (guestEditSource === 'detail') {
+        bumpDetail();
+      }
+      reload();
+    } catch (cause) {
+      toast({
+        title: 'No se pudieron guardar los datos',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 8000,
+      });
+    } finally {
+      setGuestSaving(false);
+    }
+  }
+
+  async function handleCheckIn(reservation: Reservation): Promise<void> {
+    setSaving(true);
+    try {
+      await api(`/api/v1/front-office/reservations/${reservation.id}/check-in`, {
+        method: 'POST',
+        tenant,
+      });
+      toast({ title: 'Check-in realizado', status: 'success' });
+      reload();
+      bumpDetail();
+    } catch (cause) {
+      toast({
+        title: 'No se pudo hacer check-in',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 8000,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function exportReservations(): Promise<void> {
     setExporting(true);
@@ -637,176 +947,347 @@ function ReservationsContent() {
       </SectionCard>
 
       {/* Create */}
-      <Modal isOpen={createModal.isOpen} onClose={createModal.onClose} size="2xl">
-        <ModalOverlay />
-        <ModalContent as="form" onSubmit={(event) => void handleCreate(event)}>
+      <Modal
+        isOpen={createModal.isOpen}
+        onClose={createModal.onClose}
+        size="4xl"
+        scrollBehavior="inside"
+      >
+        <ModalOverlay />{' '}
+        <ModalContent
+          as="form"
+          my={4}
+          maxH="calc(100vh - 2rem)"
+          onSubmit={(event) => void handleCreate(event)}
+        >
           <ModalHeader>Nueva reserva</ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody py={4}>
             <Stack spacing={4}>
-              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                <Field label="Check-in" isRequired>
-                  <Input
-                    type="date"
-                    value={createForm.checkInDate}
-                    min={todayISO()}
-                    onChange={(event) =>
-                      setCreateForm({ ...createForm, checkInDate: event.target.value, roomId: '' })
-                    }
-                    required
-                  />
-                </Field>
-                <Field label="Check-out" isRequired helper="La noche de check-out no se ocupa.">
-                  <Input
-                    type="date"
-                    value={createForm.checkOutDate}
-                    min={createForm.checkInDate}
-                    onChange={(event) =>
-                      setCreateForm({ ...createForm, checkOutDate: event.target.value, roomId: '' })
-                    }
-                    required
-                  />
-                </Field>
-              </SimpleGrid>
-              <Text fontSize="sm" color={createDatesValid ? 'gray.600' : 'danger.500'}>
-                {createDatesValid
-                  ? `${createNights} ${createNights === 1 ? 'noche' : 'noches'}`
-                  : 'La estadía debe tener entre 1 y 366 noches.'}
-              </Text>
-
-              <Field label="Buscar huésped">
-                <Input
-                  size="sm"
-                  placeholder="Filtrar huéspedes activos por nombre o contacto"
-                  value={guestFilter}
-                  onChange={(event) => setGuestFilter(event.target.value)}
-                />
-              </Field>
-              <Field label="Huésped" isRequired helper="Solo huéspedes activos de esta propiedad.">
-                <Select
-                  value={createForm.guestId}
-                  onChange={(event) =>
-                    setCreateForm({ ...createForm, guestId: event.target.value })
-                  }
-                  required
-                >
-                  <option value="">Seleccionar…</option>
-                  {filteredGuests.map((guest) => (
-                    <option key={guest.id} value={guest.id}>
-                      {guest.fullName}
-                      {guest.email !== null ? ` · ${guest.email}` : ''}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              {lookup.data !== null && filteredGuests.length === 0 && (
-                <Text fontSize="xs" color="warning.600">
-                  No hay huéspedes activos que coincidan. Creá uno desde Huéspedes.
-                </Text>
-              )}
-
-              <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-                <Field label="Tipo de habitación" isRequired>
-                  <Select
-                    value={createForm.roomTypeId}
-                    onChange={(event) =>
-                      setCreateForm({ ...createForm, roomTypeId: event.target.value, roomId: '' })
-                    }
-                    required
-                  >
-                    <option value="">Seleccionar…</option>
-                    {lookup.data?.roomTypes.map((roomType) => (
-                      <option key={roomType.id} value={roomType.id}>
-                        {roomType.name} · cap. {roomType.capacityAdults}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label="Adultos" isRequired>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={createForm.adults}
-                    onChange={(event) =>
-                      setCreateForm({ ...createForm, adults: event.target.value })
-                    }
-                    required
-                  />
-                </Field>
-                <Field label="Menores">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={20}
-                    value={createForm.children}
-                    onChange={(event) =>
-                      setCreateForm({ ...createForm, children: event.target.value })
-                    }
-                  />
-                </Field>
-              </SimpleGrid>
-
-              {createForm.roomTypeId !== '' && createDatesValid && (
-                <Box borderWidth="1px" borderRadius="md" p={3}>
-                  <Text fontSize="sm" fontWeight="medium" mb={1}>
-                    Disponibilidad
-                  </Text>
-                  {availability.loading ? (
-                    <Text fontSize="xs" color="gray.500">
-                      Consultando…
-                    </Text>
-                  ) : availability.error !== null ? (
-                    <Text fontSize="xs" color="danger.500">
-                      {errorMessage(availability.error)}
-                    </Text>
-                  ) : (availability.data?.items.length ?? 0) === 0 ? (
-                    <Text fontSize="xs" color="warning.600">
-                      No hay habitaciones libres de este tipo para el rango elegido.
-                    </Text>
-                  ) : (
-                    <Select
-                      size="sm"
-                      placeholder="Asignar habitación ahora (opcional)"
-                      value={createForm.roomId}
-                      onChange={(event) =>
-                        setCreateForm({ ...createForm, roomId: event.target.value })
-                      }
+              <Box>
+                <HStack justify="space-between" mb={2}>
+                  <Text fontWeight="semibold">Huésped</Text>
+                  {selectedGuest === null && guestPanel === 'none' && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="brand"
+                      onClick={() => {
+                        setGuestForm({ ...EMPTY_GUEST_FORM, fullName: guestSearch.trim() });
+                        setGuestPanel('create');
+                      }}
                     >
-                      {availability.data?.items.map((item) => (
-                        <option key={item.roomId} value={item.roomId}>
-                          Hab. {item.number} · {item.roomType.name}
+                      + Nuevo huésped
+                    </Button>
+                  )}
+                </HStack>
+
+                {selectedGuest !== null ? (
+                  <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3} bg="gray.50">
+                    <HStack justify="space-between" align="flex-start" wrap="wrap" spacing={3}>
+                      <Box minW={0}>
+                        <Text fontWeight="semibold">{selectedGuest.fullName}</Text>
+                        <Text fontSize="xs" color="gray.600" isTruncated>
+                          {[selectedGuest.email, selectedGuest.phone].filter(Boolean).join(' · ') ||
+                            'Sin datos de contacto'}
+                        </Text>
+                        <Text fontSize="xs" color="gray.600">
+                          {selectedGuest.documentType !== null
+                            ? `${DOCUMENT_TYPE_LABELS[selectedGuest.documentType]} ${selectedGuest.documentNumber ?? ''}`
+                            : 'Sin documento'}
+                        </Text>
+                      </Box>
+                      <HStack spacing={2}>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => openGuestEdit(selectedGuest, 'create')}
+                        >
+                          Editar datos
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => {
+                            setSelectedGuest(null);
+                            setCreateForm((current) => ({ ...current, guestId: '' }));
+                            setGuestSearch('');
+                          }}
+                        >
+                          Cambiar
+                        </Button>
+                      </HStack>
+                    </HStack>
+                  </Box>
+                ) : guestPanel === 'create' ? (
+                  <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
+                    <GuestFields
+                      value={guestForm}
+                      onChange={(patch) => setGuestForm((current) => ({ ...current, ...patch }))}
+                      disabled={guestSaving}
+                      idPrefix="new-reservation-guest"
+                    />
+                    <HStack justify="flex-end" mt={3}>
+                      <Button size="sm" variant="ghost" onClick={() => setGuestPanel('none')}>
+                        Cancelar
+                      </Button>
+                      <Button
+                        size="sm"
+                        colorScheme="brand"
+                        onClick={() => void handleCreateGuest()}
+                        isLoading={guestSaving}
+                      >
+                        Crear y seleccionar
+                      </Button>
+                    </HStack>
+                  </Box>
+                ) : (
+                  <Stack spacing={2}>
+                    <Input
+                      aria-label="Buscar huésped"
+                      placeholder="Buscar por nombre, email o teléfono…"
+                      value={guestSearch}
+                      onChange={(event) => setGuestSearch(event.target.value)}
+                    />
+                    <Box
+                      borderWidth="1px"
+                      borderColor="line"
+                      borderRadius="md"
+                      maxH="150px"
+                      overflowY="auto"
+                    >
+                      {guestLookup.loading ? (
+                        <Text px={3} py={2} fontSize="sm" color="gray.500">
+                          Buscando huéspedes…
+                        </Text>
+                      ) : (guestLookup.data?.items.length ?? 0) === 0 ? (
+                        <Text px={3} py={2} fontSize="sm" color="gray.500">
+                          No hay huéspedes activos
+                          {debouncedGuestSearch !== '' ? ` para “${debouncedGuestSearch}”` : ''}.
+                        </Text>
+                      ) : (
+                        <Stack spacing={0} divider={<Divider />}>
+                          {guestLookup.data?.items.map((guest) => (
+                            <Button
+                              key={guest.id}
+                              variant="ghost"
+                              justifyContent="flex-start"
+                              h="auto"
+                              py={2}
+                              px={3}
+                              borderRadius="none"
+                              onClick={() => selectGuest(guest)}
+                            >
+                              <Box textAlign="left" minW={0}>
+                                <Text fontSize="sm" fontWeight="medium" isTruncated>
+                                  {guest.fullName}
+                                </Text>
+                                <Text fontSize="xs" color="gray.500" isTruncated>
+                                  {[guest.email, guest.phone].filter(Boolean).join(' · ') ||
+                                    'Sin datos de contacto'}
+                                </Text>
+                              </Box>
+                            </Button>
+                          ))}
+                        </Stack>
+                      )}
+                    </Box>
+                    {guestLookup.error !== null && (
+                      <Text fontSize="xs" color="danger.500">
+                        {errorMessage(guestLookup.error)}
+                      </Text>
+                    )}
+                    <Button
+                      size="xs"
+                      variant="link"
+                      alignSelf="flex-start"
+                      onClick={() => {
+                        setGuestForm({ ...EMPTY_GUEST_FORM, fullName: guestSearch.trim() });
+                        setGuestPanel('create');
+                      }}
+                    >
+                      Crear un huésped nuevo
+                      {guestSearch.trim() !== '' ? ` con “${guestSearch.trim()}”` : ''}
+                    </Button>
+                  </Stack>
+                )}
+              </Box>
+
+              <Box>
+                <Text fontWeight="semibold" mb={2}>
+                  Estadía
+                </Text>
+                <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
+                  <Field label="Check-in" isRequired>
+                    <Input
+                      type="date"
+                      value={createForm.checkInDate}
+                      min={todayISO()}
+                      onChange={(event) =>
+                        setCreateForm({
+                          ...createForm,
+                          checkInDate: event.target.value,
+                          roomId: '',
+                        })
+                      }
+                      required
+                    />
+                  </Field>
+                  <Field label="Check-out" isRequired>
+                    <Input
+                      type="date"
+                      value={createForm.checkOutDate}
+                      min={createForm.checkInDate}
+                      onChange={(event) =>
+                        setCreateForm({
+                          ...createForm,
+                          checkOutDate: event.target.value,
+                          roomId: '',
+                        })
+                      }
+                      required
+                    />
+                  </Field>
+                  <Field label="Adultos" isRequired>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={createForm.adults}
+                      onChange={(event) =>
+                        setCreateForm({ ...createForm, adults: event.target.value })
+                      }
+                      required
+                    />
+                  </Field>
+                  <Field label="Menores">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={20}
+                      value={createForm.children}
+                      onChange={(event) =>
+                        setCreateForm({ ...createForm, children: event.target.value })
+                      }
+                    />
+                  </Field>
+                </SimpleGrid>
+                <Text mt={2} fontSize="xs" color={createDatesValid ? 'gray.600' : 'danger.500'}>
+                  {createDatesValid
+                    ? `${createNights} ${createNights === 1 ? 'noche' : 'noches'} · la noche de check-out no se ocupa`
+                    : 'La estadía debe tener entre 1 y 366 noches.'}
+                </Text>
+              </Box>
+
+              <Box>
+                <Text fontWeight="semibold" mb={2}>
+                  Habitación
+                </Text>
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                  <Field label="Tipo de habitación" isRequired>
+                    <Select
+                      value={createForm.roomTypeId}
+                      onChange={(event) =>
+                        setCreateForm({ ...createForm, roomTypeId: event.target.value, roomId: '' })
+                      }
+                      required
+                    >
+                      <option value="">Seleccionar…</option>
+                      {lookup.data?.roomTypes.map((roomType) => (
+                        <option key={roomType.id} value={roomType.id}>
+                          {roomType.name} · cap. {roomType.capacityAdults}
                         </option>
                       ))}
                     </Select>
-                  )}
-                </Box>
-              )}
+                  </Field>
+                  <Box alignSelf="end">
+                    <Text fontSize="xs" color="gray.500">
+                      {createForm.roomTypeId === ''
+                        ? 'Elegí un tipo para ver las habitaciones libres.'
+                        : 'Asignar habitación ahora es opcional; podés hacerlo al llegar.'}
+                    </Text>
+                  </Box>
+                </SimpleGrid>
 
-              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                <Field label="Código" helper="Opcional: 4–32 mayúsculas, números o guiones.">
-                  <Input
-                    value={createForm.code}
-                    onChange={(event) => setCreateForm({ ...createForm, code: event.target.value })}
-                  />
-                </Field>
-                <Field label="Origen">
-                  <Input
-                    value={createForm.source}
-                    placeholder="mostrador, web, teléfono…"
-                    onChange={(event) =>
-                      setCreateForm({ ...createForm, source: event.target.value })
-                    }
-                  />
-                </Field>
-              </SimpleGrid>
-              <Field label="Notas">
-                <Textarea
-                  rows={2}
-                  value={createForm.notes}
-                  onChange={(event) => setCreateForm({ ...createForm, notes: event.target.value })}
-                />
-              </Field>
+                {createForm.roomTypeId !== '' && createDatesValid && (
+                  <Box mt={3}>
+                    {availability.loading ? (
+                      <Text fontSize="sm" color="gray.500">
+                        Consultando disponibilidad…
+                      </Text>
+                    ) : availability.error !== null ? (
+                      <Text fontSize="sm" color="danger.500">
+                        {errorMessage(availability.error)}
+                      </Text>
+                    ) : (availability.data?.items.length ?? 0) === 0 ? (
+                      <Text fontSize="sm" color="warning.600">
+                        No hay habitaciones libres de este tipo para el rango elegido.
+                      </Text>
+                    ) : (
+                      <Box>
+                        <Text fontSize="xs" color="gray.500" mb={2}>
+                          {availability.data?.items.length}{' '}
+                          {availability.data?.items.length === 1
+                            ? 'habitación disponible'
+                            : 'habitaciones disponibles'}
+                        </Text>
+                        <RoomChoiceGrid
+                          items={availability.data?.items ?? []}
+                          value={createForm.roomId}
+                          onChange={(roomId) =>
+                            setCreateForm((current) => ({ ...current, roomId }))
+                          }
+                          allowUnassigned
+                        />
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Box>
+
+              <Box>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setShowDetails((current) => !current)}
+                  aria-expanded={showDetails}
+                >
+                  {showDetails ? 'Ocultar datos opcionales' : '+ Código, origen o notas'}
+                </Button>
+                <Collapse in={showDetails} animateOpacity>
+                  <Box pt={3}>
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                      <Field label="Código" helper="Opcional: 4–32 mayúsculas, números o guiones.">
+                        <Input
+                          value={createForm.code}
+                          onChange={(event) =>
+                            setCreateForm({ ...createForm, code: event.target.value })
+                          }
+                        />
+                      </Field>
+                      <Field label="Origen">
+                        <Input
+                          value={createForm.source}
+                          placeholder="mostrador, web, teléfono…"
+                          onChange={(event) =>
+                            setCreateForm({ ...createForm, source: event.target.value })
+                          }
+                        />
+                      </Field>
+                    </SimpleGrid>
+                    <Field label="Notas">
+                      <Textarea
+                        mt={3}
+                        rows={2}
+                        value={createForm.notes}
+                        onChange={(event) =>
+                          setCreateForm({ ...createForm, notes: event.target.value })
+                        }
+                      />
+                    </Field>
+                  </Box>
+                </Collapse>
+              </Box>
             </Stack>
           </ModalBody>
           <ModalFooter>
@@ -927,6 +1408,37 @@ function ReservationsContent() {
         </ModalContent>
       </Modal>
 
+      {/* Edit guest data from the reservation flow */}
+      <Modal isOpen={guestEditModal.isOpen} onClose={guestEditModal.onClose} size="lg">
+        <ModalOverlay />
+        <ModalContent as="form" onSubmit={(event) => void handleGuestEdit(event)}>
+          <ModalHeader>Editar datos del huésped</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Stack spacing={3}>
+              <Text fontSize="sm" color="gray.600">
+                Los cambios se guardan en el perfil del huésped y quedan disponibles para futuras
+                reservas y check-ins.
+              </Text>
+              <GuestFields
+                value={guestEditForm}
+                onChange={(patch) => setGuestEditForm((current) => ({ ...current, ...patch }))}
+                disabled={guestSaving}
+                idPrefix="edit-reservation-guest"
+              />
+            </Stack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={guestEditModal.onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" colorScheme="brand" isLoading={guestSaving}>
+              Guardar datos
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       {/* Detail */}
       <Drawer isOpen={drawer.isOpen} placement="right" onClose={drawer.onClose} size="lg">
         <DrawerOverlay />
@@ -990,7 +1502,25 @@ function ReservationsContent() {
                         selectedReservation.guest.email ?? selectedReservation.guest.phone ?? '—'
                       }
                     />
+                    <KeyValue
+                      label="Documento"
+                      value={
+                        detailGuest?.documentType != null
+                          ? `${DOCUMENT_TYPE_LABELS[detailGuest.documentType]} ${detailGuest.documentNumber ?? ''}`
+                          : 'Sin documento'
+                      }
+                    />
                   </SimpleGrid>
+                  {detailGuest !== null && (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      alignSelf="flex-start"
+                      onClick={() => openGuestEdit(detailGuest, 'detail')}
+                    >
+                      Editar datos del huésped
+                    </Button>
+                  )}
 
                   {selectedReservation.notes !== null && (
                     <Box>
@@ -1008,26 +1538,29 @@ function ReservationsContent() {
                       <Divider />
                       <Box>
                         <Text fontWeight="semibold" mb={2}>
-                          Asignar habitación
+                          Habitación
                         </Text>
-                        <HStack>
-                          <Select
-                            size="sm"
-                            placeholder={
-                              detailAvailability.loading
-                                ? 'Consultando disponibilidad…'
-                                : 'Habitación disponible'
-                            }
+                        {detailAvailability.loading ? (
+                          <Text fontSize="sm" color="gray.500">
+                            Consultando disponibilidad…
+                          </Text>
+                        ) : detailAvailability.error !== null ? (
+                          <Text fontSize="sm" color="danger.500">
+                            {errorMessage(detailAvailability.error)}
+                          </Text>
+                        ) : (detailAvailability.data?.items.length ?? 0) === 0 ? (
+                          <Text fontSize="sm" color="warning.600">
+                            No hay habitaciones libres de este tipo para estas fechas.
+                          </Text>
+                        ) : (
+                          <RoomChoiceGrid
+                            items={detailAvailability.data?.items ?? []}
                             value={assignRoomId}
-                            onChange={(event) => setAssignRoomId(event.target.value)}
-                            isDisabled={detailAvailability.loading}
-                          >
-                            {detailAvailability.data?.items.map((item) => (
-                              <option key={item.roomId} value={item.roomId}>
-                                Hab. {item.number} · {item.roomType.name}
-                              </option>
-                            ))}
-                          </Select>
+                            onChange={setAssignRoomId}
+                            disabled={saving}
+                          />
+                        )}
+                        <HStack mt={3} spacing={2} wrap="wrap">
                           <Button
                             size="sm"
                             colorScheme="brand"
@@ -1035,15 +1568,33 @@ function ReservationsContent() {
                             isLoading={saving}
                             isDisabled={assignRoomId === ''}
                           >
-                            Asignar
+                            Asignar seleccionada
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            colorScheme="brand"
+                            onClick={() => void handleCheckIn(selectedReservation)}
+                            isDisabled={
+                              selectedReservation.room === null ||
+                              !checkInEligible ||
+                              saving ||
+                              detailAvailability.loading
+                            }
+                          >
+                            Hacer check-in
                           </Button>
                         </HStack>
-                        {(detailAvailability.data?.items.length ?? 0) === 0 &&
-                          !detailAvailability.loading && (
-                            <Text fontSize="xs" color="warning.600" mt={2}>
-                              No hay habitaciones libres de este tipo para estas fechas.
-                            </Text>
-                          )}
+                        {selectedReservation.room === null && (
+                          <Text fontSize="xs" color="gray.500" mt={2}>
+                            Asigná una habitación para habilitar el check-in.
+                          </Text>
+                        )}
+                        {selectedReservation.room !== null && !checkInEligible && (
+                          <Text fontSize="xs" color="gray.500" mt={2}>
+                            El check-in se habilita desde el día de llegada.
+                          </Text>
+                        )}
                       </Box>
                     </>
                   )}
