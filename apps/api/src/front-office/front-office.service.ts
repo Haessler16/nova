@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
+import { addCalendarDays, propertyDayStart } from '../common/time/property-day';
 import { requirePropertyContext, RoomStateService } from '../inventory/room-state.service';
 import { computeOperationalDay } from '../operational-day/operational-day';
 import { PrismaService } from '../prisma/prisma.service';
@@ -172,6 +173,8 @@ export interface RoomRackItem {
 
 export interface FrontOfficeOverview {
   operationalDate: string;
+  selectedDate: string;
+  isHistorical: boolean;
   localDate: string;
   localTime: string;
   timezone: string;
@@ -230,114 +233,178 @@ export class FrontOfficeService {
     );
     const date = query.date ?? operationalDay.operationalDate;
     const dateValue = parseCalendarDate(date, 'date');
+    const operationalDateValue = parseCalendarDate(
+      operationalDay.operationalDate,
+      'operationalDate',
+    );
     const now = new Date();
+    const isHistorical = date < operationalDay.operationalDate;
+    const dayStart = isHistorical ? propertyDayStart(date, property.timezone) : null;
+    const dayEnd = isHistorical
+      ? propertyDayStart(addCalendarDays(date, 1), property.timezone)
+      : null;
 
-    const [arrivals, departures, inHouse, noShowCandidates, rooms, activeStays, blocks, upcoming] =
-      await Promise.all([
-        this.prisma.reservation.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            status: ReservationStatus.CONFIRMED,
-            checkInDate: { lte: dateValue },
-          },
-          orderBy: [{ checkInDate: 'asc' }, { code: 'asc' }],
-          take: 200,
-          select: RESERVATION_SUMMARY_SELECT,
-        }),
-        this.prisma.stay.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            status: StayStatus.IN_HOUSE,
-            reservation: { checkOutDate: { lte: dateValue } },
-          },
-          orderBy: [{ checkedInAt: 'asc' }, { id: 'asc' }],
-          take: 200,
-          select: STAY_SELECT,
-        }),
-        this.prisma.stay.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            status: StayStatus.IN_HOUSE,
-          },
-          orderBy: [{ checkedInAt: 'asc' }, { id: 'asc' }],
-          take: 300,
-          select: STAY_SELECT,
-        }),
-        this.prisma.reservation.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            status: ReservationStatus.CONFIRMED,
-            checkInDate: { lt: dateValue },
-          },
-          orderBy: [{ checkInDate: 'asc' }, { code: 'asc' }],
-          take: 100,
-          select: RESERVATION_SUMMARY_SELECT,
-        }),
-        this.prisma.room.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            status: 'ACTIVE',
-          },
-          orderBy: [{ number: 'asc' }, { id: 'asc' }],
-          take: 300,
-          select: {
-            id: true,
-            number: true,
-            floor: true,
-            building: true,
-            housekeepingState: true,
-            operationalState: true,
-            roomType: { select: { id: true, name: true, code: true } },
-          },
-        }),
-        this.prisma.stay.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            status: StayStatus.IN_HOUSE,
-          },
-          select: {
-            id: true,
-            roomId: true,
-            reservationId: true,
-            guest: { select: { fullName: true } },
-            reservation: { select: { code: true, checkOutDate: true } },
-          },
-        }),
-        this.prisma.roomBlock.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            status: 'ACTIVE',
-            startsAt: { lte: now },
-            endsAt: { gt: now },
-          },
-          select: { id: true, roomId: true, type: true, endsAt: true },
-        }),
-        this.prisma.reservation.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            status: ReservationStatus.CONFIRMED,
-            roomId: { not: null },
-            checkInDate: { gte: dateValue },
-          },
-          orderBy: [{ checkInDate: 'asc' }, { code: 'asc' }],
-          take: 300,
-          select: {
-            id: true,
-            code: true,
-            roomId: true,
-            checkInDate: true,
-            guest: { select: { fullName: true } },
-          },
-        }),
-      ]);
+    // Historical days show what happened, not what still needs attention: arrivals for
+    // that calendar day regardless of final status, stays active during that day, and
+    // check-outs registered during that day. Current-day views keep their pending-work
+    // semantics. Instant-based bounds use the property timezone, not UTC midnights.
+    const [arrivals, departures, inHouse, noShowCandidates] =
+      isHistorical && dayStart !== null && dayEnd !== null
+        ? await Promise.all([
+            this.prisma.reservation.findMany({
+              where: {
+                organizationId: context.organizationId,
+                propertyId,
+                status: { not: ReservationStatus.CANCELLED },
+                checkInDate: dateValue,
+              },
+              orderBy: [{ checkInDate: 'asc' }, { code: 'asc' }],
+              take: 200,
+              select: RESERVATION_SUMMARY_SELECT,
+            }),
+            this.prisma.stay.findMany({
+              where: {
+                organizationId: context.organizationId,
+                propertyId,
+                checkedOutAt: { gte: dayStart, lt: dayEnd },
+              },
+              orderBy: [{ checkedOutAt: 'asc' }, { id: 'asc' }],
+              take: 200,
+              select: STAY_SELECT,
+            }),
+            this.prisma.stay.findMany({
+              where: {
+                organizationId: context.organizationId,
+                propertyId,
+                checkedInAt: { lt: dayEnd },
+                OR: [{ checkedOutAt: null }, { checkedOutAt: { gte: dayStart } }],
+              },
+              orderBy: [{ checkedInAt: 'asc' }, { id: 'asc' }],
+              take: 300,
+              select: STAY_SELECT,
+            }),
+            this.prisma.reservation.findMany({
+              where: {
+                organizationId: context.organizationId,
+                propertyId,
+                status: ReservationStatus.NO_SHOW,
+                checkInDate: dateValue,
+              },
+              orderBy: [{ code: 'asc' }],
+              take: 100,
+              select: RESERVATION_SUMMARY_SELECT,
+            }),
+          ])
+        : await Promise.all([
+            this.prisma.reservation.findMany({
+              where: {
+                organizationId: context.organizationId,
+                propertyId,
+                status: ReservationStatus.CONFIRMED,
+                checkInDate: { lte: dateValue },
+              },
+              orderBy: [{ checkInDate: 'asc' }, { code: 'asc' }],
+              take: 200,
+              select: RESERVATION_SUMMARY_SELECT,
+            }),
+            this.prisma.stay.findMany({
+              where: {
+                organizationId: context.organizationId,
+                propertyId,
+                status: StayStatus.IN_HOUSE,
+                reservation: { checkOutDate: { lte: dateValue } },
+              },
+              orderBy: [{ checkedInAt: 'asc' }, { id: 'asc' }],
+              take: 200,
+              select: STAY_SELECT,
+            }),
+            this.prisma.stay.findMany({
+              where: {
+                organizationId: context.organizationId,
+                propertyId,
+                status: StayStatus.IN_HOUSE,
+              },
+              orderBy: [{ checkedInAt: 'asc' }, { id: 'asc' }],
+              take: 300,
+              select: STAY_SELECT,
+            }),
+            this.prisma.reservation.findMany({
+              where: {
+                organizationId: context.organizationId,
+                propertyId,
+                status: ReservationStatus.CONFIRMED,
+                checkInDate: { lt: dateValue },
+              },
+              orderBy: [{ checkInDate: 'asc' }, { code: 'asc' }],
+              take: 100,
+              select: RESERVATION_SUMMARY_SELECT,
+            }),
+          ]);
+
+    const [rooms, activeStays, blocks, upcoming] = await Promise.all([
+      this.prisma.room.findMany({
+        where: {
+          organizationId: context.organizationId,
+          propertyId,
+          status: 'ACTIVE',
+        },
+        orderBy: [{ number: 'asc' }, { id: 'asc' }],
+        take: 300,
+        select: {
+          id: true,
+          number: true,
+          floor: true,
+          building: true,
+          housekeepingState: true,
+          operationalState: true,
+          roomType: { select: { id: true, name: true, code: true } },
+        },
+      }),
+      this.prisma.stay.findMany({
+        where: {
+          organizationId: context.organizationId,
+          propertyId,
+          status: StayStatus.IN_HOUSE,
+        },
+        select: {
+          id: true,
+          roomId: true,
+          reservationId: true,
+          guest: { select: { fullName: true } },
+          reservation: { select: { code: true, checkOutDate: true } },
+        },
+      }),
+      this.prisma.roomBlock.findMany({
+        where: {
+          organizationId: context.organizationId,
+          propertyId,
+          status: 'ACTIVE',
+          startsAt: { lte: now },
+          endsAt: { gt: now },
+        },
+        select: { id: true, roomId: true, type: true, endsAt: true },
+      }),
+      this.prisma.reservation.findMany({
+        where: {
+          organizationId: context.organizationId,
+          propertyId,
+          status: ReservationStatus.CONFIRMED,
+          roomId: { not: null },
+          // The room rack always reflects the current operation, even when the
+          // historical lists are showing another calendar day.
+          checkInDate: { gte: operationalDateValue },
+        },
+        orderBy: [{ checkInDate: 'asc' }, { code: 'asc' }],
+        take: 300,
+        select: {
+          id: true,
+          code: true,
+          roomId: true,
+          checkInDate: true,
+          guest: { select: { fullName: true } },
+        },
+      }),
+    ]);
 
     const stayByRoom = new Map(activeStays.map((stay) => [stay.roomId, stay]));
     const blockByRoom = new Map(blocks.map((block) => [block.roomId, block]));
@@ -387,6 +454,8 @@ export class FrontOfficeService {
 
     return {
       operationalDate: operationalDay.operationalDate,
+      selectedDate: date,
+      isHistorical,
       localDate: operationalDay.localDate,
       localTime: operationalDay.localTime,
       timezone: operationalDay.timezone,

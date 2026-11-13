@@ -1,0 +1,125 @@
+// DRAFT ONLY. Do not paste over the real schema.
+// OpenCode must adapt model names, relations, enums, IDs, provider indexes and tenant scope.
+
+enum DocumentStatus { GENERATED PRINT_DIALOG_OPENED SIGNED_PHYSICAL_RECEIVED VOIDED }
+enum PrintEventType { PRINT_DIALOG_OPENED REPRINT_REQUESTED DOWNLOAD_REQUESTED }
+enum ReportExecutionStatus { QUEUED RUNNING COMPLETED FAILED }
+enum ReportExportFormat { PDF CSV XLSX }
+
+model DocumentTemplate {
+  id String @id @default(cuid())
+  organizationId String
+  propertyId String?
+  key String
+  name String
+  locale String @default("pt-BR")
+  version Int
+  isPublished Boolean @default(false)
+  isActive Boolean @default(true)
+  htmlSource String
+  cssSource String?
+  createdById String
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([organizationId, propertyId, key, locale, version])
+  @@index([organizationId, propertyId, key, isActive])
+}
+
+model GeneratedDocument {
+  id String @id @default(cuid())
+  organizationId String
+  propertyId String
+  templateId String
+  templateVersion Int
+  documentType String
+  status DocumentStatus @default(GENERATED)
+  locale String @default("pt-BR")
+  guestId String?
+  reservationId String?
+  stayId String?
+  folioId String?
+  generatedById String
+  generatedAt DateTime @default(now())
+  snapshotJson Json
+  storageKey String
+  mimeType String @default("application/pdf")
+  fileSizeBytes Int?
+  pageCount Int?
+  sha256 String
+  receivedAt DateTime?
+  receivedById String?
+  receivedNotes String?
+  printEvents PrintJob[]
+  @@index([organizationId, propertyId, generatedAt])
+  @@index([organizationId, propertyId, reservationId])
+  @@index([organizationId, propertyId, guestId])
+}
+
+model PrintJob {
+  id String @id @default(cuid())
+  organizationId String
+  propertyId String
+  documentId String
+  requestedById String
+  eventType PrintEventType
+  reason String?
+  createdAt DateTime @default(now())
+  document GeneratedDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  @@index([organizationId, propertyId, documentId, createdAt])
+}
+
+model ReportDefinition {
+  id String @id @default(cuid())
+  key String @unique
+  name String
+  description String?
+  category String
+  requiredPermission String
+  filterSchema Json
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  executions ReportExecution[]
+}
+
+model ReportExecution {
+  id String @id @default(cuid())
+  organizationId String
+  propertyId String
+  reportDefinitionId String
+  requestedById String
+  filtersJson Json
+  status ReportExecutionStatus @default(QUEUED)
+  resultSummaryJson Json?
+  rowCount Int?
+  durationMs Int?
+  errorCode String?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  definition ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Restrict)
+  exports ReportExport[]
+  @@index([organizationId, propertyId, createdAt])
+  @@index([organizationId, propertyId, reportDefinitionId, createdAt])
+}
+
+model ReportExport {
+  id String @id @default(cuid())
+  organizationId String
+  propertyId String
+  executionId String
+  requestedById String
+  format ReportExportFormat
+  storageKey String?
+  mimeType String?
+  fileSizeBytes Int?
+  status ReportExecutionStatus @default(QUEUED)
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  execution ReportExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+  @@index([organizationId, propertyId, createdAt])
+}
+
+// Review: add relations to Organization, Property, User, Guest, Reservation, Stay, Folio.
+// Consider append-only DocumentEvent rather than mutable status fields.
+// Confirm DB provider supports the chosen indexes/JSON types.

@@ -241,7 +241,10 @@ Errores específicos: `guest_not_found`, `invalid_guest_document`, `invalid_cale
 | POST   | `/api/v1/front-office/incidents`                 | auth + tenant | `incidents.manage`    | 201    |
 | POST   | `/api/v1/front-office/incidents/:id/resolve`     | auth + tenant | `incidents.manage`    | 201    |
 
-- `GET /overview?date?` usa el día operativo de la propiedad (timezone + `operationalDayStart`) por default y devuelve `operationalDate`, `localDate`, `localTime`, conteos, llegadas, salidas, in-house, candidatos a no-show y `roomRack`. La ocupación del room rack se deriva de estancias `IN_HOUSE`; housekeeping y estado operativo son campos independientes.
+- `GET /overview?date=YYYY-MM-DD` usa el día operativo de la propiedad (timezone + `operationalDayStart`) por default y devuelve `operationalDate`, `selectedDate`, `isHistorical`, `localDate`, `localTime`, conteos, llegadas, salidas, in-house, no-shows y `roomRack`. La ocupación del room rack se deriva de estancias `IN_HOUSE`; housekeeping y estado operativo son campos independientes.
+- Para el día operativo actual, las listas mantienen semántica de trabajo pendiente: llegadas `CONFIRMED`, estancias `IN_HOUSE` y salidas cuya fecha de check-out ya llegó.
+- Para una fecha anterior al día operativo, `isHistorical` es `true` y las listas reconstruyen lo ocurrido: llegadas con `checkInDate` ese día (todos los estados salvo `CANCELLED`), estancias activas en algún momento del día (según `checkedInAt`/`checkedOutAt` en la timezone de la propiedad) y check-outs registrados ese día. `roomRack` e incidencias siguen reflejando el estado actual; la UI histórica los oculta y no permite mutaciones.
+- La vista histórica no reconstruye la habitación ocupada en ese día si hubo cambios de habitación: muestra la última asignada.
 - Check-in: solo `CONFIRMED`, con habitación asignada, `ACTIVE`/`AVAILABLE`, sin bloqueo activo y sin otra estancia in-house. Se habilita desde la fecha local de llegada y hasta el check-out. Idempotente: si la reserva ya está `CHECKED_IN`, devuelve la misma estancia.
 - Check-out: idempotente, marca `Stay.CHECKED_OUT`, la reserva `CHECKED_OUT` y libera la habitación. Acepta `notes` opcionales (≤ 2000).
 - Room move: mismo room type, habitación libre, sin bloqueo ni reserva solapada; actualiza `Stay.roomId`, `Reservation.roomId` e incrementa `moveCount`.

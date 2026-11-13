@@ -30,6 +30,7 @@ import {
 import NextLink from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { DateField } from '@/components/date-field';
 import {
   Field,
   MetricCard,
@@ -53,6 +54,8 @@ import {
   RESERVATION_STATUS_LABELS,
   formatCalendarDate,
   formatDateTime,
+  formatLongDate,
+  todayISO,
 } from '@/lib/format';
 import type {
   FrontOfficeOverview,
@@ -83,12 +86,14 @@ const TAB_INDEX: Record<string, number> = {
 function StayCard({
   stay,
   busy,
+  readOnly = false,
   onCheckOut,
   onMove,
   onIncident,
 }: {
   stay: Stay;
   busy: string | null;
+  readOnly?: boolean;
   onCheckOut: (stay: Stay) => void;
   onMove: (stay: Stay) => void;
   onIncident: (stay: Stay) => void;
@@ -103,25 +108,35 @@ function StayCard({
           <Text fontSize="xs" color="gray.500">
             {stay.reservation.code} · salida {formatCalendarDate(stay.reservation.checkOutDate)}
             {stay.moveCount > 0 ? ` · ${stay.moveCount} cambio(s)` : ''}
+            {stay.checkedOutAt !== null
+              ? ` · salida registrada ${formatDateTime(stay.checkedOutAt)}`
+              : ''}
           </Text>
         </Box>
-        <StatusBadge color="mint" label="En casa" />
+        <StatusBadge
+          color={stay.status === 'CHECKED_OUT' ? 'sky' : 'mint'}
+          label={stay.status === 'CHECKED_OUT' ? 'Salió' : 'En casa'}
+        />
       </HStack>
       <HStack spacing={1} mt={2} wrap="wrap">
-        <Button
-          size="xs"
-          colorScheme="brand"
-          onClick={() => onCheckOut(stay)}
-          isLoading={busy === `check-out:${stay.id}`}
-        >
-          Check-out
-        </Button>
-        <Button size="xs" variant="outline" onClick={() => onMove(stay)}>
-          Mover
-        </Button>
-        <Button size="xs" variant="ghost" onClick={() => onIncident(stay)}>
-          Incidencia
-        </Button>
+        {!readOnly && (
+          <>
+            <Button
+              size="xs"
+              colorScheme="brand"
+              onClick={() => onCheckOut(stay)}
+              isLoading={busy === `check-out:${stay.id}`}
+            >
+              Check-out
+            </Button>
+            <Button size="xs" variant="outline" onClick={() => onMove(stay)}>
+              Mover
+            </Button>
+            <Button size="xs" variant="ghost" onClick={() => onIncident(stay)}>
+              Incidencia
+            </Button>
+          </>
+        )}
         <Button as={NextLink} href="/reservations" size="xs" variant="ghost">
           Reserva
         </Button>
@@ -137,6 +152,7 @@ function FrontOfficeContent() {
   const [incidentFilter, setIncidentFilter] = useState<IncidentStatus | ''>('OPEN');
   const [busy, setBusy] = useState<string | null>(null);
   const [tabIndex, setTabIndex] = useState(0);
+  const [selectedDate, setSelectedDate] = useState('');
 
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
@@ -146,9 +162,21 @@ function FrontOfficeContent() {
   }, []);
 
   const overview = useAsyncData<FrontOfficeOverview>(
-    () => api<FrontOfficeOverview>('/api/v1/front-office/overview', { tenant }),
-    `${tenant.organizationId}:${tenant.propertyId}:front-office:overview`,
+    () =>
+      api<FrontOfficeOverview>(
+        `/api/v1/front-office/overview${
+          selectedDate !== '' ? `?date=${encodeURIComponent(selectedDate)}` : ''
+        }`,
+        { tenant },
+      ),
+    `${tenant.organizationId}:${tenant.propertyId}:front-office:overview:${selectedDate}`,
   );
+
+  useEffect(() => {
+    if (overview.data?.isHistorical === true && tabIndex > 2) {
+      setTabIndex(0);
+    }
+  }, [overview.data?.isHistorical, tabIndex]);
 
   const incidents = useAsyncData<IncidentList>(
     () =>
@@ -202,6 +230,11 @@ function FrontOfficeContent() {
   function reloadAll(): void {
     overview.reload();
     incidents.reload();
+  }
+
+  function changeDate(next: string): void {
+    setSelectedDate(next);
+    setTabIndex(0);
   }
 
   async function run(
@@ -393,6 +426,8 @@ function FrontOfficeContent() {
 
   const data = overview.data;
   const operationalDate = data?.operationalDate ?? '';
+  const referenceDate = selectedDate !== '' ? selectedDate : (data?.selectedDate ?? todayISO());
+  const isHistorical = data?.isHistorical ?? false;
   const inHouse = data?.inHouse ?? [];
   const moveCandidates =
     data?.roomRack.filter(
@@ -411,18 +446,40 @@ function FrontOfficeContent() {
         title="Front Office"
         description={
           data !== null
-            ? `Día operativo ${formatCalendarDate(data.operationalDate)} · hora local ${data.localTime} · ${data.timezone} (inicio ${data.operationalDayStart}). La ocupación se deriva de estancias en casa, separada de housekeeping.`
+            ? data.isHistorical
+              ? `Vista histórica · ${formatLongDate(data.selectedDate)}. Solo lectura: llegadas, estancias y salidas corresponden a ese día; el room rack y las incidencias quedan ocultos porque reflejan el estado actual.`
+              : `Día operativo ${formatCalendarDate(data.operationalDate)} · hora local ${data.localTime} · ${data.timezone} (inicio ${data.operationalDayStart}). La ocupación se deriva de estancias en casa, separada de housekeeping.`
             : 'Llegadas, estancias en casa, salidas, room rack e incidencias del día operativo.'
         }
         actions={
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={reloadAll}
-            isLoading={overview.loading && data !== null}
-          >
-            Actualizar
-          </Button>
+          <HStack spacing={2} wrap="wrap">
+            <DateField
+              value={referenceDate}
+              onChange={changeDate}
+              placeholder="Día a consultar"
+              ariaLabel="Día operativo a consultar"
+              max={data?.operationalDate}
+              today={data?.operationalDate ?? todayISO()}
+              width="168px"
+            />
+            <Button
+              size="sm"
+              variant={isHistorical ? 'solid' : 'outline'}
+              colorScheme={isHistorical ? 'warning' : undefined}
+              onClick={() => changeDate(data?.operationalDate ?? '')}
+              isDisabled={!isHistorical}
+            >
+              Hoy
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={reloadAll}
+              isLoading={overview.loading && data !== null}
+            >
+              Actualizar
+            </Button>
+          </HStack>
         }
       />
 
@@ -435,48 +492,99 @@ function FrontOfficeContent() {
       >
         {data !== null && (
           <Stack spacing={5}>
-            <SimpleGrid columns={{ base: 2, md: 3, xl: 6 }} spacing={3}>
+            {data.isHistorical && (
+              <HStack
+                bg="warning.50"
+                borderWidth="1px"
+                borderColor="warning.200"
+                borderRadius="lg"
+                px={4}
+                py={3}
+                align="flex-start"
+                spacing={3}
+              >
+                <Badge colorScheme="warning" textTransform="none" mt={0.5}>
+                  Vista histórica
+                </Badge>
+                <Box>
+                  <Text fontSize="sm" fontWeight="semibold" color="warning.800">
+                    {formatLongDate(data.selectedDate)}
+                  </Text>
+                  <Text fontSize="xs" color="warning.700">
+                    Consulta de solo lectura. Para operar sobre las llegadas o salidas pendientes,
+                    volvé al día operativo actual.
+                  </Text>
+                </Box>
+              </HStack>
+            )}
+
+            <SimpleGrid columns={{ base: 2, md: 3, xl: data.isHistorical ? 4 : 6 }} spacing={3}>
               <MetricCard label="Llegadas" value={data.counts.arrivals} accent="sky" />
-              <MetricCard label="En casa" value={data.counts.inHouse} accent="mint" />
-              <MetricCard label="Salidas" value={data.counts.departures} accent="warning" />
-              <MetricCard label="Libres" value={data.counts.vacantRooms} accent="mint" />
-              <MetricCard label="Ocupadas" value={data.counts.occupiedRooms} accent="brand" />
               <MetricCard
-                label="No-show por marcar"
-                value={data.counts.noShowCandidates}
-                hint="llegadas vencidas"
-                accent="danger"
+                label={data.isHistorical ? 'Alojados' : 'En casa'}
+                value={data.counts.inHouse}
+                accent="mint"
               />
+              <MetricCard label="Salidas" value={data.counts.departures} accent="warning" />
+              {data.isHistorical ? (
+                <MetricCard
+                  label="No-show"
+                  value={data.counts.noShowCandidates}
+                  hint="marcados ese día"
+                  accent="danger"
+                />
+              ) : (
+                <>
+                  <MetricCard label="Libres" value={data.counts.vacantRooms} accent="mint" />
+                  <MetricCard label="Ocupadas" value={data.counts.occupiedRooms} accent="brand" />
+                  <MetricCard
+                    label="No-show por marcar"
+                    value={data.counts.noShowCandidates}
+                    hint="llegadas vencidas"
+                    accent="danger"
+                  />
+                </>
+              )}
             </SimpleGrid>
 
             <Tabs colorScheme="brand" index={tabIndex} onChange={setTabIndex} isLazy>
               <TabList>
                 <Tab>Llegadas ({data.counts.arrivals})</Tab>
-                <Tab>En casa ({data.counts.inHouse})</Tab>
+                <Tab>
+                  {data.isHistorical ? 'Alojados' : 'En casa'} ({data.counts.inHouse})
+                </Tab>
                 <Tab>Salidas ({data.counts.departures})</Tab>
-                <Tab>Room rack ({data.roomRack.length})</Tab>
-                <Tab>Incidencias</Tab>
+                {!data.isHistorical && <Tab>Room rack ({data.roomRack.length})</Tab>}
+                {!data.isHistorical && <Tab>Incidencias</Tab>}
               </TabList>
 
               <TabPanels>
                 <TabPanel px={0}>
                   <SectionCard>
                     <Text fontWeight="semibold" mb={1}>
-                      Llegadas del día operativo
+                      {data.isHistorical
+                        ? `Llegadas del ${formatCalendarDate(data.selectedDate)}`
+                        : 'Llegadas del día operativo'}
                     </Text>
                     <Text fontSize="xs" color="gray.500" mb={3}>
-                      Reservas confirmadas con llegada hasta {formatCalendarDate(operationalDate)}.
-                      El check-in exige habitación asignada y disponible.
+                      {data.isHistorical
+                        ? 'Reservas con llegada ese día, incluidos los estados finales. Vista de solo lectura.'
+                        : `Reservas confirmadas con llegada hasta ${formatCalendarDate(operationalDate)}. El check-in exige habitación asignada y disponible.`}
                     </Text>
                     <QueryFeedback
                       loading={false}
                       error={null}
                       isEmpty={data.arrivals.length === 0}
-                      emptyText="No hay llegadas pendientes."
+                      emptyText={
+                        data.isHistorical
+                          ? 'No hubo llegadas registradas ese día.'
+                          : 'No hay llegadas pendientes.'
+                      }
                     >
                       <Stack spacing={2}>
                         {data.arrivals.map((reservation) => {
-                          const late = reservation.checkInDate < operationalDate;
+                          const late =
+                            !data.isHistorical && reservation.checkInDate < operationalDate;
                           const missingRoom = reservation.room === null;
                           return (
                             <Box
@@ -528,26 +636,27 @@ function FrontOfficeContent() {
                                   </Text>
                                 </Box>
                                 <HStack spacing={1} wrap="wrap">
-                                  {missingRoom ? (
-                                    <Button
-                                      as={NextLink}
-                                      href="/reservations"
-                                      size="xs"
-                                      variant="outline"
-                                    >
-                                      Asignar habitación
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      size="xs"
-                                      colorScheme="brand"
-                                      onClick={() => checkIn(reservation)}
-                                      isLoading={busy === `check-in:${reservation.id}`}
-                                    >
-                                      Check-in
-                                    </Button>
-                                  )}
-                                  {late && (
+                                  {!data.isHistorical &&
+                                    (missingRoom ? (
+                                      <Button
+                                        as={NextLink}
+                                        href="/reservations"
+                                        size="xs"
+                                        variant="outline"
+                                      >
+                                        Asignar habitación
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="xs"
+                                        colorScheme="brand"
+                                        onClick={() => checkIn(reservation)}
+                                        isLoading={busy === `check-in:${reservation.id}`}
+                                      >
+                                        Check-in
+                                      </Button>
+                                    ))}
+                                  {!data.isHistorical && late && (
                                     <Button
                                       size="xs"
                                       variant="outline"
@@ -570,17 +679,22 @@ function FrontOfficeContent() {
                 <TabPanel px={0}>
                   <SectionCard>
                     <Text fontWeight="semibold" mb={1}>
-                      Huéspedes en casa
+                      {data.isHistorical ? 'Huéspedes alojados ese día' : 'Huéspedes en casa'}
                     </Text>
                     <Text fontSize="xs" color="gray.500" mb={3}>
-                      Estancias con check-in realizado. El check-out es idempotente y libera la
-                      habitación.
+                      {data.isHistorical
+                        ? 'Estancias activas en algún momento de ese día. La habitación mostrada es la última asignada.'
+                        : 'Estancias con check-in realizado. El check-out es idempotente y libera la habitación.'}
                     </Text>
                     <QueryFeedback
                       loading={false}
                       error={null}
                       isEmpty={inHouse.length === 0}
-                      emptyText="No hay huéspedes en casa."
+                      emptyText={
+                        data.isHistorical
+                          ? 'No hubo huéspedes alojados ese día.'
+                          : 'No hay huéspedes en casa.'
+                      }
                     >
                       <SimpleGrid columns={{ base: 1, xl: 2 }} spacing={2}>
                         {inHouse.map((stay) => (
@@ -588,6 +702,7 @@ function FrontOfficeContent() {
                             key={stay.id}
                             stay={stay}
                             busy={busy}
+                            readOnly={data.isHistorical}
                             onCheckOut={openCheckOut}
                             onMove={openMove}
                             onIncident={(target) => openIncident(target)}
@@ -601,16 +716,22 @@ function FrontOfficeContent() {
                 <TabPanel px={0}>
                   <SectionCard>
                     <Text fontWeight="semibold" mb={1}>
-                      Salidas pendientes
+                      {data.isHistorical ? 'Salidas registradas' : 'Salidas pendientes'}
                     </Text>
                     <Text fontSize="xs" color="gray.500" mb={3}>
-                      Estancias en casa cuya fecha de check-out ya llegó.
+                      {data.isHistorical
+                        ? 'Check-outs registrados durante ese día en la zona horaria de la propiedad.'
+                        : 'Estancias en casa cuya fecha de check-out ya llegó.'}
                     </Text>
                     <QueryFeedback
                       loading={false}
                       error={null}
                       isEmpty={data.departures.length === 0}
-                      emptyText="No hay salidas pendientes para el día operativo."
+                      emptyText={
+                        data.isHistorical
+                          ? 'No se registraron salidas ese día.'
+                          : 'No hay salidas pendientes para el día operativo.'
+                      }
                     >
                       <Stack spacing={2}>
                         {data.departures.map((stay) => (
@@ -624,25 +745,32 @@ function FrontOfficeContent() {
                                   {stay.reservation.code} · salida{' '}
                                   {formatCalendarDate(stay.reservation.checkOutDate)} · check-in{' '}
                                   {formatDateTime(stay.checkedInAt)}
+                                  {stay.checkedOutAt !== null
+                                    ? ` · salida registrada ${formatDateTime(stay.checkedOutAt)}`
+                                    : ''}
                                 </Text>
                               </Box>
-                              <HStack spacing={1}>
-                                <Button
-                                  size="xs"
-                                  colorScheme="brand"
-                                  onClick={() => openCheckOut(stay)}
-                                  isLoading={busy === `check-out:${stay.id}`}
-                                >
-                                  Check-out
-                                </Button>
-                                <Button
-                                  size="xs"
-                                  variant="ghost"
-                                  onClick={() => openIncident(stay)}
-                                >
-                                  Incidencia
-                                </Button>
-                              </HStack>
+                              {data.isHistorical ? (
+                                <StatusBadge color="sky" label="Check-out" />
+                              ) : (
+                                <HStack spacing={1}>
+                                  <Button
+                                    size="xs"
+                                    colorScheme="brand"
+                                    onClick={() => openCheckOut(stay)}
+                                    isLoading={busy === `check-out:${stay.id}`}
+                                  >
+                                    Check-out
+                                  </Button>
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    onClick={() => openIncident(stay)}
+                                  >
+                                    Incidencia
+                                  </Button>
+                                </HStack>
+                              )}
                             </HStack>
                           </Box>
                         ))}
@@ -651,7 +779,7 @@ function FrontOfficeContent() {
                   </SectionCard>
                 </TabPanel>
 
-                <TabPanel px={0}>
+                <TabPanel px={0} hidden={data.isHistorical}>
                   <SectionCard>
                     <HStack justify="space-between" mb={3} wrap="wrap">
                       <Box>
@@ -771,7 +899,7 @@ function FrontOfficeContent() {
                   </SectionCard>
                 </TabPanel>
 
-                <TabPanel px={0}>
+                <TabPanel px={0} hidden={data.isHistorical}>
                   <SectionCard>
                     <HStack justify="space-between" mb={3} wrap="wrap" gap={2}>
                       <Box>

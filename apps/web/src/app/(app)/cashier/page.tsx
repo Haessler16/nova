@@ -32,6 +32,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { DateField } from '@/components/date-field';
 import {
   Field,
   MetricCard,
@@ -435,17 +436,13 @@ function CashierContent() {
                     isRequired
                     helper="No puede ser posterior al día operativo actual."
                   >
-                    <Input
-                      size="sm"
-                      type="date"
+                    <DateField
                       value={openForm.operationalDate}
-                      onChange={(event) =>
-                        setOpenForm((current) => ({
-                          ...current,
-                          operationalDate: event.target.value,
-                        }))
+                      placeholder="dd/mm/aaaa"
+                      ariaLabel="Día operativo de la sesión"
+                      onChange={(operationalDate) =>
+                        setOpenForm((current) => ({ ...current, operationalDate }))
                       }
-                      required
                     />
                   </Field>
                   <Field label={`Fondo inicial (${cup})`} isRequired helper="Hasta dos decimales.">
@@ -749,17 +746,13 @@ function CashierContent() {
           <Box as="form" onSubmit={submitAudit}>
             <Stack spacing={3}>
               <Field label="Día operativo" isRequired>
-                <Input
-                  size="sm"
-                  type="date"
+                <DateField
                   value={auditForm.operationalDate}
-                  onChange={(event) =>
-                    setAuditForm((current) => ({
-                      ...current,
-                      operationalDate: event.target.value,
-                    }))
+                  placeholder="dd/mm/aaaa"
+                  ariaLabel="Día operativo del cierre"
+                  onChange={(operationalDate) =>
+                    setAuditForm((current) => ({ ...current, operationalDate }))
                   }
-                  required
                 />
               </Field>
               <Checkbox

@@ -25,6 +25,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { DateField } from '@/components/date-field';
 import { ErrorAlert, PageHeader, QueryFeedback, SectionCard } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { useAuditFeedStore } from '@/stores/audit-feed';
@@ -134,24 +135,33 @@ function AuditContent() {
               <Text fontSize="xs" color="textSecondary">
                 Desde
               </Text>
-              <Input
+              <DateField
                 size="sm"
-                type="date"
                 width="150px"
-                aria-label="Fecha desde"
                 value={inputs.fromDate}
-                onChange={(event) => setInputs({ ...inputs, fromDate: event.target.value })}
+                placeholder="dd/mm/aaaa"
+                ariaLabel="Fecha desde"
+                isClearable
+                onChange={(fromDate) =>
+                  setInputs({
+                    ...inputs,
+                    fromDate,
+                    ...(inputs.toDate !== '' && inputs.toDate <= fromDate ? { toDate: '' } : {}),
+                  })
+                }
               />
               <Text fontSize="xs" color="textSecondary">
                 Hasta
               </Text>
-              <Input
+              <DateField
                 size="sm"
-                type="date"
                 width="150px"
-                aria-label="Fecha hasta"
                 value={inputs.toDate}
-                onChange={(event) => setInputs({ ...inputs, toDate: event.target.value })}
+                min={inputs.fromDate !== '' ? inputs.fromDate : undefined}
+                placeholder="dd/mm/aaaa"
+                ariaLabel="Fecha hasta"
+                isClearable
+                onChange={(toDate) => setInputs({ ...inputs, toDate })}
               />
             </HStack>
             <Button size="sm" type="submit" variant="outline">

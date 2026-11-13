@@ -376,3 +376,10 @@ Use the following prompt when starting implementation:
 - Dialog contrast: navy translucent overlay token (`overlay`, `rgba(16, 42, 67, 0.55)`), 1 px `line` border, 18 px radius, dedicated `modal` elevation and clipped corners. Header and footer are separated with `line` borders; the footer uses the `gray.50`/canvas surface so actions read as a distinct region. Drawer dialogs share the overlay, elevation and header/footer separators.
 - The mobile navigation drawer now uses the shared overlay token instead of a one-off `blackAlpha.600`.
 - This is a visual foundation change only: no modal markup, business logic, API contract or routing was modified. Screens still use their existing Modal/Drawer composition, so the visual result is consistent across modules without per-page rewrites.
+
+## Implementation status — 2026-11-12 (DateField and historical Front Office)
+
+- Added `apps/web/src/components/date-field.tsx`: a controlled `YYYY-MM-DD` date field built with Chakra `Popover`, `Button` and `SimpleGrid`. It renders a Monday-first month grid, previous/next month navigation, min/max guards, a “Hoy” marker and optional “Limpiar”. No new dependency was added.
+- The component is used by the Front Office day selector, Reservation filters/create/edit, Audit filters, Cashier operational dates and the Calendar start date. Native `input[type=date]` controls were removed from the web app.
+- Front Office historical consultation uses the same field with `max` set to the current operational date. Historical dates show a warning banner, hide Room rack/Incidencias and hide operational actions; the three remaining tabs are read-only.
+- The calendar uses property calendar dates, not browser-local instants, so a selected day is not shifted by the browser timezone.

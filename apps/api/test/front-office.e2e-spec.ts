@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import { HousekeepingState, ReservationStatus, StayStatus } from '@prisma/client';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -15,8 +16,6 @@ const AUDITOR = '00000000-0000-4000-8000-000000000013';
 const ADMIN_B = '00000000-0000-4000-8000-000000000014';
 const HOUSEKEEPER = '00000000-0000-4000-8000-000000000016';
 
-const ROOM_STD_101 = '00000000-0000-4000-8000-000000000051';
-const ROOM_STD_102 = '00000000-0000-4000-8000-000000000052';
 const ROOM_DLX_201 = '00000000-0000-4000-8000-000000000054';
 
 const ROOM_TYPE_STD = '00000000-0000-4000-8000-000000000041';
@@ -55,6 +54,8 @@ describe('Front Office (E2E)', () => {
   let reservationId: string;
   let stayId: string;
   let incidentId: string;
+  let roomAId: string;
+  let roomBId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -62,6 +63,37 @@ describe('Front Office (E2E)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    // The seed intentionally fills the demo rooms with in-house stays. Dedicated
+    // rooms keep this suite deterministic without mutating demo data.
+    const [roomA, roomB] = await Promise.all([
+      prisma.room.create({
+        data: {
+          organizationId: ORG_A,
+          propertyId: PROPERTY_CENTRO,
+          roomTypeId: ROOM_TYPE_STD,
+          number: `E2E-${suffix.slice(-4)}-A`,
+          floor: '9',
+          building: 'E2E',
+          housekeepingState: HousekeepingState.CLEAN,
+        },
+        select: { id: true },
+      }),
+      prisma.room.create({
+        data: {
+          organizationId: ORG_A,
+          propertyId: PROPERTY_CENTRO,
+          roomTypeId: ROOM_TYPE_STD,
+          number: `E2E-${suffix.slice(-4)}-B`,
+          floor: '9',
+          building: 'E2E',
+          housekeepingState: HousekeepingState.CLEAN,
+        },
+        select: { id: true },
+      }),
+    ]);
+    roomAId = roomA.id;
+    roomBId = roomB.id;
   });
 
   afterAll(async () => {
@@ -78,7 +110,7 @@ describe('Front Office (E2E)', () => {
         adults: 2,
         guestId: GUEST_ANA,
         roomTypeId: ROOM_TYPE_STD,
-        roomId: ROOM_STD_101,
+        roomId: roomAId,
         source: 'front-office-e2e',
       })
       .expect(201);
@@ -92,9 +124,9 @@ describe('Front Office (E2E)', () => {
 
     expect(overview.body.operationalDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(overview.body.arrivals.map((item: { id: string }) => item.id)).toContain(reservationId);
-    const room101 = overview.body.roomRack.find((room: { id: string }) => room.id === ROOM_STD_101);
-    expect(room101.occupancy).toBe('VACANT');
-    expect(room101.nextArrival.reservationId).toBe(reservationId);
+    const rackRoomA = overview.body.roomRack.find((room: { id: string }) => room.id === roomAId);
+    expect(rackRoomA.occupancy).toBe('VACANT');
+    expect(rackRoomA.nextArrival.reservationId).toBe(reservationId);
   });
 
   it('allows front-office read to housekeeping but denies check-in without manage', async () => {
@@ -122,7 +154,7 @@ describe('Front Office (E2E)', () => {
     stayId = first.body.stay.id;
     expect(first.body.stay.status).toBe('IN_HOUSE');
     expect(first.body.reservation.status).toBe('CHECKED_IN');
-    expect(first.body.stay.room.id).toBe(ROOM_STD_101);
+    expect(first.body.stay.room.id).toBe(roomAId);
 
     const replay = await request(app.getHttpServer())
       .post(`/api/v1/front-office/reservations/${reservationId}/check-in`)
@@ -140,19 +172,19 @@ describe('Front Office (E2E)', () => {
       .expect(200);
 
     expect(overview.body.inHouse.map((item: { id: string }) => item.id)).toContain(stayId);
-    const room101 = overview.body.roomRack.find((room: { id: string }) => room.id === ROOM_STD_101);
-    expect(room101.occupancy).toBe('OCCUPIED');
-    expect(room101.currentStay.id).toBe(stayId);
+    const rackRoomA = overview.body.roomRack.find((room: { id: string }) => room.id === roomAId);
+    expect(rackRoomA.occupancy).toBe('OCCUPIED');
+    expect(rackRoomA.currentStay.id).toBe(stayId);
   });
 
   it('moves an in-house stay to another room and rejects room type mismatches', async () => {
     const moved = await request(app.getHttpServer())
       .post(`/api/v1/front-office/stays/${stayId}/room-move`)
       .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
-      .send({ roomId: ROOM_STD_102, reason: 'Synthetic E2E room move' })
+      .send({ roomId: roomBId, reason: 'Synthetic E2E room move' })
       .expect(201);
 
-    expect(moved.body.room.id).toBe(ROOM_STD_102);
+    expect(moved.body.room.id).toBe(roomBId);
     expect(moved.body.moveCount).toBe(1);
 
     const reservation = await request(app.getHttpServer())
@@ -160,7 +192,7 @@ describe('Front Office (E2E)', () => {
       .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
       .expect(200);
 
-    expect(reservation.body.room.id).toBe(ROOM_STD_102);
+    expect(reservation.body.room.id).toBe(roomBId);
 
     const mismatch = await request(app.getHttpServer())
       .post(`/api/v1/front-office/stays/${stayId}/room-move`)
@@ -185,7 +217,7 @@ describe('Front Office (E2E)', () => {
       .expect(201);
 
     incidentId = created.body.id;
-    expect(created.body.room.id).toBe(ROOM_STD_102);
+    expect(created.body.room.id).toBe(roomBId);
     expect(created.body.reservation.id).toBe(reservationId);
 
     const listed = await request(app.getHttpServer())
@@ -246,8 +278,60 @@ describe('Front Office (E2E)', () => {
       .expect(200);
 
     expect(overview.body.inHouse.map((item: { id: string }) => item.id)).not.toContain(stayId);
-    const room102 = overview.body.roomRack.find((room: { id: string }) => room.id === ROOM_STD_102);
-    expect(room102.occupancy).toBe('VACANT');
+    const rackRoomB = overview.body.roomRack.find((room: { id: string }) => room.id === roomBId);
+    expect(rackRoomB.occupancy).toBe('VACANT');
+  });
+
+  it('returns arrivals, in-house stays and check-outs for a past operational day', async () => {
+    const historyDate = calendarDate(-5);
+    const historyCheckOut = calendarDate(-4);
+    const historicalReservation = await prisma.reservation.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        code: `HIS${suffix.slice(-10)}`,
+        status: ReservationStatus.CHECKED_OUT,
+        checkInDate: new Date(instant(historyDate)),
+        checkOutDate: new Date(instant(historyCheckOut)),
+        adults: 1,
+        guestId: GUEST_ANA,
+        roomTypeId: ROOM_TYPE_STD,
+        roomId: roomAId,
+      },
+      select: { id: true },
+    });
+    const historicalStay = await prisma.stay.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        reservationId: historicalReservation.id,
+        guestId: GUEST_ANA,
+        roomId: roomAId,
+        status: StayStatus.CHECKED_OUT,
+        checkedInAt: new Date(`${historyDate}T15:00:00.000Z`),
+        checkedOutAt: new Date(`${historyDate}T18:00:00.000Z`),
+      },
+      select: { id: true },
+    });
+
+    const overview = await request(app.getHttpServer())
+      .get('/api/v1/front-office/overview')
+      .query({ date: historyDate })
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+
+    expect(overview.body.selectedDate).toBe(historyDate);
+    expect(overview.body.isHistorical).toBe(true);
+    expect(overview.body.operationalDate).not.toBe(historyDate);
+    expect(overview.body.arrivals.map((item: { id: string }) => item.id)).toContain(
+      historicalReservation.id,
+    );
+    expect(overview.body.inHouse.map((item: { id: string }) => item.id)).toContain(
+      historicalStay.id,
+    );
+    expect(overview.body.departures.map((item: { id: string }) => item.id)).toContain(
+      historicalStay.id,
+    );
   });
 
   it('records a no-show only after the arrival date', async () => {

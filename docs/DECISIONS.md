@@ -756,3 +756,18 @@ These choices should be confirmed against the existing repository and current st
 - Consequences:
   - Past windows can be queried for availability, which is harmless and useful for late/overdue arrivals.
   - A property-timezone-aware creation guard is still required before relying on this behavior in production; tracked as follow-up.
+
+### ADR-042 — Front Office distinguishes current work from historical days
+
+- Status: accepted.
+- Date: 2026-11-12.
+- Context: `GET /front-office/overview?date=` accepted a calendar date, but always returned current pending work: confirmed arrivals up to the date, in-house stays and in-house departures due by the date. That is useful for today, but wrong for a past day: completed stays and check-outs disappeared, so a historical consultation could not answer who arrived, stayed or left that day.
+- Decision:
+  - The current operational day keeps its pending-work semantics: arrivals still waiting for check-in, current in-house stays and departures due.
+  - A date earlier than the operational day returns event semantics: arrivals whose `checkInDate` is that day (all non-cancelled final states), stays active at any point during that day, check-outs whose `checkedOutAt` falls inside the property-local day, and no-shows whose `checkInDate` is that day.
+  - Instant-based historical bounds use the property IANA timezone through `propertyDayStart`, never UTC midnight; calendar-date fields remain date-only.
+  - `selectedDate` and `isHistorical` are additive response fields. The API contract, tenant scoping and mutations are unchanged.
+  - The web view hides Room rack and Incidencias for historical dates because both expose current state, and hides operational actions (check-in, check-out, room move, no-show and incidents). Historical consultation is read-only.
+- Consequences:
+  - Historical in-house records show the stay's last assigned room; reconstructing the room occupied on that specific day would require consuming the room-move history and remains future work.
+  - A historical day is not an occupancy report: it is an operational reconstruction with the same permissions and row caps as the current overview.

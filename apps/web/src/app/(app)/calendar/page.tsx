@@ -21,6 +21,7 @@ import {
 import NextLink from 'next/link';
 import { useState } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { DateField } from '@/components/date-field';
 import { KeyValue, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api } from '@/lib/api';
@@ -126,21 +127,13 @@ function CalendarContent() {
             <Text fontSize="sm" color="gray.600">
               Desde
             </Text>
-            <input
-              type="date"
+            <DateField
+              size="sm"
+              width="150px"
               value={startDate}
-              onChange={(event) => {
-                if (event.target.value !== '') {
-                  setStartDate(event.target.value);
-                }
-              }}
-              style={{
-                border: '1px solid #E2E8F0',
-                borderRadius: 6,
-                padding: '4px 8px',
-                fontSize: 14,
-              }}
-              aria-label="Fecha inicial del calendario"
+              placeholder="dd/mm/aaaa"
+              ariaLabel="Fecha inicial del calendario"
+              onChange={setStartDate}
             />
             <Select
               size="sm"

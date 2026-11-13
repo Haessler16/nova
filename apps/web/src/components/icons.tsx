@@ -206,6 +206,18 @@ export const ArrowRightIcon = createIcon({
   ),
 });
 
+export const ChevronLeftIcon = createIcon({
+  displayName: 'ChevronLeftIcon',
+  viewBox: '0 0 24 24',
+  path: <path d="m15 6-6 6 6 6" {...strokeProps} />,
+});
+
+export const ChevronRightIcon = createIcon({
+  displayName: 'ChevronRightIcon',
+  viewBox: '0 0 24 24',
+  path: <path d="m9 6 6 6-6 6" {...strokeProps} />,
+});
+
 export const LogoutIcon = createIcon({
   displayName: 'LogoutIcon',
   viewBox: '0 0 24 24',

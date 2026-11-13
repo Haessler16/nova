@@ -38,6 +38,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { DateField } from '@/components/date-field';
 import { DownloadIcon } from '@/components/icons';
 import {
   Field,
@@ -53,6 +54,7 @@ import {
   DOCUMENT_TYPE_LABELS,
   RESERVATION_STATUS_COLORS,
   RESERVATION_STATUS_LABELS,
+  addDaysISO,
   formatCalendarDate,
   formatDateTime,
   nightsBetween,
@@ -816,22 +818,33 @@ function ReservationsContent() {
               <Text fontSize="xs" color="gray.500">
                 Desde
               </Text>
-              <Input
+              <DateField
                 size="sm"
-                type="date"
                 width="150px"
                 value={filters.fromDate}
-                onChange={(event) => setFilters({ ...filters, fromDate: event.target.value })}
+                placeholder="dd/mm/aaaa"
+                ariaLabel="Fecha desde"
+                isClearable
+                onChange={(fromDate) =>
+                  setFilters({
+                    ...filters,
+                    fromDate,
+                    ...(filters.toDate !== '' && filters.toDate <= fromDate ? { toDate: '' } : {}),
+                  })
+                }
               />
               <Text fontSize="xs" color="gray.500">
                 Hasta
               </Text>
-              <Input
+              <DateField
                 size="sm"
-                type="date"
                 width="150px"
                 value={filters.toDate}
-                onChange={(event) => setFilters({ ...filters, toDate: event.target.value })}
+                min={filters.fromDate !== '' ? filters.fromDate : undefined}
+                placeholder="dd/mm/aaaa"
+                ariaLabel="Fecha hasta"
+                isClearable
+                onChange={(toDate) => setFilters({ ...filters, toDate })}
               />
             </HStack>
             <Button
@@ -1119,33 +1132,37 @@ function ReservationsContent() {
                 </Text>
                 <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
                   <Field label="Check-in" isRequired>
-                    <Input
-                      type="date"
+                    <DateField
                       value={createForm.checkInDate}
                       min={todayISO()}
-                      onChange={(event) =>
+                      placeholder="dd/mm/aaaa"
+                      ariaLabel="Fecha de check-in"
+                      onChange={(checkInDate) =>
                         setCreateForm({
                           ...createForm,
-                          checkInDate: event.target.value,
+                          checkInDate,
+                          checkOutDate:
+                            createForm.checkOutDate <= checkInDate
+                              ? addDaysISO(checkInDate, 1)
+                              : createForm.checkOutDate,
                           roomId: '',
                         })
                       }
-                      required
                     />
                   </Field>
                   <Field label="Check-out" isRequired>
-                    <Input
-                      type="date"
+                    <DateField
                       value={createForm.checkOutDate}
                       min={createForm.checkInDate}
-                      onChange={(event) =>
+                      placeholder="dd/mm/aaaa"
+                      ariaLabel="Fecha de check-out"
+                      onChange={(checkOutDate) =>
                         setCreateForm({
                           ...createForm,
-                          checkOutDate: event.target.value,
+                          checkOutDate,
                           roomId: '',
                         })
                       }
-                      required
                     />
                   </Field>
                   <Field label="Adultos" isRequired>
@@ -1311,23 +1328,20 @@ function ReservationsContent() {
             <Stack spacing={4}>
               <SimpleGrid columns={2} spacing={4}>
                 <Field label="Check-in" isRequired>
-                  <Input
-                    type="date"
+                  <DateField
                     value={editForm.checkInDate}
-                    onChange={(event) =>
-                      setEditForm({ ...editForm, checkInDate: event.target.value })
-                    }
-                    required
+                    placeholder="dd/mm/aaaa"
+                    ariaLabel="Fecha de check-in"
+                    onChange={(checkInDate) => setEditForm({ ...editForm, checkInDate })}
                   />
                 </Field>
                 <Field label="Check-out" isRequired>
-                  <Input
-                    type="date"
+                  <DateField
                     value={editForm.checkOutDate}
-                    onChange={(event) =>
-                      setEditForm({ ...editForm, checkOutDate: event.target.value })
-                    }
-                    required
+                    min={editForm.checkInDate !== '' ? editForm.checkInDate : undefined}
+                    placeholder="dd/mm/aaaa"
+                    ariaLabel="Fecha de check-out"
+                    onChange={(checkOutDate) => setEditForm({ ...editForm, checkOutDate })}
                   />
                 </Field>
               </SimpleGrid>

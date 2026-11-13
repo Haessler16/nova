@@ -262,6 +262,8 @@ export interface RoomRackItem {
 
 export interface FrontOfficeOverview {
   operationalDate: string;
+  selectedDate: string;
+  isHistorical: boolean;
   localDate: string;
   localTime: string;
   timezone: string;
