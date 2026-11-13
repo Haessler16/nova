@@ -31,6 +31,7 @@ import NextLink from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { DateField } from '@/components/date-field';
+import { ReservationDocuments } from '@/components/documents-panel';
 import {
   Field,
   MetricCard,
@@ -137,6 +138,10 @@ function StayCard({
             </Button>
           </>
         )}
+        <ReservationDocuments
+          reservationId={stay.reservation.id}
+          reservationCode={stay.reservation.code}
+        />
         <Button as={NextLink} href="/reservations" size="xs" variant="ghost">
           Reserva
         </Button>
@@ -636,6 +641,10 @@ function FrontOfficeContent() {
                                   </Text>
                                 </Box>
                                 <HStack spacing={1} wrap="wrap">
+                                  <ReservationDocuments
+                                    reservationId={reservation.id}
+                                    reservationCode={reservation.code}
+                                  />
                                   {!data.isHistorical &&
                                     (missingRoom ? (
                                       <Button
@@ -753,7 +762,11 @@ function FrontOfficeContent() {
                               {data.isHistorical ? (
                                 <StatusBadge color="sky" label="Check-out" />
                               ) : (
-                                <HStack spacing={1}>
+                                <HStack spacing={1} wrap="wrap">
+                                  <ReservationDocuments
+                                    reservationId={stay.reservation.id}
+                                    reservationCode={stay.reservation.code}
+                                  />
                                   <Button
                                     size="xs"
                                     colorScheme="brand"

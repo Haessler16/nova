@@ -790,3 +790,38 @@ These choices should be confirmed against the existing repository and current st
   - Only Portuguese (`pt-BR`) templates are seeded in v1. New properties need published templates before documents can be emitted from them.
   - PDFKit does not provide digital signatures, PDF/A validation or certified copies; those require a separate decision.
   - The UI hides the generation action until a server preview exists, but the backend remains the authorization and validation authority.
+
+### ADR-044 — Reports v1 is a synchronous, fixed catalog with audit-backed execution history
+
+- Status: accepted for Reports v1.
+- Date: 2026-11-13.
+- Context: the v2 package requires five operational/financial reports with filters, pagination, PDF/CSV and totals. The repository has no job queue, object storage or BI layer. Letting the client define columns, SQL or arbitrary report definitions would bypass tenant scoping and make results unauditable.
+- Decision:
+  - Reports are a code-defined catalog: `occupancy`, `arrivals`, `departures`, `reservations` and `cash-daily`. Each key owns a fixed Prisma query and a fixed column set. The client only sends a calendar period, page and page size; no SQL, table names or column names are accepted.
+  - Execution is synchronous and bounded to 62 calendar days and 5000 source rows. The API returns `report_execution_limit_exceeded` instead of silently truncating. There is no background job or scheduled report in v1.
+  - Permission is split into `reports.read` (catalog, operational reports, PDF/CSV) and `reports.financial` (cash report and its export). Property scope is resolved by the existing tenant guard and every query filters `organizationId` and `propertyId`.
+  - Occupancy is measured at the end of each property-local day. Active rooms minus rooms with a vigent `OUT_OF_ORDER`/`OUT_OF_SERVICE` block are sellable. A stay counts when it has checked in before the day ends and has not checked out before the day ends; therefore a checkout during the day does not create a room-night. Current active inventory is used as the denominator, and overbooking/internal use are not modeled. This formula is an explicit pilot-validation question.
+  - Arrivals/departures use reservation calendar dates and separate expected from completed. Cancelled reservations are not “expected”; no-shows remain visible. The reservations report is a creation-period report whose status column reflects the current status at generation time, not a historical status snapshot.
+  - Cash daily uses the operational date and existing `CashMovement` ledger. `CASH_IN`/`ADJUSTMENT` add; `CASH_OUT`/`REFUND` subtract. `CashSession.expectedCashAmount` is preferred when present. Closing variance is shown only for closed sessions. Completed payments grouped by method are displayed separately and never treated as cash.
+  - PDF is rendered server-side with PDFKit in A4 landscape and includes property, period, timezone, generation instant, filters, summary, table and page numbers. CSV includes metadata, summary and table, uses UTF-8 BOM and the existing formula-injection guard. Both exports are generated on demand and streamed with `Cache-Control: private, no-store`.
+  - Each run/export gets a server `executionId` and an append-only `AuditEvent` (`report.executed`/`report.exported`) with report key, dates, format and row counts. Report contents, PII and generated files are not copied into audit metadata. The history endpoint reads those audit events; v1 does not add a separate report-execution table or retain downloadable artifacts.
+- Consequences:
+  - A report cannot be re-downloaded from history because artifacts are not stored; the operator must run it again. Persistent history and scheduled jobs are future work.
+  - The 62-day/5000-row caps keep the request bounded but may reject broad ad-hoc analysis. XLSX, charts and multi-property consolidation remain out of scope.
+  - The occupancy formula must be reconciled with the pilot hotel before it is treated as a commercial KPI; especially checkout-day treatment, overbooking, internal use and inactive-room history.
+  - Financial exports remain dependent on `reports.financial`; hiding the option in the UI is not an authorization decision.
+
+### ADR-045 — FNRH Digital remains a discovery/integration boundary, not an invented API client
+
+- Status: accepted (discovery only; integration deferred).
+- Date: 2026-11-13.
+- Context: Portaria MTur 41/2025 establishes the FNRH Digital and anticipates PMS/API integration, credentials per establishment and an audit trail. The v2 technical draft mentions that the official integration page listed API 2.4.2 during the 2026-11-10 consultation, but the current manual/changelog, homologation access, exact endpoints, payloads, authentication, errors, limits and idempotency contract were not downloaded or confirmed in this workspace.
+- Decision:
+  - Do not implement external FNRH calls, credentials, endpoints, payloads, retries or fiscal assertions in this iteration. Do not treat the internal operations in `docs/v2/src-starters/fnrh-adapter.interface.ts` as an official contract.
+  - Record the discovery scope, known/unknown facts, data mapping and acceptance gates in `docs/v2/docs/FNRH_DISCOVERY.md`.
+  - When integration starts, isolate it behind an internal provider port, use encrypted secret references (never raw tokens in the frontend, repository or logs), separate homologation from production, and require an idempotency/status-reconciliation design confirmed against the official manual.
+  - The existing internal PDF/document package is not declared a legal FNRH contingency. That claim requires legal/operational validation and the full current regulation text.
+- Consequences:
+  - The product has no FNRH integration yet; the discovery document is the source of truth for what remains unverified.
+  - No external credentials or sandbox accounts are required to build or test NOVA today.
+  - Integration cannot be estimated responsibly until the official manual, homologation access and pilot requirements are confirmed.

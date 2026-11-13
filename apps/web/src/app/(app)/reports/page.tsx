@@ -21,7 +21,7 @@ import {
   Tr,
   useToast,
 } from '@chakra-ui/react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { DateField } from '@/components/date-field';
 import { DownloadIcon, ReportsIcon } from '@/components/icons';
@@ -45,6 +45,7 @@ import {
 import type {
   ReportCellFormat,
   ReportDefinitionSummary,
+  OperationalDay,
   ReportExecution,
   ReportKey,
   ReportResult,
@@ -65,7 +66,7 @@ function formatCell(
   format: ReportCellFormat,
   currencyCode: string,
 ): string {
-  if (value === null || value === undefined || value === '') {
+  if (value === null || value === undefined || value === '' || value === '—') {
     return '—';
   }
   if (format === 'currency') {
@@ -94,6 +95,14 @@ function formatSummary(item: ReportSummaryItem, currencyCode: string): string {
   return formatCell(item.value, item.format, currencyCode);
 }
 
+function formatZonedDateTime(value: string, timezone: string): string {
+  return new Intl.DateTimeFormat('es-AR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: timezone,
+  }).format(new Date(value));
+}
+
 function ReportsContent() {
   const { tenant } = useSession();
   const toast = useToast();
@@ -104,7 +113,12 @@ function ReportsContent() {
   const [error, setError] = useState<unknown>(null);
   const [running, setRunning] = useState(false);
   const [exporting, setExporting] = useState<'PDF' | 'CSV' | null>(null);
+  const datesTouched = useRef(false);
 
+  const operationalDay = useAsyncData<OperationalDay>(
+    () => api<OperationalDay>('/api/v1/properties/current/operational-day', { tenant }),
+    `${tenant.organizationId}:${tenant.propertyId}:reports:operational-day`,
+  );
   const catalog = useAsyncData<ReportCatalog>(
     () => api<ReportCatalog>('/api/v1/reports', { tenant }),
     `${tenant.organizationId}:${tenant.propertyId}:reports:catalog`,
@@ -113,6 +127,15 @@ function ReportsContent() {
     () => api<ReportHistory>('/api/v1/reports/executions', { tenant }),
     `${tenant.organizationId}:${tenant.propertyId}:reports:history`,
   );
+
+  useEffect(() => {
+    const date = operationalDay.data?.operationalDate;
+    if (date === undefined || datesTouched.current) {
+      return;
+    }
+    setFrom(addDaysISO(date, -6));
+    setTo(date);
+  }, [operationalDay.data?.operationalDate]);
 
   const selectedDefinition = catalog.data?.items.find((item) => item.key === selected) ?? null;
   const canRun = selectedDefinition?.allowed === true;
@@ -269,10 +292,24 @@ function ReportsContent() {
               </Select>
             </Field>
             <Field label="Desde" isRequired>
-              <DateField value={from} onChange={setFrom} ariaLabel="Desde del reporte" />
+              <DateField
+                value={from}
+                onChange={(value) => {
+                  datesTouched.current = true;
+                  setFrom(value);
+                }}
+                ariaLabel="Desde del reporte"
+              />
             </Field>
             <Field label="Hasta" isRequired>
-              <DateField value={to} onChange={setTo} ariaLabel="Hasta del reporte" />
+              <DateField
+                value={to}
+                onChange={(value) => {
+                  datesTouched.current = true;
+                  setTo(value);
+                }}
+                ariaLabel="Hasta del reporte"
+              />
             </Field>
             <Button
               colorScheme="brand"
@@ -306,7 +343,7 @@ function ReportsContent() {
 
       {result === null ? (
         <SectionCard>
-                    {running ? (
+          {running ? (
             <QueryFeedback loading error={null}>
               <Box />
             </QueryFeedback>
@@ -341,7 +378,7 @@ function ReportsContent() {
                 <Text fontSize="xs" color="textSecondary" mt={1}>
                   {formatCalendarDate(result.filters.from)} a{' '}
                   {formatCalendarDate(result.filters.to)} · {result.timezone} · generado{' '}
-                  {formatDateTime(result.generatedAt)}
+                  {formatZonedDateTime(result.generatedAt, result.timezone)}
                 </Text>
               </Box>
               <Badge colorScheme="sky">{result.totalRows} fila(s)</Badge>

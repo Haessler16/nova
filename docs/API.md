@@ -78,6 +78,8 @@ Detalles:
 | `documents.read`                 | Org o propiedad | Leer plantillas, historial y metadata de documentos generados                                      |
 | `documents.generate`             | Org o propiedad | Previsualizar y generar documentos, y descargar sus PDF                                            |
 | `documents.manage`               | Org o propiedad | Registrar recepción de firma física y eventos de impresión/reimpresión                             |
+| `reports.read`                   | Org o propiedad | Leer el catálogo y ejecutar reportes operativos no financieros                                     |
+| `reports.financial`              | Org o propiedad | Ejecutar y exportar la caja diaria y reportes financieros                                          |
 
 Los permisos de organización son aditivos respecto de los de propiedad. Un rol de organización con `property.read` da acceso organization-wide (caso `ORG_ADMIN`); el staff regular mantiene `Membership.roleId = null` y usa `PropertyMembership`.
 
@@ -328,6 +330,24 @@ Errores específicos: `pilot_feedback_not_found`, `pilot_feedback_context_too_la
 
 Errores específicos: `document_template_not_found`, `reservation_not_found`, `document_guest_mismatch`, `document_reservation_state_invalid`, `document_checkin_required`, `document_not_found`, `document_voided`, `invalid_received_at`, `received_at_in_future`, `received_at_before_generation`, `property_context_required`.
 
+### Reports
+
+| Método | Ruta                                 | Guard         | Permiso        | Status |
+| ------ | ------------------------------------ | ------------- | -------------- | ------ |
+| GET    | `/api/v1/reports`                    | auth + tenant | `reports.read` | 200    |
+| GET    | `/api/v1/reports/executions`         | auth + tenant | `reports.read` | 200    |
+| POST   | `/api/v1/reports/:reportKey/run`     | auth + tenant | `reports.read` | 201    |
+| POST   | `/api/v1/reports/:reportKey/exports` | auth + tenant | `reports.read` | 200    |
+
+- Catálogo fijo: `occupancy`, `arrivals`, `departures`, `reservations` y `cash-daily`. No se aceptan SQL, nombres de columnas ni definiciones de reportes desde el cliente. `cash-daily` exige además `reports.financial` en el servicio, aunque el guard de entrada solo requiera `reports.read`.
+- `POST /reports/:reportKey/run` acepta `{ filters: { from, to }, page?, pageSize? }`, con fechas calendario `YYYY-MM-DD`, `pageSize` entre 1 y 100 y un período máximo de 62 días. La respuesta incluye `executionId`, propiedad, timezone, moneda, filtros, resumen, columnas, filas, `totalRows` y paginación.
+- La ocupación se calcula al cierre de cada día de la propiedad: habitaciones activas menos habitaciones con bloqueo `OUT_OF_ORDER`/`OUT_OF_SERVICE` vigente son vendibles; se cuentan estancias activas al final del día. Un check-out durante el día no cuenta esa noche. La fórmula exacta y sus límites quedan documentados en el ADR-044 y requieren validación con el hotel piloto.
+- Llegadas y salidas usan `checkInDate`/`checkOutDate` calendario. “Previstas” excluye canceladas; “realizadas/concluidas” se deriva de la estancia o del estado actual. El reporte de reservas usa la fecha de creación en la timezone de la propiedad y muestra el estado actual, no una fotografía histórica de cada transición.
+- Caja diaria agrupa por fecha operativa. Los movimientos `CASH_IN` y `ADJUSTMENT` suman; `CASH_OUT` y `REFUND` restan. El esperado usa `CashSession.expectedCashAmount` cuando existe y, si no, apertura + movimientos. La diferencia solo se publica para cajas cerradas. Los pagos por otros medios se muestran aparte: un pago registrado no equivale a efectivo recibido.
+- Exportación: `POST /reports/:reportKey/exports` con `{ format: PDF | CSV, filters }`. PDF es A4 horizontal con propiedad, período, timezone, generación, filtros, resumen, tabla y paginación. CSV incluye metadata, resumen y tabla; usa BOM UTF-8 y neutralización de fórmulas. Ambos se limitan a 5000 filas y responden `Cache-Control: private, no-store`.
+- Cada ejecución/exportación escribe `AuditEvent` (`report.executed`/`report.exported`) con `reportKey`, fechas, formato y conteos; no guarda contenido, filas ni PII. `GET /reports/executions` devuelve las últimas 50 entradas auditadas. No se persisten PDFs de reportes ni existe una tabla de historial separada en v1.
+- Errores: `report_not_found`, `report_filter_invalid`, `report_execution_limit_exceeded`, `permission_denied`.
+
 ### Admin
 
 Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
@@ -451,6 +471,9 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 | 409  | `operational_day_already_closed`            | Día operativo ya cerrado                                  |
 | 400  | `pilot_feedback_context_too_large`          | Contexto de feedback mayor a 4 KB                         |
 | 400  | `export_too_large`                          | Exportación supera 5000 filas; acotar filtros             |
+| 400  | `report_filter_invalid`                     | Período de reporte invertido o mayor a 62 días            |
+| 400  | `report_execution_limit_exceeded`           | Reporte supera 5000 filas; acotar filtros                 |
+| 404  | `report_not_found`                          | Clave de reporte fuera del catálogo fijo                  |
 | 400  | `invalid_property_timezone`                 | La propiedad tiene una timezone IANA inválida             |
 | 404  | `pilot_feedback_not_found`                  | Feedback inexistente en la propiedad                      |
 | 429  | `rate_limited`                              | Demasiados intentos de login; `details.retryAfterSeconds` |
@@ -476,7 +499,8 @@ El resto de endpoints de escritura no financieros todavía no acepta `Idempotenc
 
 ## Endpoints previstos (no implementados)
 
-- reportes operativos agregados y exportación XLSX;
+- exportación XLSX de reportes y reportes programados;
+- historial persistente de reportes con re-descarga de artefactos;
 - conciliación bancaria y tokenización de tarjetas;
 - facturación/fiscal y numeración de comprobantes;
 - integraciones Edge/OTA/PIX (Fase 8, sujetas a discovery y validación de proveedor).

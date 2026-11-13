@@ -34,6 +34,7 @@ import NextLink from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { ReservationDocuments } from '@/components/documents-panel';
 import {
   Field,
   MetricCard,
@@ -206,10 +207,16 @@ function FolioDetailContent() {
             : `Reserva ${data.reservationId?.slice(0, 8) ?? '—'} · moneda ${data.currencyCode}`
         }
         actions={
-          <HStack spacing={2}>
+          <HStack spacing={2} wrap="wrap">
             <Button as={NextLink} href="/folios" variant="outline">
               Volver
             </Button>
+            {data !== null && data.reservationId !== null && (
+              <ReservationDocuments
+                reservationId={data.reservationId}
+                reservationCode={data.reservationId.slice(0, 8)}
+              />
+            )}
             {data !== null && isOpen && !hasPayments && (
               <Button colorScheme="danger" variant="outline" onClick={cancelModal.onOpen}>
                 Cancelar folio

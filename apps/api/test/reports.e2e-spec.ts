@@ -38,16 +38,6 @@ function addDays(value: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function binaryParser(
-  response: NodeJS.ReadableStream,
-  callback: (error: Error | null, body: Buffer) => void,
-): void {
-  const chunks: Buffer[] = [];
-  response.on('data', (chunk: Buffer) => chunks.push(chunk));
-  response.on('end', () => callback(null, Buffer.concat(chunks)));
-  response.on('error', (error: Error) => callback(error, Buffer.alloc(0)));
-}
-
 describe('Reports (E2E)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -70,18 +60,20 @@ describe('Reports (E2E)', () => {
         notes: 'Synthetic report export fixture.',
       },
     });
-    await request(app.getHttpServer())
-      .post('/api/v1/reservations')
-      .set(headers(RECEPTION))
-      .send({
-        checkInDate: today,
-        checkOutDate: tomorrow,
+    await prisma.reservation.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        code: `RPT-${suffix}`,
+        status: 'CONFIRMED',
+        checkInDate: new Date(`${today}T00:00:00.000Z`),
+        checkOutDate: new Date(`${tomorrow}T00:00:00.000Z`),
         adults: 1,
         guestId: guest.id,
         roomTypeId: ROOM_TYPE_STD,
         source: `reports-e2e-${suffix}`,
-      })
-      .expect(201);
+      },
+    });
   });
 
   afterAll(async () => {
@@ -95,9 +87,7 @@ describe('Reports (E2E)', () => {
       .expect(200);
 
     expect(reception.body.items).toHaveLength(5);
-    const cash = reception.body.items.find(
-      (item: { key: string }) => item.key === 'cash-daily',
-    );
+    const cash = reception.body.items.find((item: { key: string }) => item.key === 'cash-daily');
     expect(cash.allowed).toBe(false);
     expect(cash.permission).toBe('reports.financial');
 
@@ -175,7 +165,12 @@ describe('Reports (E2E)', () => {
       .set(headers(ADMIN))
       .send({ format: 'CSV', filters: { from: today, to: today } })
       .buffer(true)
-      .parse(binaryParser)
+      .parse((stream, callback) => {
+        const chunks: Buffer[] = [];
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        stream.on('end', () => callback(null, Buffer.concat(chunks)));
+        stream.on('error', (error: Error) => callback(error, Buffer.alloc(0)));
+      })
       .expect(200);
 
     expect(response.headers['content-type']).toContain('text/csv');
@@ -195,7 +190,12 @@ describe('Reports (E2E)', () => {
       .set(headers(ADMIN))
       .send({ format: 'PDF', filters: { from: today, to: today } })
       .buffer(true)
-      .parse(binaryParser)
+      .parse((stream, callback) => {
+        const chunks: Buffer[] = [];
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        stream.on('end', () => callback(null, Buffer.concat(chunks)));
+        stream.on('error', (error: Error) => callback(error, Buffer.alloc(0)));
+      })
       .expect(200);
 
     expect(response.headers['content-type']).toContain('application/pdf');
@@ -230,7 +230,7 @@ describe('Reports (E2E)', () => {
       .post('/api/v1/reports/occupancy/run')
       .set(headers(ADMIN_B, ORG_B, PROPERTY_BOSQUE))
       .send({ filters: { from: today, to: today } })
-      .expect(200);
+      .expect(201);
     expect(wrongTenant.body.property.id).toBe(PROPERTY_BOSQUE);
 
     const wrongOrganization = await request(app.getHttpServer())

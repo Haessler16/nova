@@ -42,13 +42,19 @@ const DOCUMENT_TYPES: DocumentType[] = ['GUEST_REGISTRATION', 'LODGING_TERMS', '
 interface ReservationDocumentsProps {
   reservationId: string;
   reservationCode: string;
+  hideTrigger?: boolean;
+  defaultOpen?: boolean;
+  onClose?: () => void;
 }
 
 export function ReservationDocuments({
   reservationId,
   reservationCode,
+  hideTrigger = false,
+  defaultOpen = false,
+  onClose,
 }: ReservationDocumentsProps) {
-  const modal = useDisclosure();
+  const modal = useDisclosure({ defaultIsOpen: defaultOpen });
   const toast = useToast();
   const { organizationId, propertyId } = useSession();
 
@@ -241,13 +247,20 @@ export function ReservationDocuments({
     }
   }
 
+  function closeModal(): void {
+    modal.onClose();
+    onClose?.();
+  }
+
   return (
     <>
-      <Button size="xs" variant="outline" onClick={modal.onOpen}>
-        Documentos
-      </Button>
+      {!hideTrigger && (
+        <Button size="xs" variant="outline" onClick={modal.onOpen}>
+          Documentos
+        </Button>
+      )}
 
-      <Modal isOpen={modal.isOpen} onClose={modal.onClose} size="6xl" scrollBehavior="inside">
+      <Modal isOpen={modal.isOpen} onClose={closeModal} size="6xl" scrollBehavior="inside">
         <ModalOverlay />
         <ModalContent maxW="1180px">
           <ModalHeader>
@@ -494,7 +507,7 @@ export function ReservationDocuments({
             )}
           </ModalBody>
           <ModalFooter>
-            <Button variant="ghost" onClick={modal.onClose}>
+            <Button variant="ghost" onClick={closeModal}>
               Cerrar
             </Button>
           </ModalFooter>

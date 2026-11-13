@@ -27,6 +27,7 @@ import {
 } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { GuestDocuments } from '@/components/guest-documents';
 import { DownloadIcon } from '@/components/icons';
 import { Field, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
 import { useSession } from '@/context/session';
@@ -327,6 +328,7 @@ function GuestsContent() {
                     </Td>
                     <Td>
                       <HStack spacing={1} justify="flex-end">
+                        <GuestDocuments guestId={guest.id} guestName={guest.fullName} />
                         <Button size="xs" variant="ghost" onClick={() => openEdit(guest)}>
                           Editar
                         </Button>
