@@ -237,6 +237,147 @@ export async function downloadCsv(
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export async function downloadReportExport(
+  path: string,
+  tenant: TenantSelection,
+  body: unknown,
+  filename: string,
+): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new ApiError(
+      0,
+      'offline',
+      'Sin conexión: no se puede descargar la exportación. Reintentá cuando vuelvas a estar en línea.',
+    );
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/pdf, text/csv',
+    'Content-Type': 'application/json',
+  };
+  if (tenant.organizationId !== undefined && tenant.organizationId !== null) {
+    headers['X-Organization-Id'] = tenant.organizationId;
+  }
+  if (tenant.propertyId !== undefined && tenant.propertyId !== null) {
+    headers['X-Property-Id'] = tenant.propertyId;
+  }
+  const currentDevUser = readDevUser();
+  if (currentDevUser !== null) {
+    headers['X-Dev-User-Id'] = currentDevUser;
+  }
+  if (authMode === 'local-session') {
+    headers['X-CSRF-Token'] = await ensureCsrfToken();
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+    body: JSON.stringify(body),
+  });
+
+  if (response.status === 401) {
+    notifyUnauthorized();
+  }
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  saveBlob(await response.blob(), filename);
+}
+
+async function fetchProtectedFile(
+  path: string,
+  tenant: TenantSelection,
+  accept: string,
+): Promise<Blob> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new ApiError(
+      0,
+      'offline',
+      'Sin conexión: no se puede descargar el archivo. Reintentá cuando vuelvas a estar en línea.',
+    );
+  }
+
+  const headers: Record<string, string> = { Accept: accept };
+  if (tenant.organizationId !== undefined && tenant.organizationId !== null) {
+    headers['X-Organization-Id'] = tenant.organizationId;
+  }
+  if (tenant.propertyId !== undefined && tenant.propertyId !== null) {
+    headers['X-Property-Id'] = tenant.propertyId;
+  }
+  const currentDevUser = readDevUser();
+  if (currentDevUser !== null) {
+    headers['X-Dev-User-Id'] = currentDevUser;
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (response.status === 401) {
+    notifyUnauthorized();
+  }
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+  return response.blob();
+}
+
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function downloadFile(
+  path: string,
+  tenant: TenantSelection,
+  filename: string,
+): Promise<void> {
+  const blob = await fetchProtectedFile(path, tenant, 'application/pdf');
+  saveBlob(blob, filename);
+}
+
+/**
+ * Opens the authenticated PDF in a new tab using a blob URL. The window is
+ * created synchronously from the click so the browser allows it; no public
+ * storage URL or bearer token is exposed.
+ */
+export async function openProtectedPdf(
+  path: string,
+  tenant: TenantSelection,
+  filename: string,
+): Promise<void> {
+  const popup = window.open('', '_blank');
+  if (popup !== null) {
+    popup.opener = null;
+  }
+  try {
+    const blob = await fetchProtectedFile(path, tenant, 'application/pdf');
+    const url = URL.createObjectURL(blob);
+    if (popup !== null) {
+      popup.location.href = url;
+    } else {
+      saveBlob(blob, filename);
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    popup?.close();
+    throw error;
+  }
+}
+
 export async function fetchAuthMode(): Promise<AuthMode> {
   const response = await fetch(`${API_URL}/api/v1/auth/mode`, {
     credentials: 'include',

@@ -1,6 +1,8 @@
 import type {
   CashMovementType,
   CashSessionStatus,
+  DocumentStatus,
+  DocumentType,
   FolioStatus,
   GuestDocumentType,
   HousekeepingState,
@@ -272,4 +274,22 @@ export const OPERATIONAL_CLOSE_LABELS: Record<OperationalCloseStatus, string> = 
 export const OPERATIONAL_CLOSE_COLORS: Record<OperationalCloseStatus, string> = {
   CLOSED: 'mint',
   REOPENED: 'warning',
+};
+
+export const RESERVATION_DOCUMENT_LABELS: Record<DocumentType, string> = {
+  GUEST_REGISTRATION: 'Ficha de registro',
+  LODGING_TERMS: 'Términos de hospedaje',
+  CHECKIN_SUMMARY: 'Resumen de check-in',
+};
+
+export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
+  GENERATED: 'Generado',
+  SIGNATURE_RECEIVED: 'Firma recibida',
+  VOIDED: 'Anulado',
+};
+
+export const DOCUMENT_STATUS_COLORS: Record<DocumentStatus, string> = {
+  GENERATED: 'sky',
+  SIGNATURE_RECEIVED: 'mint',
+  VOIDED: 'danger',
 };

@@ -34,6 +34,11 @@ export const PERMISSIONS = {
   PILOT_FEEDBACK_SUBMIT: 'pilot.feedback.submit',
   PILOT_FEEDBACK_READ: 'pilot.feedback.read',
   PILOT_FEEDBACK_MANAGE: 'pilot.feedback.manage',
+  DOCUMENTS_READ: 'documents.read',
+  DOCUMENTS_GENERATE: 'documents.generate',
+  DOCUMENTS_MANAGE: 'documents.manage',
+  REPORTS_READ: 'reports.read',
+  REPORTS_FINANCIAL: 'reports.financial',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

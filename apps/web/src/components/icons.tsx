@@ -13,6 +13,16 @@ const strokeProps = {
   strokeLinejoin: 'round' as const,
 };
 
+export const ReportsIcon = createIcon({
+  displayName: 'ReportsIcon',
+  viewBox: '0 0 24 24',
+  path: (
+    <>
+      <path d="M4 20V11M10 20V5M16 20v-6M22 20H2" {...strokeProps} />
+    </>
+  ),
+});
+
 export const DashboardIcon = createIcon({
   displayName: 'DashboardIcon',
   viewBox: '0 0 24 24',

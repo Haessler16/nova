@@ -39,6 +39,7 @@ import {
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { DateField } from '@/components/date-field';
+import { ReservationDocuments } from '@/components/documents-panel';
 import { DownloadIcon } from '@/components/icons';
 import {
   Field,
@@ -1476,14 +1477,20 @@ function ReservationsContent() {
             >
               {selectedReservation !== null && (
                 <Stack spacing={5}>
-                  <HStack>
-                    <StatusBadge
-                      color={RESERVATION_STATUS_COLORS[selectedReservation.status]}
-                      label={RESERVATION_STATUS_LABELS[selectedReservation.status]}
+                  <HStack justify="space-between" align="start">
+                    <HStack wrap="wrap">
+                      <StatusBadge
+                        color={RESERVATION_STATUS_COLORS[selectedReservation.status]}
+                        label={RESERVATION_STATUS_LABELS[selectedReservation.status]}
+                      />
+                      {selectedReservation.source !== null && (
+                        <Badge colorScheme="gray">{selectedReservation.source}</Badge>
+                      )}
+                    </HStack>
+                    <ReservationDocuments
+                      reservationId={selectedReservation.id}
+                      reservationCode={selectedReservation.code}
                     />
-                    {selectedReservation.source !== null && (
-                      <Badge colorScheme="gray">{selectedReservation.source}</Badge>
-                    )}
                   </HStack>
 
                   <SimpleGrid columns={2} spacing={3}>

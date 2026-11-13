@@ -10,6 +10,8 @@ Estimaciones relativas para planificación, no compromisos. `S` = pequeño, `M` 
 
 > **Actualización 2026-11-09 (groundwork Fase 8):** IMP-001 amplía su valor con exportaciones CSV auditadas de huéspedes, reservas y folios (hasta 5000 filas). RPT-002 queda cubierto parcialmente: exportación CSV operativa, sin reportes agregados ni XLSX. Se agrega diagnóstico `/health/version` y filtros de actor/fecha con cursor en auditoría. No se inicia coordinador Edge ni integraciones de proveedor: Fase 8 sigue en discovery. Ver `docs/PHASE_8_GROUNDWORK.md`.
 
+> **Actualización 2026-11-13 (Documents v1):** primer corte de `docs/v2` implementado: plantillas property-scoped versionadas, preview HTML A4 seguro, PDF A4 server-side con PDFKit, snapshot inmutable, SHA-256, historial, descarga autenticada sin URL pública, eventos de impresión append-only y recepción de firma física. UI contextual en el detalle de reserva. Reportes v1 y FNRH siguen pendientes según el orden de `docs/v2/docs/OPEN_CODE_EXECUTION_PROMPT.md`.
+
 **Phase 3 — guests y reservas (backend):** CRUD de huéspedes con minimización, búsqueda asistida, ciclo de vida de reserva (`CONFIRMED`/`CANCELLED`), disponibilidad por fechas, asignación de habitación transaccional, idempotencia de creación, historial append-only y garantía de no-solapamiento con exclusion constraint PostgreSQL. Check-in/check-out pertenecen a Phase 4 (Front Office).
 
 ## P0 — Foundation (bloquea todo)

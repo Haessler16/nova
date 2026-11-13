@@ -771,3 +771,22 @@ These choices should be confirmed against the existing repository and current st
 - Consequences:
   - Historical in-house records show the stay's last assigned room; reconstructing the room occupied on that specific day would require consuming the room-move history and remains future work.
   - A historical day is not an occupancy report: it is an operational reconstruction with the same permissions and row caps as the current overview.
+
+### ADR-043 — Documents v1 uses a fixed renderer, PDFKit and private database bytes
+
+- Status: accepted for Documents v1.
+- Date: 2026-11-13.
+- Context: the v2 specification requires server-side A4 PDFs, immutable snapshots and private access. The repository has no object-storage service, no PDF engine and no trusted HTML sanitizer. Adding a browser/Chromium renderer would add an operationally heavy dependency and a larger attack surface.
+- Decision:
+  - Add `pdfkit` as the server-side PDF renderer. It uses built-in Helvetica fonts, needs no browser, external font file or network service, and runs inside the existing NestJS process.
+  - Templates are versioned, property-scoped rows with a title and plain-text body. A fixed renderer owns the layout and supports only `GUEST_REGISTRATION`, `LODGING_TERMS` and `CHECKIN_SUMMARY`; no template can inject arbitrary HTML or scripts.
+  - Every generated document stores an immutable JSON snapshot, template version, SHA-256, page count and PDF bytes. The bytes are stored in PostgreSQL (`GeneratedDocument.content`) for v1 because no object-storage provider exists.
+  - Generated documents, templates and print events use composite organization/property foreign keys in PostgreSQL, so a valid property-scoped document cannot point at a guest, reservation, stay or folio from another tenant. A trigger rejects changes to the emitted snapshot, PDF bytes, hash, template version and document number; workflow fields such as signature receipt remain updateable.
+  - Downloads are authenticated, tenant-scoped and streamed with `Cache-Control: private, no-store`; there is no public or presigned URL. This is stricter than a temporary public URL but is not object storage.
+  - Printing is recorded as an append-only event (`PRINT_DIALOG_OPENED`, `PRINT_CONFIRMED_BY_STAFF`, `REPRINT_REQUESTED`) and never as proof of physical printer success. A PostgreSQL trigger rejects update/delete on print events. Physical signature receipt is a separate staff action with server-derived actor identity; this is not electronic signature.
+  - API routes follow the repository's existing tenant-header convention instead of duplicating `:propertyId` in every path.
+- Consequences:
+  - PDF bytes increase database size and backup volume; retention/archival and object storage remain future work. A migration can move `content` to object storage while keeping the hash, snapshot and metadata.
+  - Only Portuguese (`pt-BR`) templates are seeded in v1. New properties need published templates before documents can be emitted from them.
+  - PDFKit does not provide digital signatures, PDF/A validation or certified copies; those require a separate decision.
+  - The UI hides the generation action until a server preview exists, but the backend remains the authorization and validation authority.

@@ -508,3 +508,135 @@ export interface OperationalClose {
   createdAt: string;
   updatedAt: string;
 }
+
+export type DocumentType = 'GUEST_REGISTRATION' | 'LODGING_TERMS' | 'CHECKIN_SUMMARY';
+export type DocumentStatus = 'GENERATED' | 'SIGNATURE_RECEIVED' | 'VOIDED';
+export type DocumentPrintEventType =
+  | 'PRINT_DIALOG_OPENED'
+  | 'PRINT_CONFIRMED_BY_STAFF'
+  | 'REPRINT_REQUESTED';
+
+export interface DocumentTemplateSummary {
+  id: string;
+  key: DocumentType;
+  name: string;
+  title: string;
+  locale: string;
+  version: number;
+  publishedAt: string | null;
+  signatureRequired: boolean;
+}
+
+export interface DocumentPrintEvent {
+  id: string;
+  type: DocumentPrintEventType;
+  requestedAt: string;
+  note: string | null;
+  requestedBy: { id: string; name: string } | null;
+}
+
+export interface GeneratedDocumentSummary {
+  id: string;
+  number: string;
+  documentType: DocumentType;
+  status: DocumentStatus;
+  locale: string;
+  templateVersion: number;
+  guestId: string | null;
+  reservationId: string | null;
+  stayId: string | null;
+  generatedAt: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  pageCount: number;
+  sha256: string;
+  receivedAt: string | null;
+  receivedNotes: string | null;
+  createdAt: string;
+  template: { id: string; key: string; name: string; version: number; locale: string };
+  generatedBy: { id: string; name: string } | null;
+  receivedBy: { id: string; name: string } | null;
+  printEventCount: number;
+}
+
+export interface GeneratedDocumentDetail extends GeneratedDocumentSummary {
+  printEvents: DocumentPrintEvent[];
+}
+
+export type ReportKey = 'occupancy' | 'arrivals' | 'departures' | 'reservations' | 'cash-daily';
+export type ReportCellFormat = 'text' | 'number' | 'currency' | 'percent' | 'date' | 'datetime';
+
+export interface ReportDefinitionSummary {
+  key: ReportKey;
+  title: string;
+  description: string;
+  category: 'Operación' | 'Reservas' | 'Finanzas';
+  permission: string;
+  allowed: boolean;
+}
+
+export interface ReportColumn {
+  key: string;
+  label: string;
+  format: ReportCellFormat;
+  align?: 'left' | 'right';
+}
+
+export interface ReportSummaryItem {
+  key: string;
+  label: string;
+  value: string | number | null;
+  format: ReportCellFormat;
+}
+
+export interface ReportResult {
+  executionId: string;
+  reportKey: ReportKey;
+  title: string;
+  description: string;
+  property: { id: string; name: string; code: string; timezone: string; currencyCode: string };
+  generatedAt: string;
+  timezone: string;
+  currencyCode: string;
+  filters: { from: string; to: string };
+  summary: ReportSummaryItem[];
+  columns: ReportColumn[];
+  rows: Array<Record<string, string | number | null>>;
+  totalRows: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface ReportExecution {
+  id: string;
+  action: 'report.executed' | 'report.exported';
+  occurredAt: string;
+  metadata: {
+    reportKey?: ReportKey;
+    from?: string;
+    to?: string;
+    format?: 'PDF' | 'CSV';
+    rowCount?: number;
+    page?: number;
+    pageSize?: number;
+  } | null;
+}
+
+export interface DocumentPreviewResponse {
+  html: string;
+  document: {
+    type: DocumentType;
+    typeLabel: string;
+    title: string;
+    number: null;
+    generatedAt: string;
+  };
+  template: {
+    id: string;
+    key: DocumentType;
+    name: string;
+    version: number;
+    locale: string;
+  };
+}

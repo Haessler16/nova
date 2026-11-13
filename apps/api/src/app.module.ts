@@ -6,6 +6,7 @@ import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CsrfGuard } from './auth/csrf.guard';
+import { DocumentsModule } from './documents/documents.module';
 import { ExportsModule } from './exports/exports.module';
 import { validateEnv } from './config/env.validation';
 import { FrontOfficeModule } from './front-office/front-office.module';
@@ -19,6 +20,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { PilotModule } from './pilot/pilot.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PropertiesModule } from './properties/properties.module';
+import { ReportsModule } from './reports/reports.module';
 import { RedisModule } from './redis/redis.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { SecurityEventsModule } from './security-events/security-events.module';
@@ -53,8 +55,10 @@ import { TenancyModule } from './tenancy/tenancy.module';
     GuestsModule,
     ReservationsModule,
     FrontOfficeModule,
+    DocumentsModule,
     FolioModule,
     NightAuditModule,
+    ReportsModule,
     ExportsModule,
     PilotModule,
     AuditModule,

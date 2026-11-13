@@ -75,6 +75,9 @@ Detalles:
 | `front_office.manage`            | Org o propiedad | Check-in, check-out, room move y no-show                                                           |
 | `incidents.read`                 | Org o propiedad | Leer notas e incidencias operativas                                                                |
 | `incidents.manage`               | Org o propiedad | Crear y resolver notas/incidencias                                                                 |
+| `documents.read`                 | Org o propiedad | Leer plantillas, historial y metadata de documentos generados                                      |
+| `documents.generate`             | Org o propiedad | Previsualizar y generar documentos, y descargar sus PDF                                            |
+| `documents.manage`               | Org o propiedad | Registrar recepción de firma física y eventos de impresión/reimpresión                             |
 
 Los permisos de organización son aditivos respecto de los de propiedad. Un rol de organización con `property.read` da acceso organization-wide (caso `ORG_ADMIN`); el staff regular mantiene `Membership.roleId = null` y usa `PropertyMembership`.
 
@@ -300,6 +303,30 @@ Errores específicos: `folio_not_found`, `folio_already_exists`, `folio_not_open
 - No modifica folios, caja ni reservas; cada envío y revisión genera `AuditEvent`.
 
 Errores específicos: `pilot_feedback_not_found`, `pilot_feedback_context_too_large`.
+
+### Documents
+
+| Método | Ruta                                                | Guard         | Permiso              | Status |
+| ------ | --------------------------------------------------- | ------------- | -------------------- | ------ |
+| GET    | `/api/v1/documents/templates`                       | auth + tenant | `documents.read`     | 200    |
+| POST   | `/api/v1/documents/preview`                         | auth + tenant | `documents.generate` | 201    |
+| POST   | `/api/v1/documents`                                 | auth + tenant | `documents.generate` | 201    |
+| GET    | `/api/v1/documents`                                 | auth + tenant | `documents.read`     | 200    |
+| GET    | `/api/v1/documents/:id`                             | auth + tenant | `documents.read`     | 200    |
+| GET    | `/api/v1/documents/:id/download`                    | auth + tenant | `documents.read`     | 200    |
+| POST   | `/api/v1/documents/:id/physical-signature-received` | auth + tenant | `documents.manage`   | 201    |
+| POST   | `/api/v1/documents/:id/print-events`                | auth + tenant | `documents.manage`   | 201    |
+
+- Los endpoints siguen el patrón de tenant por cabeceras (`X-Organization-Id` y `X-Property-Id`) en lugar de repetir `:propertyId` en la ruta. Toda consulta queda limitada a la organización y propiedad resueltas por el servidor.
+- Tipos implementados: `GUEST_REGISTRATION`, `LODGING_TERMS` y `CHECKIN_SUMMARY`, en locale `pt-BR`. Las plantillas son property-scoped, versionadas e inmutables en el flujo de emisión: una emisión congela `templateId`, `templateVersion`, el cuerpo de la plantilla y un snapshot de los datos en `GeneratedDocument.snapshot`.
+- `preview` renderiza HTML A4 server-side con un renderer fijo; el cuerpo de la plantilla es texto plano escapado y nunca HTML arbitrario. No persiste PDF. `POST /documents` genera el PDF A4 con PDFKit, calcula SHA-256 y guarda los bytes privados en PostgreSQL. La descarga exige autenticación y tenant; no existe URL pública ni firmada.
+- `POST /documents` acepta `{ type, reservationId, templateId?, guestId?, locale? }`. `CHECKIN_SUMMARY` exige una estancia existente. Reservas canceladas o no-show no admiten emisión. El número tiene formato `DOC-YYYYMMDD-XXXXXXXXXXXX`.
+- `GET /documents?reservationId=&guestId=&stayId=&documentType=&limit=` devuelve metadata e historial, sin bytes ni snapshot. `GET /documents/:id` agrega `printEvents`.
+- `POST /documents/:id/print-events` acepta `{ type: PRINT_DIALOG_OPENED | PRINT_CONFIRMED_BY_STAFF | REPRINT_REQUESTED, note? }`. Registra una solicitud/apertura de impresión, no una impresión física exitosa. `DocumentPrintEvent` es append-only y un trigger de PostgreSQL rechaza `UPDATE`/`DELETE`.
+- `POST /documents/:id/physical-signature-received` acepta `{ receivedAt?, notes? }`; `receivedById` siempre se deriva del actor autenticado. Es idempotente para documentos ya firmados. No es firma electrónica.
+- La descarga responde `application/pdf`, `Content-Disposition: attachment`, `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` y `X-Document-SHA256`. Generación, descarga, preview, firma y eventos de impresión escriben `AuditEvent` sin PII ni contenido del documento.
+
+Errores específicos: `document_template_not_found`, `reservation_not_found`, `document_guest_mismatch`, `document_reservation_state_invalid`, `document_checkin_required`, `document_not_found`, `document_voided`, `invalid_received_at`, `received_at_in_future`, `received_at_before_generation`, `property_context_required`.
 
 ### Admin
 

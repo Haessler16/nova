@@ -73,6 +73,11 @@ const IDS = {
   permissionPilotFeedbackSubmit: '00000000-0000-4000-8000-000000000059',
   permissionPilotFeedbackRead: '00000000-0000-4000-8000-000000000060',
   permissionPilotFeedbackManage: '00000000-0000-4000-8000-000000000061',
+  permissionDocumentsRead: '00000000-0000-4000-8000-000000000090',
+  permissionDocumentsGenerate: '00000000-0000-4000-8000-000000000091',
+  permissionDocumentsManage: '00000000-0000-4000-8000-000000000092',
+  permissionReportsRead: '00000000-0000-4000-8000-000000000093',
+  permissionReportsFinancial: '00000000-0000-4000-8000-000000000094',
 
   guestAna: '00000000-0000-4000-8000-000000000061',
   guestBruno: '00000000-0000-4000-8000-000000000062',
@@ -287,6 +292,31 @@ const PERMISSIONS = [
     key: 'pilot.feedback.manage',
     description: 'Review pilot feedback for the property',
   },
+  {
+    id: IDS.permissionDocumentsRead,
+    key: 'documents.read',
+    description: 'Read templates, document history and generated document metadata',
+  },
+  {
+    id: IDS.permissionDocumentsGenerate,
+    key: 'documents.generate',
+    description: 'Preview and generate guest documents and download their PDFs',
+  },
+  {
+    id: IDS.permissionDocumentsManage,
+    key: 'documents.manage',
+    description: 'Register physical signature receipt and print/reprint events',
+  },
+  {
+    id: IDS.permissionReportsRead,
+    key: 'reports.read',
+    description: 'Read the operational report catalog and run non-financial reports',
+  },
+  {
+    id: IDS.permissionReportsFinancial,
+    key: 'reports.financial',
+    description: 'Run and export cash and financial reports',
+  },
 ] as const;
 
 const ALL_PERMISSION_IDS = PERMISSIONS.map((permission) => permission.id);
@@ -337,6 +367,11 @@ const ROLES = [
       IDS.permissionPilotFeedbackSubmit,
       IDS.permissionPilotFeedbackRead,
       IDS.permissionPilotFeedbackManage,
+      IDS.permissionDocumentsRead,
+      IDS.permissionDocumentsGenerate,
+      IDS.permissionDocumentsManage,
+      IDS.permissionReportsRead,
+      IDS.permissionReportsFinancial,
     ],
   },
   {
@@ -364,6 +399,10 @@ const ROLES = [
       IDS.permissionCashRead,
       IDS.permissionCashManage,
       IDS.permissionPilotFeedbackSubmit,
+      IDS.permissionDocumentsRead,
+      IDS.permissionDocumentsGenerate,
+      IDS.permissionDocumentsManage,
+      IDS.permissionReportsRead,
     ],
   },
   {
@@ -387,6 +426,9 @@ const ROLES = [
       IDS.permissionNightAuditManage,
       IDS.permissionPilotFeedbackSubmit,
       IDS.permissionPilotFeedbackRead,
+      IDS.permissionDocumentsRead,
+      IDS.permissionReportsRead,
+      IDS.permissionReportsFinancial,
     ],
   },
   {
@@ -1281,6 +1323,83 @@ async function seed(): Promise<void> {
     });
     if (existing === null) {
       await prisma.reservationHistory.create({ data: row });
+    }
+  }
+
+  // Versioned, property-scoped demo templates. `body` is plain text: the
+  // renderer escapes it and only fixed sections are supported.
+  const documentTemplates = [
+    {
+      key: 'GUEST_REGISTRATION',
+      name: 'Ficha de registro de huésped',
+      title: 'Ficha de registro de hóspede',
+      body: 'Declaro que os dados informados são verdadeiros e autorizo o tratamento necessário para a hospedagem, conforme a legislação aplicável e as políticas do estabelecimento. Este documento não substitui a identificação oficial quando exigida por lei.',
+    },
+    {
+      key: 'LODGING_TERMS',
+      name: 'Términos de hospedaje',
+      title: 'Termos e condições de hospedagem',
+      body: 'O hóspede compromete-se a respeitar horários, regras de convivência, restrições de acesso e orientações de segurança do estabelecimento. Danos ao patrimônio podem ser cobrados conforme a política vigente. O tratamento de dados pessoais observa a finalidade da hospedagem e os direitos previstos na legislação aplicável.\n\nA assinatura abaixo registra a ciência das condições acima no momento da recepção.',
+    },
+    {
+      key: 'CHECKIN_SUMMARY',
+      name: 'Resumen de check-in',
+      title: 'Resumo de check-in',
+      body: '',
+    },
+  ] as const;
+
+  const documentTemplateProperties = [
+    {
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      createdById: IDS.userAdmin,
+    },
+    {
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyPraia,
+      createdById: IDS.userAdmin,
+    },
+    {
+      organizationId: IDS.organizationB,
+      propertyId: IDS.propertyBosque,
+      createdById: IDS.userAdminB,
+    },
+  ];
+
+  for (const property of documentTemplateProperties) {
+    for (const template of documentTemplates) {
+      await prisma.documentTemplate.upsert({
+        where: {
+          propertyId_key_locale_version: {
+            propertyId: property.propertyId,
+            key: template.key,
+            locale: 'pt-BR',
+            version: 1,
+          },
+        },
+        update: {
+          name: template.name,
+          title: template.title,
+          body: template.body,
+          isPublished: true,
+          isActive: true,
+        },
+        create: {
+          organizationId: property.organizationId,
+          propertyId: property.propertyId,
+          key: template.key,
+          name: template.name,
+          title: template.title,
+          body: template.body,
+          locale: 'pt-BR',
+          version: 1,
+          isPublished: true,
+          isActive: true,
+          createdById: property.createdById,
+          publishedAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      });
     }
   }
 

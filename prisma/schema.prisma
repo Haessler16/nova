@@ -117,6 +117,18 @@ enum OperationalCloseStatus {
   REOPENED
 }
 
+enum DocumentStatus {
+  GENERATED
+  SIGNATURE_RECEIVED
+  VOIDED
+}
+
+enum DocumentPrintEventType {
+  PRINT_DIALOG_OPENED
+  PRINT_CONFIRMED_BY_STAFF
+  REPRINT_REQUESTED
+}
+
 enum PilotFeedbackCategory {
   BUG
   UX
@@ -207,6 +219,9 @@ model Organization {
   operationalCloses   OperationalClose[]
   pilotFeedback       PilotFeedback[]
   guestImports        GuestImport[]
+  documentTemplates   DocumentTemplate[]
+  generatedDocuments  GeneratedDocument[]
+  documentPrintEvents DocumentPrintEvent[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -242,6 +257,9 @@ model Property {
   operationalCloses   OperationalClose[]
   pilotFeedback       PilotFeedback[]
   guestImports        GuestImport[]
+  documentTemplates   DocumentTemplate[]
+  generatedDocuments  GeneratedDocument[]
+  documentPrintEvents DocumentPrintEvent[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -291,6 +309,10 @@ model User {
   pilotFeedback           PilotFeedback[]          @relation("PilotFeedbackAuthor")
   pilotFeedbackReviewed   PilotFeedback[]          @relation("PilotFeedbackReviewer")
   guestImports            GuestImport[]            @relation("GuestImportCreatedBy")
+  documentTemplatesCreated DocumentTemplate[]      @relation("DocumentTemplateCreatedBy")
+  documentsGenerated      GeneratedDocument[]      @relation("DocumentGeneratedBy")
+  documentsReceived       GeneratedDocument[]      @relation("DocumentReceivedBy")
+  documentPrintEvents     DocumentPrintEvent[]     @relation("DocumentPrintRequestedBy")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -527,6 +549,7 @@ model Guest {
   property       Property           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   reservations   Reservation[]
   stays          Stay[]
+  documents      GeneratedDocument[] @relation("DocumentGuest")
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
@@ -570,6 +593,7 @@ model Reservation {
   incidents          Incident[]
   folios             Folio[]
   payments           Payment[]
+  documents          GeneratedDocument[]
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
@@ -631,6 +655,7 @@ model Stay {
   incidents          Incident[]
   folios             Folio[]
   payments           Payment[]
+  documents          GeneratedDocument[]
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
@@ -754,6 +779,7 @@ model Folio {
   openedBy     User?        @relation("FolioOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
   lines        FolioLine[]
   payments     Payment[]
+  documents    GeneratedDocument[]
 
   @@unique([propertyId, number])
   @@unique([propertyId, idempotencyKey])
@@ -912,4 +938,104 @@ model OperationalClose {
   @@unique([organizationId, propertyId, id])
   @@index([organizationId, propertyId, status])
   @@index([organizationId, propertyId, createdAt])
+}
+
+/// A versioned, server-rendered document template. `body` is plain text for
+/// controlled sections only: it is escaped by the renderer and never treated
+/// as arbitrary HTML.
+model DocumentTemplate {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  propertyId     String       @db.Uuid
+  key            String       @db.VarChar(64)
+  name           String       @db.VarChar(160)
+  locale         String       @default("pt-BR") @db.VarChar(10)
+  version        Int
+  title          String       @db.VarChar(200)
+  body           String       @db.Text
+  isPublished    Boolean      @default(false)
+  isActive       Boolean      @default(true)
+  createdById    String?      @db.Uuid
+  publishedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  createdBy    User?               @relation("DocumentTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  documents    GeneratedDocument[]
+
+  @@unique([propertyId, key, locale, version])
+  @@index([organizationId, propertyId, key, locale, isPublished])
+}
+
+/// Immutable snapshot plus the generated PDF bytes. Bytes live in PostgreSQL
+/// for v1 because the product has no object-storage provider; downloads are
+/// authenticated and never expose a public storage URL.
+model GeneratedDocument {
+  id               String         @id @default(uuid()) @db.Uuid
+  organizationId   String         @db.Uuid
+  propertyId       String         @db.Uuid
+  templateId       String         @db.Uuid
+  number           String         @db.VarChar(48)
+  documentType     String         @db.VarChar(64)
+  status           DocumentStatus @default(GENERATED)
+  locale           String         @db.VarChar(10)
+  templateVersion  Int
+  guestId          String?        @db.Uuid
+  reservationId    String?        @db.Uuid
+  stayId           String?        @db.Uuid
+  folioId          String?        @db.Uuid
+  generatedById    String?        @db.Uuid
+  generatedAt      DateTime       @default(now())
+  snapshot         Json
+  content          Bytes
+  mimeType         String         @default("application/pdf") @db.VarChar(80)
+  fileSizeBytes    Int
+  pageCount        Int
+  sha256           String         @db.VarChar(64)
+  storageKey       String         @db.VarChar(160)
+  receivedAt       DateTime?
+  receivedById     String?        @db.Uuid
+  receivedNotes    String?        @db.Text
+  voidedAt         DateTime?
+  voidReason       String?        @db.Text
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  template     DocumentTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  guest        Guest?               @relation("DocumentGuest", fields: [guestId], references: [id], onDelete: Restrict)
+  reservation  Reservation?         @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  stay         Stay?                @relation(fields: [stayId], references: [id], onDelete: Restrict)
+  folio        Folio?               @relation(fields: [folioId], references: [id], onDelete: Restrict)
+  generatedBy  User?                @relation("DocumentGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  receivedBy   User?                @relation("DocumentReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  printEvents  DocumentPrintEvent[]
+
+  @@unique([propertyId, number])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, reservationId, generatedAt])
+  @@index([organizationId, propertyId, guestId, generatedAt])
+  @@index([organizationId, propertyId, documentType, generatedAt])
+}
+
+/// Append-only trail of print/reprint requests. It records that staff opened
+/// or requested a print dialog; it never claims a physical printer succeeded.
+model DocumentPrintEvent {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @db.Uuid
+  propertyId     String                 @db.Uuid
+  documentId     String                 @db.Uuid
+  type           DocumentPrintEventType
+  requestedById  String?                @db.Uuid
+  requestedAt    DateTime               @default(now())
+  note           String?                @db.Text
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property       Property               @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  document       GeneratedDocument      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  requestedBy    User?                  @relation("DocumentPrintRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, propertyId, documentId, requestedAt])
 }
