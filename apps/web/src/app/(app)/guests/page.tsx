@@ -28,6 +28,7 @@ import {
 import { useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { GuestDocuments } from '@/components/guest-documents';
+import { GuestNotesPanel } from '@/components/guest-notes-panel';
 import { DownloadIcon } from '@/components/icons';
 import { Field, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
 import { useSession } from '@/context/session';
@@ -63,6 +64,8 @@ function GuestsContent() {
   const { tenant } = useSession();
   const toast = useToast();
   const modal = useDisclosure();
+  const notesModal = useDisclosure();
+  const [notesTarget, setNotesTarget] = useState<Guest | null>(null);
   const [editing, setEditing] = useState<Guest | null>(null);
   const [form, setForm] = useState<GuestForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -329,6 +332,16 @@ function GuestsContent() {
                     <Td>
                       <HStack spacing={1} justify="flex-end">
                         <GuestDocuments guestId={guest.id} guestName={guest.fullName} />
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => {
+                            setNotesTarget(guest);
+                            notesModal.onOpen();
+                          }}
+                        >
+                          Notas
+                        </Button>
                         <Button size="xs" variant="ghost" onClick={() => openEdit(guest)}>
                           Editar
                         </Button>
@@ -344,6 +357,19 @@ function GuestsContent() {
           </TableContainer>
         </QueryFeedback>
       </SectionCard>
+
+      <Modal isOpen={notesModal.isOpen} onClose={notesModal.onClose} size="2xl">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Notas de {notesTarget?.fullName ?? 'huésped'}</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            {notesTarget !== null && (
+              <GuestNotesPanel guestId={notesTarget.id} canManage />
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
 
       <Modal isOpen={modal.isOpen} onClose={modal.onClose} size="lg">
         <ModalOverlay />

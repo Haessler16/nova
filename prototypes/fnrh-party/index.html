@@ -1,0 +1,2838 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NOVA PMS · Fiesta de reserva — prototipo</title>
+    <style>
+      :root {
+        --brand-50: #e8f5fd;
+        --brand-100: #d0ebfb;
+        --brand-200: #a6daf7;
+        --brand-500: #39a7e8;
+        --brand-700: #1b76a8;
+        --brand-800: #175f86;
+        --mint-50: #e8f8f2;
+        --mint-100: #cff1e5;
+        --mint-700: #248c70;
+        --warning-50: #fef8eb;
+        --warning-100: #fdefd0;
+        --warning-700: #b37720;
+        --danger-50: #fdf0f1;
+        --danger-100: #fadde0;
+        --danger-700: #a63d44;
+        --gray-50: #f3f7fb;
+        --gray-100: #eaf1f8;
+        --gray-200: #e3eaf2;
+        --gray-300: #cbd7e4;
+        --gray-500: #62748a;
+        --gray-600: #4e6177;
+        --gray-700: #3a4d63;
+        --gray-900: #172b4d;
+        --sidebar: #102a43;
+        --sidebar-hover: #1b3b5a;
+        --canvas: #f3f7fb;
+        --surface: #ffffff;
+        --line: #e3eaf2;
+        --text: #172b4d;
+        --muted: #62748a;
+        --shadow: 0 10px 28px rgba(16, 42, 67, 0.08);
+        --focus: 0 0 0 3px rgba(57, 167, 232, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        background: var(--canvas);
+        color: var(--text);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+      }
+
+      :focus-visible {
+        outline: none;
+        box-shadow: var(--focus);
+        border-radius: 6px;
+      }
+
+      .shell {
+        display: flex;
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        display: flex;
+        flex-direction: column;
+        width: 250px;
+        height: 100vh;
+        flex: 0 0 250px;
+        padding: 22px 14px 16px;
+        color: #fff;
+        background: var(--sidebar);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 8px 22px;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--brand-500), #48c9a5);
+        color: #fff;
+        font-weight: 800;
+        letter-spacing: -0.06em;
+      }
+
+      .brand strong {
+        display: block;
+        font-size: 16px;
+        letter-spacing: 0.08em;
+      }
+
+      .brand small {
+        display: block;
+        color: #a9c4d9;
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .property-chip {
+        margin: 0 4px 22px;
+        padding: 11px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .property-chip small {
+        display: block;
+        margin-top: 3px;
+        color: #a9c4d9;
+        font-size: 10px;
+        font-weight: 400;
+      }
+
+      .dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: #48c9a5;
+        vertical-align: 1px;
+      }
+
+      .nav-title {
+        margin: 0 12px 8px;
+        color: #8fb0c8;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .nav {
+        display: grid;
+        gap: 2px;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 9px 12px;
+        border: 0;
+        border-radius: 8px;
+        color: #c7d8e5;
+        background: transparent;
+        text-align: left;
+        font-size: 12px;
+      }
+
+      .nav-item:hover {
+        background: var(--sidebar-hover);
+      }
+
+      .nav-item.active {
+        background: #1b3b5a;
+        color: #fff;
+        font-weight: 700;
+      }
+
+      .nav-icon {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #d6e7f3;
+        font-size: 11px;
+      }
+
+      .nav-item.active .nav-icon {
+        background: rgba(57, 167, 232, 0.3);
+        color: #fff;
+      }
+
+      .sidebar-foot {
+        margin-top: auto;
+        padding: 14px 10px 2px;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+        color: #a9c4d9;
+        font-size: 10px;
+        line-height: 1.5;
+      }
+
+      .sidebar-foot strong {
+        display: block;
+        color: #fff;
+        font-size: 11px;
+      }
+
+      .main {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 62px;
+        padding: 0 28px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(8px);
+      }
+
+      .mobile-brand {
+        display: none;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+
+      .topbar-context {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .topbar-context strong {
+        color: var(--text);
+      }
+
+      .user {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--gray-700);
+        font-size: 12px;
+      }
+
+      .avatar-sm {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--brand-50);
+        color: var(--brand-800);
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .content {
+        width: 100%;
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 22px 28px 40px;
+      }
+
+      .prototype-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+        padding: 10px 14px;
+        border: 1px solid #f4c15e;
+        border-radius: 10px;
+        background: #fffaf0;
+        color: #744b1b;
+        font-size: 12px;
+      }
+
+      .prototype-banner strong {
+        color: #5f3b12;
+      }
+
+      .page-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 20px;
+      }
+
+      .eyebrow {
+        color: var(--brand-700);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 5px;
+        font-size: 26px;
+        line-height: 1.15;
+        letter-spacing: -0.025em;
+      }
+
+      h2 {
+        margin-bottom: 4px;
+        font-size: 16px;
+        letter-spacing: -0.01em;
+      }
+
+      h3 {
+        margin-bottom: 2px;
+        font-size: 14px;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .head-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 310px;
+        align-items: start;
+        gap: 18px;
+      }
+
+      .column {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 14px;
+      }
+
+      .card-head p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .summary-item span {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .summary-item strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 13px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        width: fit-content;
+        padding: 3px 7px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.3;
+        white-space: nowrap;
+      }
+
+      .badge-primary {
+        background: var(--brand-100);
+        color: var(--brand-800);
+      }
+
+      .badge-neutral {
+        background: var(--gray-100);
+        color: var(--gray-700);
+      }
+
+      .badge-success {
+        background: var(--mint-100);
+        color: var(--mint-700);
+      }
+
+      .badge-warning {
+        background: var(--warning-100);
+        color: var(--warning-700);
+      }
+
+      .badge-danger {
+        background: var(--danger-100);
+        color: var(--danger-700);
+      }
+
+      .alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        border: 1px solid;
+        border-radius: 10px;
+        font-size: 12px;
+      }
+
+      .alert-icon {
+        display: grid;
+        width: 18px;
+        height: 18px;
+        flex: 0 0 18px;
+        place-items: center;
+        border-radius: 50%;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .alert-info {
+        border-color: var(--brand-200);
+        background: var(--brand-50);
+        color: #175f86;
+      }
+
+      .alert-info .alert-icon {
+        background: var(--brand-100);
+      }
+
+      .alert-warning {
+        border-color: #fadfa1;
+        background: var(--warning-50);
+        color: #8f5d1d;
+      }
+
+      .alert-warning .alert-icon {
+        background: var(--warning-100);
+      }
+
+      .alert-danger {
+        border-color: #f3b7bd;
+        background: var(--danger-50);
+        color: #85333a;
+      }
+
+      .alert-danger .alert-icon {
+        background: var(--danger-100);
+      }
+
+      .alert-success {
+        border-color: var(--mint-100);
+        background: var(--mint-50);
+        color: #1e705a;
+      }
+
+      .alert-success .alert-icon {
+        background: var(--mint-100);
+      }
+
+      .alert strong {
+        display: block;
+        margin-bottom: 2px;
+      }
+
+      .party-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .guest-card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        padding: 13px 14px;
+      }
+
+      .guest-card.primary {
+        border-color: var(--brand-200);
+        background: linear-gradient(180deg, #f8fcff, #fff);
+      }
+
+      .guest-card.dependent {
+        margin-left: 24px;
+        border-left: 4px solid var(--warning-500, #f2b84b);
+      }
+
+      .guest-card.dependent.accompanied {
+        border-left-color: var(--mint-500, #48c9a5);
+      }
+
+      .guest-card.highlight {
+        animation: pulse 1.2s ease;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(57, 167, 232, 0);
+        }
+        35% {
+          box-shadow: 0 0 0 4px rgba(57, 167, 232, 0.22);
+        }
+      }
+
+      .guest-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .avatar {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        flex: 0 0 36px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--brand-50);
+        color: var(--brand-800);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .guest-card.dependent .avatar {
+        background: var(--warning-50);
+        color: var(--warning-700);
+      }
+
+      .guest-card.dependent.accompanied .avatar {
+        background: var(--mint-50);
+        color: var(--mint-700);
+      }
+
+      .guest-title {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .guest-title-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .guest-title h3 {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .guest-meta {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+        overflow-wrap: anywhere;
+      }
+
+      .guest-details {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 11px 0 0 46px;
+      }
+
+      .guest-detail span {
+        display: block;
+        color: var(--muted);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .guest-detail strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .dependency-note {
+        margin: 10px 0 0 46px;
+        padding: 7px 9px;
+        border-radius: 7px;
+        background: var(--warning-50);
+        color: #744b1b;
+        font-size: 11px;
+      }
+
+      .dependency-note.ok {
+        background: var(--mint-50);
+        color: #1e705a;
+      }
+
+      .dependency-note.danger {
+        background: var(--danger-50);
+        color: #85333a;
+      }
+
+      .guest-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+
+      .guest-actions:empty {
+        display: none;
+      }
+
+      .party-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .party-footer p {
+        max-width: 420px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 34px;
+        padding: 6px 12px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--gray-700);
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
+        transition:
+          background 120ms ease,
+          border-color 120ms ease,
+          transform 120ms ease;
+      }
+
+      .button:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+
+      .button:disabled {
+        opacity: 0.5;
+      }
+
+      .button-primary {
+        background: var(--brand-700);
+        color: #fff;
+      }
+
+      .button-primary:hover:not(:disabled) {
+        background: var(--brand-800);
+      }
+
+      .button-outline {
+        border-color: var(--brand-200);
+        color: var(--brand-700);
+        background: #fff;
+      }
+
+      .button-outline:hover:not(:disabled) {
+        background: var(--brand-50);
+      }
+
+      .button-ghost {
+        color: var(--gray-700);
+      }
+
+      .button-ghost:hover:not(:disabled) {
+        background: var(--gray-100);
+      }
+
+      .button-danger {
+        border-color: var(--danger-100);
+        color: var(--danger-700);
+        background: #fff;
+      }
+
+      .button-danger:hover:not(:disabled) {
+        background: var(--danger-50);
+      }
+
+      .button-sm {
+        min-height: 28px;
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+
+      .button-wide {
+        width: 100%;
+      }
+
+      .checkin-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .checkin-box {
+        padding: 11px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--gray-50);
+      }
+
+      .checkin-box span {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .checkin-box strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 13px;
+      }
+
+      .checkin-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 10px;
+      }
+
+      .timeline-item {
+        padding-left: 12px;
+        border-left: 3px solid var(--brand-200);
+      }
+
+      .timeline-item strong {
+        display: block;
+        font-size: 12px;
+      }
+
+      .timeline-item span {
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .guide {
+        background: linear-gradient(180deg, #f8fcff, #fff);
+      }
+
+      .guide ol {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--gray-700);
+        font-size: 12px;
+      }
+
+      .guide li {
+        margin-bottom: 8px;
+      }
+
+      .scenario-actions {
+        display: grid;
+        gap: 6px;
+      }
+
+      .note {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+        background: rgba(16, 42, 67, 0.55);
+        overflow-y: auto;
+      }
+
+      .modal {
+        width: min(640px, 100%);
+        max-height: min(90vh, 860px);
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 30px 80px rgba(16, 42, 67, 0.24);
+        overflow: auto;
+      }
+
+      .modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 20px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .modal-header h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .modal-header p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .modal-body {
+        padding: 16px 20px;
+      }
+
+      .modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 12px 20px 18px;
+        border-top: 1px solid var(--line);
+      }
+
+      .icon-button {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1;
+      }
+
+      .icon-button:hover {
+        background: var(--gray-50);
+      }
+
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 14px;
+        padding: 3px;
+        border-radius: 9px;
+        background: var(--gray-100);
+      }
+
+      .tab {
+        flex: 1;
+        min-height: 32px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--gray-600);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .tab.active {
+        background: #fff;
+        color: var(--brand-700);
+        box-shadow: 0 1px 3px rgba(16, 42, 67, 0.1);
+      }
+
+      .candidate-list {
+        display: grid;
+        gap: 7px;
+        max-height: 260px;
+        overflow-y: auto;
+      }
+
+      .candidate {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+      }
+
+      .candidate strong {
+        display: block;
+        font-size: 12px;
+      }
+
+      .candidate span {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .field {
+        display: grid;
+        gap: 4px;
+      }
+
+      .field.full {
+        grid-column: 1 / -1;
+      }
+
+      .field label {
+        color: var(--gray-700);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .field small {
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .field input,
+      .field select,
+      .field textarea {
+        width: 100%;
+        min-height: 36px;
+        padding: 7px 9px;
+        border: 1px solid var(--gray-300);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        font-size: 12px;
+      }
+
+      .field input::placeholder {
+        color: #98a9bc;
+      }
+
+      .field input:focus,
+      .field select:focus,
+      .field textarea:focus {
+        border-color: var(--brand-500);
+        box-shadow: var(--focus);
+        outline: none;
+      }
+
+      .search-input {
+        width: 100%;
+        min-height: 36px;
+        margin-bottom: 10px;
+        padding: 7px 10px;
+        border: 1px solid var(--gray-300);
+        border-radius: 8px;
+        font-size: 12px;
+      }
+
+      .form-error {
+        min-height: 18px;
+        margin: 10px 0 0;
+        color: var(--danger-700);
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .checklist {
+        display: grid;
+        gap: 7px;
+        margin: 14px 0;
+      }
+
+      .check-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .check-row strong {
+        font-size: 12px;
+      }
+
+      .check-row span {
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .modal-callout {
+        margin: 12px 0;
+        padding: 11px;
+        border-radius: 9px;
+        background: var(--gray-50);
+        color: var(--gray-700);
+        font-size: 11px;
+      }
+
+      .modal-callout strong {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--text);
+      }
+
+      .toast {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        z-index: 80;
+        max-width: min(420px, calc(100vw - 40px));
+        padding: 11px 14px;
+        border-radius: 10px;
+        background: var(--gray-900);
+        color: #fff;
+        box-shadow: 0 16px 40px rgba(16, 42, 67, 0.25);
+        font-size: 12px;
+        opacity: 0;
+        transform: translateY(10px);
+        pointer-events: none;
+        transition:
+          opacity 160ms ease,
+          transform 160ms ease;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .toast.error {
+        background: var(--danger-700);
+      }
+
+      .toast.warning {
+        background: var(--warning-700);
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 1050px) {
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .side-column {
+          grid-row: 1;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 900px) {
+        .sidebar {
+          display: none;
+        }
+
+        .mobile-brand {
+          display: block;
+        }
+
+        .topbar-context {
+          display: none;
+        }
+
+        .content {
+          padding: 18px 18px 34px;
+        }
+      }
+
+      @media (max-width: 650px) {
+        .topbar {
+          padding: 0 16px;
+        }
+
+        .content {
+          padding: 14px 12px 28px;
+        }
+
+        .prototype-banner {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .page-head {
+          flex-direction: column;
+        }
+
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .guest-details {
+          grid-template-columns: 1fr;
+          margin-left: 0;
+        }
+
+        .dependency-note {
+          margin-left: 0;
+        }
+
+        .guest-card.dependent {
+          margin-left: 12px;
+        }
+
+        .side-column {
+          grid-template-columns: 1fr;
+        }
+
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .modal-backdrop {
+          align-items: flex-end;
+          padding: 0;
+        }
+
+        .modal {
+          width: 100%;
+          max-height: 94vh;
+          border-radius: 16px 16px 0 0;
+        }
+
+        .modal-footer {
+          position: sticky;
+          bottom: 0;
+          background: #fff;
+        }
+
+        .checkin-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .head-actions,
+        .head-actions .button {
+          width: 100%;
+        }
+
+        .party-footer .button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" aria-label="Navegación de la demo">
+        <div class="brand">
+          <div class="brand-mark">N</div>
+          <div>
+            <strong>NOVA</strong>
+            <small>PMS</small>
+          </div>
+        </div>
+        <div class="property-chip">
+          <span class="dot"></span>Hotel Atlântico
+          <small>Propiedad de demostración</small>
+        </div>
+        <p class="nav-title">Operación</p>
+        <nav class="nav">
+          <button class="nav-item" type="button"><span class="nav-icon">▦</span>Panel</button>
+          <button class="nav-item" type="button">
+            <span class="nav-icon">⌂</span>Front Office
+          </button>
+          <button class="nav-item active" type="button" aria-current="page">
+            <span class="nav-icon">▤</span>Reservas
+          </button>
+          <button class="nav-item" type="button"><span class="nav-icon">♙</span>Huéspedes</button>
+          <button class="nav-item" type="button"><span class="nav-icon">◫</span>Informes</button>
+        </nav>
+        <div class="sidebar-foot">
+          <strong>Prototipo aislado</strong>
+          Sin backend, sin migraciones y sin datos reales. Los nombres y documentos son sintéticos.
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div class="mobile-brand">NOVA <span style="color: var(--brand-700)">PMS</span></div>
+          <div class="topbar-context">Operación / <strong>Reservas</strong> / ABC-1042</div>
+          <div class="user">
+            <span class="avatar-sm">RC</span>
+            <span>Recepción demo</span>
+          </div>
+        </header>
+
+        <main class="content">
+          <div class="prototype-banner">
+            <div>
+              <strong>Prototipo de validación · Fiesta de la reserva</strong><br />
+              Recorré los flujos y anotá fricciones con recepción. No guarda datos al recargar.
+            </div>
+            <button class="button button-outline button-sm" type="button" data-action="reset">
+              Reiniciar demo
+            </button>
+          </div>
+
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Reserva / ABC-1042</div>
+              <h1>Reserva ABC-1042</h1>
+              <p class="subtitle">
+                Ana Silva · 13–16 nov 2026 · 3 noches · Habitación 204 · Doble superior
+              </p>
+            </div>
+            <div class="head-actions">
+              <span class="badge badge-success">Confirmada</span>
+              <button class="button button-primary" type="button" data-action="checkin">
+                Revisar check-in
+              </button>
+            </div>
+          </div>
+
+          <div class="workspace">
+            <div class="column">
+              <section class="card" aria-labelledby="summary-title">
+                <div class="card-head">
+                  <div>
+                    <h2 id="summary-title">Resumen de la estadía</h2>
+                    <p>
+                      La ocupación declarada es un snapshot; la fiesta registrada es la fuente de
+                      personas.
+                    </p>
+                  </div>
+                  <span id="summary-party-badge"></span>
+                </div>
+                <div class="summary-grid">
+                  <div class="summary-item">
+                    <span>Check-in</span>
+                    <strong>13 nov 2026</strong>
+                  </div>
+                  <div class="summary-item">
+                    <span>Check-out</span>
+                    <strong>16 nov 2026</strong>
+                  </div>
+                  <div class="summary-item">
+                    <span>Ocupación declarada</span>
+                    <strong>2 adultos · 1 menor</strong>
+                  </div>
+                  <div class="summary-item">
+                    <span>FNRH Digital</span>
+                    <strong id="summary-fnrh">Pendiente</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section class="card" id="party-card" aria-labelledby="party-title">
+                <div class="card-head">
+                  <div>
+                    <h2 id="party-title">Huéspedes de la reserva</h2>
+                    <p>
+                      El principal es el responsable. Los menores se vinculan a un adulto y no
+                      tienen FNRH propia.
+                    </p>
+                  </div>
+                  <span id="party-status"></span>
+                </div>
+
+                <div id="party-alerts" aria-live="polite"></div>
+                <div id="party-list" class="party-list"></div>
+
+                <div class="party-footer">
+                  <p>
+                    La FNRH se envía por lote cuando la fiesta está completa. Completar la fiesta no
+                    bloquea el check-in hotelero, salvo un bloqueo legal de menores.
+                  </p>
+                  <div class="head-actions">
+                    <button class="button button-outline" type="button" data-action="add-adult">
+                      + Agregar adulto
+                    </button>
+                    <button class="button button-primary" type="button" data-action="add-minor">
+                      + Agregar menor
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="card" id="checkin-card" aria-labelledby="checkin-title">
+                <div class="card-head">
+                  <div>
+                    <h2 id="checkin-title">Check-in y FNRH</h2>
+                    <p>El check-in hotelero y el envío FNRH son estados separados.</p>
+                  </div>
+                  <span id="checkin-status"></span>
+                </div>
+                <div id="checkin-body"></div>
+              </section>
+
+              <section class="card" aria-labelledby="history-title">
+                <div class="card-head">
+                  <div>
+                    <h2 id="history-title">Actividad de la demo</h2>
+                    <p>Los eventos son locales y se pierden al recargar.</p>
+                  </div>
+                </div>
+                <div id="history-list" class="timeline"></div>
+              </section>
+            </div>
+
+            <aside class="column side-column">
+              <section class="card guide" aria-labelledby="guide-title">
+                <div class="card-head">
+                  <div>
+                    <h2 id="guide-title">Guía de prueba</h2>
+                    <p>Cinco minutos para validar las decisiones críticas.</p>
+                  </div>
+                </div>
+                <ol>
+                  <li>Agregá un adulto desde “+ Agregar adulto”.</li>
+                  <li>Agregá un menor y elegí “Sin autorización registrada”.</li>
+                  <li>Intentá el check-in: debe quedar bloqueado.</li>
+                  <li>Editá el menor a “Autorizado sin acompañante” y completá la referencia.</li>
+                  <li>Revisá el check-in: ahora podés continuar, con la FNRH pendiente.</li>
+                </ol>
+                <p class="note">
+                  La guía busca el caso más incómodo primero. También podés usar los escenarios
+                  rápidos.
+                </p>
+              </section>
+
+              <section class="card" aria-labelledby="scenarios-title">
+                <div class="card-head">
+                  <div>
+                    <h2 id="scenarios-title">Escenarios rápidos</h2>
+                    <p>Cambian sólo el estado local del prototipo.</p>
+                  </div>
+                </div>
+                <div class="scenario-actions">
+                  <button
+                    class="button button-outline button-wide"
+                    type="button"
+                    data-action="scenario-ready"
+                  >
+                    Fiesta completa y FNRH lista
+                  </button>
+                  <button
+                    class="button button-outline button-wide"
+                    type="button"
+                    data-action="scenario-blocked"
+                  >
+                    Menor sin autorización
+                  </button>
+                  <button class="button button-ghost button-wide" type="button" data-action="reset">
+                    Volver al estado inicial
+                  </button>
+                </div>
+                <p class="note">
+                  “Fiesta completa” incluye un adulto acompañante y una menor acompañada. “Menor sin
+                  autorización” muestra el bloqueo legal.
+                </p>
+              </section>
+
+              <section class="card" aria-labelledby="scope-title">
+                <div class="card-head">
+                  <div>
+                    <h2 id="scope-title">Qué valida este prototipo</h2>
+                  </div>
+                </div>
+                <p class="note" style="margin-top: 0">
+                  Captura de acompañantes, menores como dependientes, supervisión, bloqueo legal y
+                  check-in. No valida identidad, documentos reales, envío FNRH ni reglas del
+                  proveedor.
+                </p>
+              </section>
+            </aside>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="modal-root"></div>
+
+    <script>
+      (() => {
+        'use strict';
+
+        const CHECK_IN = '2026-11-13';
+        const CHECK_OUT = '2026-11-16';
+        const DECLARED_ADULTS = 2;
+        const DECLARED_MINORS = 1;
+        const DOC_LABELS = {
+          CPF: 'CPF',
+          PASSPORT: 'Pasaporte',
+          RG: 'RG',
+          NATIONAL_ID: 'Documento nacional',
+          DRIVER_LICENSE: 'Licencia de conducir',
+          OTHER: 'Otro',
+        };
+        const SUPERVISION_LABELS = {
+          ACCOMPANIED: 'Acompañado por el responsable',
+          UNACCOMPANIED_AUTHORIZED: 'Autorizado a viajar sin acompañante',
+          UNACCOMPANIED_WITHOUT_AUTHORIZATION: 'Sin autorización registrada',
+          UNKNOWN: 'Sin definir',
+        };
+        const CANDIDATES = [
+          {
+            id: 'g-joao',
+            fullName: 'João Silva',
+            birthDate: '1988-06-14',
+            docType: 'PASSPORT',
+            docNumber: 'FX123456',
+            email: 'joao.silva@example.test',
+            phone: '+55 11 90000-0002',
+          },
+          {
+            id: 'g-mariana',
+            fullName: 'Mariana Costa',
+            birthDate: '1995-01-22',
+            docType: 'CPF',
+            docNumber: '987.654.321-00',
+            email: 'mariana.costa@example.test',
+            phone: '+55 11 90000-0003',
+          },
+          {
+            id: 'g-pedro',
+            fullName: 'Pedro Alves',
+            birthDate: '1979-09-03',
+            docType: 'RG',
+            docNumber: 'MG-12.345.678',
+            email: 'pedro.alves@example.test',
+            phone: '+55 11 90000-0004',
+          },
+        ];
+
+        const PRIMARY = {
+          id: 'g-primary',
+          role: 'PRIMARY',
+          fullName: 'Ana Silva',
+          birthDate: '1992-03-08',
+          docType: 'CPF',
+          docNumber: '123.456.789-00',
+          email: 'ana.silva@example.test',
+          phone: '+55 11 90000-0001',
+          ageGroup: 'ADULT',
+          minorSupervision: null,
+          responsibleId: null,
+          authorizationReference: null,
+        };
+        const ADULT_COMPANION = {
+          id: 'g-joao',
+          role: 'COMPANION',
+          fullName: 'João Silva',
+          birthDate: '1988-06-14',
+          docType: 'PASSPORT',
+          docNumber: 'FX123456',
+          email: 'joao.silva@example.test',
+          phone: '+55 11 90000-0002',
+          ageGroup: 'ADULT',
+          minorSupervision: null,
+          responsibleId: null,
+          authorizationReference: null,
+        };
+        const MINOR_DEPENDENT = {
+          id: 'g-lia',
+          role: 'COMPANION',
+          fullName: 'Lia Silva',
+          birthDate: '2012-05-20',
+          docType: '',
+          docNumber: '',
+          email: '',
+          phone: '',
+          ageGroup: 'MINOR',
+          minorSupervision: 'ACCOMPANIED',
+          responsibleId: 'g-primary',
+          authorizationReference: null,
+        };
+        const BLOCKED_MINOR = {
+          ...MINOR_DEPENDENT,
+          id: 'g-lia-blocked',
+          minorSupervision: 'UNACCOMPANIED_WITHOUT_AUTHORIZATION',
+        };
+
+        const INITIAL_HISTORY = [
+          { label: 'Reserva creada', at: '10 nov 2026 · 14:22' },
+          { label: 'Habitación 204 asignada', at: '10 nov 2026 · 14:24' },
+        ];
+
+        const INITIAL_STATE = {
+          party: [PRIMARY],
+          history: INITIAL_HISTORY.slice(),
+          checkedIn: false,
+          fnrh: 'NOT_SENT',
+          modal: null,
+          adultTab: 'existing',
+        };
+
+        let state = clone(INITIAL_STATE);
+        let toastTimer = null;
+
+        const $ = (selector, root = document) => root.querySelector(selector);
+        const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+        function clone(value) {
+          return JSON.parse(JSON.stringify(value));
+        }
+
+        function esc(value) {
+          return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+        }
+
+        function parseDate(value) {
+          return new Date(value + 'T00:00:00Z');
+        }
+
+        function ageAtCheckIn(birthDate) {
+          if (!birthDate) return null;
+          const birth = parseDate(birthDate);
+          const checkIn = parseDate(CHECK_IN);
+          let age = checkIn.getUTCFullYear() - birth.getUTCFullYear();
+          const beforeBirthday =
+            checkIn.getUTCMonth() < birth.getUTCMonth() ||
+            (checkIn.getUTCMonth() === birth.getUTCMonth() &&
+              checkIn.getUTCDate() < birth.getUTCDate());
+          if (beforeBirthday) age -= 1;
+          return age;
+        }
+
+        function groupOf(guest) {
+          const age = ageAtCheckIn(guest.birthDate);
+          if (age === null) return 'UNKNOWN';
+          return age >= 18 ? 'ADULT' : 'MINOR';
+        }
+
+        function ageLabel(guest) {
+          const age = ageAtCheckIn(guest.birthDate);
+          if (age === null) return 'Sin fecha de nacimiento';
+          return age + ' años al check-in';
+        }
+
+        function initials(name) {
+          return name
+            .trim()
+            .split(/\s+/)
+            .slice(0, 2)
+            .map((part) => part[0] || '')
+            .join('')
+            .toUpperCase();
+        }
+
+        function isFnrhDocument(guest) {
+          return (
+            (guest.docType === 'CPF' || guest.docType === 'PASSPORT') &&
+            String(guest.docNumber || '').trim().length > 0
+          );
+        }
+
+        function maskDocument(guest) {
+          if (!guest.docType || !guest.docNumber) return 'Sin documento';
+          if (guest.docType === 'CPF') {
+            const digits = guest.docNumber.replace(/\D/g, '');
+            return 'CPF •••.' + digits.slice(-6, -2) + '-' + digits.slice(-2);
+          }
+          if (guest.docType === 'PASSPORT') {
+            return 'Pasaporte ••••' + guest.docNumber.slice(-4);
+          }
+          return DOC_LABELS[guest.docType] + ' · documento interno';
+        }
+
+        function responsibleName(guest) {
+          const responsible = state.party.find((item) => item.id === guest.responsibleId);
+          return responsible ? responsible.fullName : 'sin responsable';
+        }
+
+        function legalBlockReason(guest) {
+          if (groupOf(guest) !== 'MINOR') return null;
+          if (!guest.responsibleId) return 'Falta el responsable adulto del menor.';
+          const responsible = state.party.find((item) => item.id === guest.responsibleId);
+          if (!responsible || groupOf(responsible) !== 'ADULT') {
+            return 'El responsable debe ser un adulto de esta reserva.';
+          }
+          if (!guest.minorSupervision || guest.minorSupervision === 'UNKNOWN') {
+            return 'Falta indicar cómo viaja el menor.';
+          }
+          if (guest.minorSupervision === 'UNACCOMPANIED_WITHOUT_AUTHORIZATION') {
+            return 'Menor sin autorización registrada: check-in y FNRH bloqueados.';
+          }
+          if (
+            guest.minorSupervision === 'UNACCOMPANIED_AUTHORIZED' &&
+            !String(guest.authorizationReference || '').trim()
+          ) {
+            return 'Falta la referencia de autorización del menor.';
+          }
+          return null;
+        }
+
+        function fnrhIssue(guest) {
+          if (!guest.birthDate) return 'Falta fecha de nacimiento.';
+          if (groupOf(guest) === 'ADULT') {
+            if (!isFnrhDocument(guest)) return 'Falta CPF o pasaporte para FNRH.';
+          }
+          if (groupOf(guest) === 'MINOR') {
+            if (!guest.responsibleId) return 'Falta responsable.';
+            if (!guest.minorSupervision || guest.minorSupervision === 'UNKNOWN') {
+              return 'Falta supervisión.';
+            }
+            if (
+              guest.minorSupervision === 'UNACCOMPANIED_AUTHORIZED' &&
+              !String(guest.authorizationReference || '').trim()
+            ) {
+              return 'Falta referencia de autorización.';
+            }
+          }
+          return null;
+        }
+
+        function counts() {
+          return state.party.reduce(
+            (acc, guest) => {
+              const group = groupOf(guest);
+              if (group === 'ADULT') acc.adults += 1;
+              else if (group === 'MINOR') acc.minors += 1;
+              else acc.unknown += 1;
+              return acc;
+            },
+            { adults: 0, minors: 0, unknown: 0 },
+          );
+        }
+
+        function countLabel(value, singular, plural) {
+          return value + ' ' + (value === 1 ? singular : plural);
+        }
+
+        function readiness() {
+          const partyCounts = counts();
+          const legalBlocks = state.party
+            .map((guest) => ({ guest, reason: legalBlockReason(guest) }))
+            .filter((entry) => entry.reason);
+          const fnrhIssues = state.party
+            .map((guest) => ({ guest, issue: fnrhIssue(guest) }))
+            .filter((entry) => entry.issue);
+          const primary = state.party.find((guest) => guest.role === 'PRIMARY');
+          const primaryIsAdult = primary && groupOf(primary) === 'ADULT';
+          const partyComplete =
+            partyCounts.unknown === 0 &&
+            partyCounts.adults === DECLARED_ADULTS &&
+            partyCounts.minors === DECLARED_MINORS;
+          const fnrhReady = legalBlocks.length === 0 && fnrhIssues.length === 0 && partyComplete;
+          const checkInBlocked = !primaryIsAdult || legalBlocks.length > 0;
+          return {
+            partyCounts,
+            legalBlocks,
+            fnrhIssues,
+            primary,
+            primaryIsAdult,
+            partyComplete,
+            fnrhReady,
+            checkInBlocked,
+          };
+        }
+
+        function setToast(message, tone = 'success') {
+          const toast = $('#toast');
+          toast.textContent = message;
+          toast.className = 'toast show ' + (tone === 'success' ? '' : tone);
+          window.clearTimeout(toastTimer);
+          toastTimer = window.setTimeout(() => {
+            toast.className = 'toast';
+          }, 3600);
+        }
+
+        function addHistory(label) {
+          state.history.unshift({
+            label,
+            at: new Intl.DateTimeFormat('es-AR', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }).format(new Date()),
+          });
+        }
+
+        function badge(text, tone = 'neutral') {
+          return '<span class="badge badge-' + tone + '">' + esc(text) + '</span>';
+        }
+
+        function guestFnrhBadge(guest) {
+          const legal = legalBlockReason(guest);
+          if (legal) return badge('FNRH bloqueada', 'danger');
+          if (groupOf(guest) === 'MINOR') {
+            return badge('En ficha del responsable', 'success');
+          }
+          const issue = fnrhIssue(guest);
+          if (issue) return badge('FNRH incompleta', 'warning');
+          return badge('FNRH lista', 'success');
+        }
+
+        function guestCard(guest) {
+          const group = groupOf(guest);
+          const isPrimary = guest.role === 'PRIMARY';
+          const isMinor = group === 'MINOR';
+          const legal = legalBlockReason(guest);
+          const issue = fnrhIssue(guest);
+          const converted = !isPrimary && guest.ageGroup === 'MINOR' && group === 'ADULT';
+          const name = esc(guest.fullName);
+          const cardClass = [
+            'guest-card',
+            isPrimary ? 'primary' : '',
+            isMinor || legal ? 'dependent' : '',
+            guest.minorSupervision === 'ACCOMPANIED' ? 'accompanied' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
+          const roleBadge = isPrimary
+            ? badge('Principal', 'primary')
+            : isMinor
+              ? badge('Menor', 'warning')
+              : badge('Acompañante', 'neutral');
+          const groupBadge =
+            group === 'ADULT'
+              ? badge('Adulto', 'neutral')
+              : group === 'MINOR'
+                ? badge('Menor', 'warning')
+                : badge('Sin clasificar', 'warning');
+
+          let dependency = '';
+          if (isMinor) {
+            dependency =
+              '<div class="dependency-note ' +
+              (legal ? 'danger' : guest.minorSupervision === 'ACCOMPANIED' ? 'ok' : '') +
+              '">' +
+              '<strong>Responsable: ' +
+              esc(responsibleName(guest)) +
+              '</strong><br />' +
+              'Supervisión: ' +
+              esc(SUPERVISION_LABELS[guest.minorSupervision] || 'Sin definir') +
+              (guest.minorSupervision === 'UNACCOMPANIED_AUTHORIZED'
+                ? ' · Referencia: ' + esc(guest.authorizationReference || 'faltante')
+                : '') +
+              (legal ? '<br />' + esc(legal) : '') +
+              '</div>';
+          }
+
+          const convertButton = converted
+            ? '<button class="button button-outline button-sm" type="button" data-action="convert" data-id="' +
+              esc(guest.id) +
+              '">Convertir en adulto</button>'
+            : '';
+          const conversionNote = converted
+            ? '<div class="alert alert-warning" style="margin:10px 0 0 46px"><div class="alert-icon">!</div><div><strong>Al check-in tendrá 18 años.</strong>Ya no corresponde mantenerlo como dependiente. Convertilo en adulto para actualizar la fiesta.</div></div>'
+            : '';
+
+          const removeDisabled = isPrimary || state.checkedIn || state.fnrh !== 'NOT_SENT';
+          const removeButton = isPrimary
+            ? ''
+            : '<button class="button button-danger button-sm" type="button" data-action="remove" data-id="' +
+              esc(guest.id) +
+              '"' +
+              (removeDisabled ? ' disabled' : '') +
+              ' title="' +
+              (removeDisabled
+                ? 'No se puede quitar después del check-in o de un envío FNRH'
+                : 'Quitar de la reserva') +
+              '">Quitar</button>';
+
+          return (
+            '<article class="' +
+            cardClass +
+            '" data-guest-id="' +
+            esc(guest.id) +
+            '">' +
+            '<div class="guest-head">' +
+            '<div class="avatar" aria-hidden="true">' +
+            esc(initials(guest.fullName)) +
+            '</div>' +
+            '<div class="guest-title">' +
+            '<div class="guest-title-row"><h3>' +
+            name +
+            '</h3>' +
+            roleBadge +
+            groupBadge +
+            '</div>' +
+            '<p class="guest-meta">' +
+            esc(maskDocument(guest)) +
+            (guest.email ? ' · ' + esc(guest.email) : '') +
+            (guest.phone ? ' · ' + esc(guest.phone) : '') +
+            '</p>' +
+            '</div>' +
+            '</div>' +
+            '<div class="guest-details">' +
+            '<div class="guest-detail"><span>Edad</span><strong>' +
+            esc(ageLabel(guest)) +
+            '</strong></div>' +
+            '<div class="guest-detail"><span>Documento FNRH</span><strong>' +
+            esc(isFnrhDocument(guest) ? 'Válido' : 'No válido / faltante') +
+            '</strong></div>' +
+            '<div class="guest-detail"><span>Estado FNRH</span><strong>' +
+            esc(
+              legal
+                ? 'Bloqueada'
+                : group === 'MINOR'
+                  ? 'En ficha del responsable'
+                  : issue
+                    ? 'Incompleta'
+                    : 'Lista',
+            ) +
+            '</strong></div>' +
+            '</div>' +
+            dependency +
+            conversionNote +
+            '<div class="guest-actions">' +
+            convertButton +
+            '<button class="button button-ghost button-sm" type="button" data-action="edit" data-id="' +
+            esc(guest.id) +
+            '">Editar</button>' +
+            removeButton +
+            '</div>' +
+            '</article>'
+          );
+        }
+
+        function renderParty() {
+          const r = readiness();
+          const primary = state.party.find((guest) => guest.role === 'PRIMARY');
+          const adults = state.party.filter(
+            (guest) => guest.role !== 'PRIMARY' && groupOf(guest) === 'ADULT',
+          );
+          const dependents = state.party.filter(
+            (guest) =>
+              guest.role !== 'PRIMARY' &&
+              (groupOf(guest) === 'MINOR' || groupOf(guest) === 'UNKNOWN'),
+          );
+
+          $('#party-list').innerHTML =
+            (primary ? guestCard(primary) : '') +
+            adults.map(guestCard).join('') +
+            dependents.map(guestCard).join('');
+
+          const alerts = [];
+          if (r.legalBlocks.length > 0) {
+            alerts.push(
+              '<div class="alert alert-danger"><div class="alert-icon">!</div><div><strong>Hay un bloqueo legal.</strong>' +
+                esc(r.legalBlocks[0].reason) +
+                ' Revisá la tarjeta del menor antes de intentar el check-in.</div></div>',
+            );
+          }
+          if (
+            r.partyCounts.adults !== DECLARED_ADULTS ||
+            r.partyCounts.minors !== DECLARED_MINORS ||
+            r.partyCounts.unknown > 0
+          ) {
+            alerts.push(
+              '<div class="alert alert-warning"><div class="alert-icon">!</div><div><strong>La fiesta no coincide con la ocupación declarada.</strong>' +
+                'La reserva declara ' +
+                countLabel(DECLARED_ADULTS, 'adulto', 'adultos') +
+                ' y ' +
+                countLabel(DECLARED_MINORS, 'menor', 'menores') +
+                '; hay ' +
+                countLabel(r.partyCounts.adults, 'adulto', 'adultos') +
+                ' y ' +
+                countLabel(r.partyCounts.minors, 'menor', 'menores') +
+                ' registrados. No creamos huéspedes automáticamente.</div></div>',
+            );
+          } else if (r.fnrhIssues.length > 0) {
+            alerts.push(
+              '<div class="alert alert-info"><div class="alert-icon">i</div><div><strong>FNRH pendiente.</strong>' +
+                'Completá los datos marcados. El check-in hotelero puede continuar.</div></div>',
+            );
+          } else if (r.legalBlocks.length === 0) {
+            alerts.push(
+              '<div class="alert alert-success"><div class="alert-icon">✓</div><div><strong>Fiesta completa y datos FNRH listos.</strong>' +
+                'El check-in puede confirmarse y el lote FNRH queda habilitado.</div></div>',
+            );
+          }
+          $('#party-alerts').innerHTML = alerts.join('');
+
+          $('#party-status').innerHTML = r.legalBlocks.length
+            ? badge('Bloqueo legal', 'danger')
+            : r.partyComplete
+              ? badge('Fiesta completa', 'success')
+              : badge('Fiesta incompleta', 'warning');
+          $('#summary-party-badge').innerHTML = r.partyComplete
+            ? badge('Fiesta completa', 'success')
+            : badge('Fiesta incompleta', 'warning');
+          $('#summary-fnrh').textContent = r.legalBlocks.length
+            ? 'Bloqueada'
+            : r.fnrhReady
+              ? 'Lista'
+              : 'Pendiente';
+          $('#summary-fnrh').style.color = r.legalBlocks.length
+            ? 'var(--danger-700)'
+            : r.fnrhReady
+              ? 'var(--mint-700)'
+              : 'var(--warning-700)';
+        }
+
+        function renderCheckin() {
+          const r = readiness();
+          let checkinBadge = badge('Disponible', 'warning');
+          let checkinText =
+            'Hay datos pendientes; el check-in hotelero puede continuar con advertencia.';
+          let fnrhText = 'Pendiente: no se envía con datos incompletos.';
+          if (state.checkedIn) {
+            checkinBadge = badge('Realizado', 'success');
+            checkinText = 'Check-in hotelero registrado.';
+            fnrhText = 'Pendiente de envío. El check-in no se revierte si FNRH falla.';
+          } else if (r.checkInBlocked) {
+            checkinBadge = badge('Bloqueado', 'danger');
+            checkinText = 'No se puede hacer check-in hasta resolver el bloqueo.';
+            fnrhText = 'Bloqueada.';
+          } else if (r.partyComplete && r.fnrhReady) {
+            checkinBadge = badge('Listo', 'success');
+            checkinText = 'Fiesta completa y datos FNRH listos.';
+            fnrhText = 'Lista para el lote.';
+          }
+
+          $('#checkin-status').innerHTML = checkinBadge;
+          $('#checkin-body').innerHTML =
+            '<div class="checkin-grid">' +
+            '<div class="checkin-box"><span>Check-in hotelero</span><strong>' +
+            esc(checkinText) +
+            '</strong></div>' +
+            '<div class="checkin-box"><span>FNRH Digital</span><strong>' +
+            esc(fnrhText) +
+            '</strong></div>' +
+            '</div>' +
+            '<div class="checkin-actions"><button class="button button-primary" type="button" data-action="checkin">' +
+            (state.checkedIn ? 'Ver estado del check-in' : 'Revisar check-in y FNRH') +
+            '</button>' +
+            (state.checkedIn
+              ? ''
+              : '<button class="button button-outline" type="button" data-action="add-minor">Agregar menor</button>') +
+            '</div>';
+        }
+
+        function renderHistory() {
+          $('#history-list').innerHTML = state.history
+            .map(
+              (entry) =>
+                '<div class="timeline-item"><strong>' +
+                esc(entry.label) +
+                '</strong><span>' +
+                esc(entry.at) +
+                '</span></div>',
+            )
+            .join('');
+        }
+
+        function render() {
+          renderParty();
+          renderCheckin();
+          renderHistory();
+        }
+
+        function resetDemo() {
+          state = clone(INITIAL_STATE);
+          closeModal();
+          render();
+          setToast('Demo reiniciada al estado inicial.');
+        }
+
+        function loadScenarioReady() {
+          state.party = [clone(PRIMARY), clone(ADULT_COMPANION), clone(MINOR_DEPENDENT)];
+          state.checkedIn = false;
+          state.fnrh = 'NOT_SENT';
+          state.history = INITIAL_HISTORY.slice();
+          addHistory('Escenario completo cargado');
+          closeModal();
+          render();
+          setToast('Escenario completo: fiesta y FNRH listas.');
+        }
+
+        function loadScenarioBlocked() {
+          state.party = [clone(PRIMARY), clone(ADULT_COMPANION), clone(BLOCKED_MINOR)];
+          state.checkedIn = false;
+          state.fnrh = 'NOT_SENT';
+          state.history = INITIAL_HISTORY.slice();
+          addHistory('Escenario con bloqueo legal cargado');
+          closeModal();
+          render();
+          setToast('Escenario bloqueado: menor sin autorización registrada.', 'warning');
+        }
+
+        function modalShell(title, subtitle, body, footer) {
+          return (
+            '<div class="modal-backdrop" data-backdrop="true">' +
+            '<section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">' +
+            '<div class="modal-header"><div><h2 id="modal-title">' +
+            esc(title) +
+            '</h2><p>' +
+            esc(subtitle) +
+            '</p></div>' +
+            '<button class="icon-button" type="button" data-action="close-modal" aria-label="Cerrar">×</button>' +
+            '</div>' +
+            '<div class="modal-body">' +
+            body +
+            '</div>' +
+            '<div class="modal-footer">' +
+            footer +
+            '</div>' +
+            '</section></div>'
+          );
+        }
+
+        function openModal(html) {
+          $('#modal-root').innerHTML = html;
+          document.body.style.overflow = 'hidden';
+          window.requestAnimationFrame(() => {
+            const focusable = $('#modal-root').querySelector(
+              "input, select, textarea, button:not([data-action='close-modal'])",
+            );
+            if (focusable) focusable.focus();
+          });
+        }
+
+        function closeModal() {
+          $('#modal-root').innerHTML = '';
+          document.body.style.overflow = '';
+          state.modal = null;
+        }
+
+        function existingCandidatesMarkup(query) {
+          const normalized = query.trim().toLowerCase();
+          const filtered = CANDIDATES.filter((candidate) => {
+            if (normalized === '') return true;
+            return (
+              candidate.fullName.toLowerCase().includes(normalized) ||
+              candidate.email.toLowerCase().includes(normalized) ||
+              candidate.docNumber.toLowerCase().includes(normalized)
+            );
+          });
+          if (filtered.length === 0) {
+            return '<p class="note">No hay huéspedes sintéticos que coincidan.</p>';
+          }
+          return filtered
+            .map((candidate) => {
+              const already = state.party.some((guest) => guest.id === candidate.id);
+              return (
+                '<div class="candidate"><div><strong>' +
+                esc(candidate.fullName) +
+                '</strong><span>' +
+                esc(maskDocument(candidate)) +
+                ' · ' +
+                esc(ageLabel(candidate)) +
+                '</span></div>' +
+                '<button class="button button-outline button-sm" type="button" data-action="add-existing" data-id="' +
+                esc(candidate.id) +
+                '"' +
+                (already ? ' disabled' : '') +
+                '>' +
+                (already ? 'Ya agregado' : 'Agregar') +
+                '</button></div>'
+              );
+            })
+            .join('');
+        }
+
+        function openAdultModal() {
+          state.adultTab = 'existing';
+          renderAdultModal();
+        }
+
+        function renderAdultModal() {
+          const existingActive = state.adultTab === 'existing';
+          const body =
+            '<div class="tabs" role="tablist" aria-label="Origen del acompañante">' +
+            '<button class="tab ' +
+            (existingActive ? 'active' : '') +
+            '" type="button" role="tab" aria-selected="' +
+            existingActive +
+            '" data-action="adult-tab" data-tab="existing">Buscar existente</button>' +
+            '<button class="tab ' +
+            (!existingActive ? 'active' : '') +
+            '" type="button" role="tab" aria-selected="' +
+            !existingActive +
+            '" data-action="adult-tab" data-tab="new">Crear nuevo</button>' +
+            '</div>' +
+            (existingActive
+              ? '<input id="adult-search" class="search-input" type="search" placeholder="Buscar por nombre, email o documento…" aria-label="Buscar huésped existente" />' +
+                '<div id="adult-candidates" class="candidate-list">' +
+                existingCandidatesMarkup('') +
+                '</div>'
+              : '<form id="adult-new-form" novalidate>' +
+                '<div class="form-grid">' +
+                '<div class="field full"><label for="adult-name">Nombre completo *</label><input id="adult-name" name="fullName" required minlength="2" maxlength="160" placeholder="Nombre y apellido" /></div>' +
+                '<div class="field"><label for="adult-birth">Fecha de nacimiento *</label><input id="adult-birth" name="birthDate" type="date" required /><small>La edad se calcula al check-in (13 nov 2026).</small></div>' +
+                '<div class="field"><label for="adult-email">Email</label><input id="adult-email" name="email" type="email" placeholder="huesped@ejemplo.test" /></div>' +
+                '<div class="field"><label for="adult-phone">Teléfono</label><input id="adult-phone" name="phone" placeholder="+55 11 90000-0000" /></div>' +
+                '<div class="field"><label for="adult-doc-type">Tipo de documento</label><select id="adult-doc-type" name="docType"><option value="">Sin documento</option><option value="CPF">CPF</option><option value="PASSPORT">Pasaporte</option><option value="RG">RG</option><option value="OTHER">Otro</option></select></div>' +
+                '<div class="field"><label for="adult-doc-number">Número de documento</label><input id="adult-doc-number" name="docNumber" placeholder="Sólo si hay documento" /></div>' +
+                '</div>' +
+                '<p class="form-error" id="adult-form-error" role="alert"></p>' +
+                '<button class="button button-primary" type="submit">Agregar adulto</button>' +
+                '</form>') +
+            (existingActive
+              ? '<p class="note">Los huéspedes de la lista son datos sintéticos. Si un adulto no tiene documento FNRH, se puede agregar igual, pero la FNRH queda incompleta.</p>'
+              : '');
+          openModal(
+            modalShell(
+              'Agregar acompañante adulto',
+              'El adulto se suma a esta reserva. No se crea un huésped principal nuevo.',
+              body,
+              '<button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button>',
+            ),
+          );
+          const search = $('#adult-search');
+          if (search) {
+            search.addEventListener('input', () => {
+              $('#adult-candidates').innerHTML = existingCandidatesMarkup(search.value);
+            });
+          }
+        }
+
+        function addExistingCandidate(id) {
+          const candidate = CANDIDATES.find((item) => item.id === id);
+          if (!candidate || state.party.some((guest) => guest.id === id)) return;
+          if (ageAtCheckIn(candidate.birthDate) < 18) {
+            setToast('Ese huésped es menor al check-in. Usá “Agregar menor”.', 'warning');
+            return;
+          }
+          state.party.push({
+            ...clone(candidate),
+            role: 'COMPANION',
+            ageGroup: 'ADULT',
+            minorSupervision: null,
+            responsibleId: null,
+            authorizationReference: null,
+          });
+          addHistory(candidate.fullName + ' agregado como acompañante');
+          closeModal();
+          render();
+          setToast(candidate.fullName + ' agregado a la reserva.');
+          highlightGuest(id);
+        }
+
+        function addCreatedAdult(form) {
+          const data = new FormData(form);
+          const fullName = String(data.get('fullName') || '').trim();
+          const birthDate = String(data.get('birthDate') || '');
+          const email = String(data.get('email') || '').trim();
+          const phone = String(data.get('phone') || '').trim();
+          const docType = String(data.get('docType') || '');
+          const docNumber = String(data.get('docNumber') || '').trim();
+          const error = $('#adult-form-error');
+          error.textContent = '';
+
+          if (fullName.length < 2) {
+            error.textContent = 'Ingresá nombre y apellido.';
+            return;
+          }
+          if (!birthDate) {
+            error.textContent = 'La fecha de nacimiento es obligatoria para clasificar la edad.';
+            return;
+          }
+          if (ageAtCheckIn(birthDate) < 18) {
+            error.textContent = 'Al check-in será menor de edad. Usá “Agregar menor”.';
+            return;
+          }
+          if (
+            state.party.some((guest) => guest.fullName.toLowerCase() === fullName.toLowerCase())
+          ) {
+            error.textContent = 'Ese huésped ya está en esta reserva.';
+            return;
+          }
+          if (docType === 'CPF' && docNumber.replace(/\D/g, '').length !== 11) {
+            error.textContent = 'El CPF debe tener 11 dígitos.';
+            return;
+          }
+          if (docType !== '' && docNumber.length < 3) {
+            error.textContent = 'Ingresá el número de documento.';
+            return;
+          }
+
+          const id = 'g-' + Date.now();
+          state.party.push({
+            id,
+            role: 'COMPANION',
+            fullName,
+            birthDate,
+            docType,
+            docNumber,
+            email,
+            phone,
+            ageGroup: 'ADULT',
+            minorSupervision: null,
+            responsibleId: null,
+            authorizationReference: null,
+          });
+          addHistory(fullName + ' agregado como acompañante');
+          closeModal();
+          render();
+          setToast(fullName + ' agregado a la reserva.');
+          highlightGuest(id);
+        }
+
+        function responsibleOptions(selectedId, excludeId) {
+          return state.party
+            .filter(
+              (guest) =>
+                groupOf(guest) === 'ADULT' && guest.role === 'PRIMARY' && guest.id !== excludeId,
+            )
+            .concat(
+              state.party.filter(
+                (guest) =>
+                  groupOf(guest) === 'ADULT' &&
+                  guest.role === 'COMPANION' &&
+                  guest.id !== excludeId,
+              ),
+            )
+            .map(
+              (guest) =>
+                '<option value="' +
+                esc(guest.id) +
+                '"' +
+                (guest.id === selectedId ? ' selected' : '') +
+                '>' +
+                esc(guest.fullName) +
+                '</option>',
+            )
+            .join('');
+        }
+
+        function openMinorModal(guest) {
+          const editing = Boolean(guest);
+          const current = guest || {
+            fullName: '',
+            birthDate: '',
+            docType: '',
+            docNumber: '',
+            responsibleId: 'g-primary',
+            minorSupervision: 'ACCOMPANIED',
+            authorizationReference: '',
+          };
+          const supervision = current.minorSupervision || 'ACCOMPANIED';
+          const body =
+            '<form id="minor-form" novalidate data-edit-id="' +
+            esc(editing ? guest.id : '') +
+            '">' +
+            '<div class="form-grid">' +
+            '<div class="field full"><label for="minor-name">Nombre completo *</label><input id="minor-name" name="fullName" required minlength="2" maxlength="160" value="' +
+            esc(current.fullName) +
+            '" placeholder="Nombre y apellido del menor" /></div>' +
+            '<div class="field"><label for="minor-birth">Fecha de nacimiento *</label><input id="minor-birth" name="birthDate" type="date" required value="' +
+            esc(current.birthDate) +
+            '" /><small>Debe ser menor de 18 años al 13 nov 2026.</small></div>' +
+            '<div class="field"><label for="minor-doc-type">Tipo de documento</label><select id="minor-doc-type" name="docType"><option value="">Sin documento</option><option value="CPF"' +
+            (current.docType === 'CPF' ? ' selected' : '') +
+            '>CPF</option><option value="PASSPORT"' +
+            (current.docType === 'PASSPORT' ? ' selected' : '') +
+            '>Pasaporte</option><option value="RG"' +
+            (current.docType === 'RG' ? ' selected' : '') +
+            '>RG</option><option value="OTHER"' +
+            (current.docType === 'OTHER' ? ' selected' : '') +
+            '>Otro</option></select></div>' +
+            '<div class="field"><label for="minor-doc-number">Número de documento</label><input id="minor-doc-number" name="docNumber" value="' +
+            esc(current.docNumber || '') +
+            '" placeholder="Opcional si no existe" /></div>' +
+            '<div class="field"><label for="minor-responsible">Responsable *</label><select id="minor-responsible" name="responsibleId" required>' +
+            responsibleOptions(current.responsibleId || 'g-primary', editing ? guest.id : '') +
+            '</select></div>' +
+            '<div class="field"><label for="minor-supervision">Supervisión *</label><select id="minor-supervision" name="minorSupervision" required>' +
+            Object.entries(SUPERVISION_LABELS)
+              .filter(([value]) => value !== 'UNKNOWN')
+              .map(
+                ([value, label]) =>
+                  '<option value="' +
+                  value +
+                  '"' +
+                  (value === supervision ? ' selected' : '') +
+                  '>' +
+                  esc(label) +
+                  '</option>',
+              )
+              .join('') +
+            '</select></div>' +
+            '<div class="field full" id="auth-wrap" style="display:' +
+            (supervision === 'UNACCOMPANIED_AUTHORIZED' ? 'grid' : 'none') +
+            '"><label for="minor-auth-ref">Referencia de autorización *</label><input id="minor-auth-ref" name="authorizationReference" maxlength="120" value="' +
+            esc(current.authorizationReference || '') +
+            '" placeholder="Identificador interno; no adjuntes el documento" /><small>Sólo se guarda la referencia. No se adjuntan scans.</small></div>' +
+            '</div>' +
+            '<div class="modal-callout"><strong>Este menor no genera una FNRH propia.</strong>Su identidad y supervisión se informan en la ficha del responsable. No tendrá QR ni check-in FNRH independiente.</div>' +
+            '<p class="form-error" id="minor-form-error" role="alert"></p>' +
+            '<button class="button button-primary" type="submit">' +
+            (editing ? 'Guardar cambios' : 'Agregar menor') +
+            '</button>' +
+            '</form>';
+          openModal(
+            modalShell(
+              editing ? 'Editar menor' : 'Agregar menor',
+              'El menor se vincula a un adulto de esta reserva y queda bajo su responsabilidad.',
+              body,
+              '<button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button>',
+            ),
+          );
+          const supervisionSelect = $('#minor-supervision');
+          supervisionSelect.addEventListener('change', () => {
+            $('#auth-wrap').style.display =
+              supervisionSelect.value === 'UNACCOMPANIED_AUTHORIZED' ? 'grid' : 'none';
+          });
+        }
+
+        function saveMinor(form) {
+          const data = new FormData(form);
+          const editId = form.dataset.editId;
+          const fullName = String(data.get('fullName') || '').trim();
+          const birthDate = String(data.get('birthDate') || '');
+          const docType = String(data.get('docType') || '');
+          const docNumber = String(data.get('docNumber') || '').trim();
+          const responsibleId = String(data.get('responsibleId') || '');
+          const minorSupervision = String(data.get('minorSupervision') || '');
+          const authorizationReference = String(data.get('authorizationReference') || '').trim();
+          const error = $('#minor-form-error');
+          error.textContent = '';
+
+          if (fullName.length < 2) {
+            error.textContent = 'Ingresá nombre y apellido.';
+            return;
+          }
+          if (!birthDate) {
+            error.textContent = 'La fecha de nacimiento es obligatoria.';
+            return;
+          }
+          if (ageAtCheckIn(birthDate) >= 18) {
+            if (editId) {
+              error.innerHTML =
+                'Al check-in tendrá 18 años. <button class="button button-outline button-sm" type="button" data-action="convert" data-id="' +
+                esc(editId) +
+                '" data-birth="' +
+                esc(birthDate) +
+                '">Convertir en adulto</button>';
+            } else {
+              error.textContent = 'Al check-in tendrá 18 años. Registralo como adulto.';
+            }
+            return;
+          }
+          if (!responsibleId) {
+            error.textContent = 'Elegí un responsable adulto de esta reserva.';
+            return;
+          }
+          if (!minorSupervision) {
+            error.textContent = 'Indicá cómo viaja el menor.';
+            return;
+          }
+          if (
+            minorSupervision === 'UNACCOMPANIED_AUTHORIZED' &&
+            authorizationReference.length === 0
+          ) {
+            error.textContent = 'Ingresá la referencia de la autorización.';
+            return;
+          }
+          if (docType === 'CPF' && docNumber.replace(/\D/g, '').length !== 11) {
+            error.textContent = 'El CPF debe tener 11 dígitos.';
+            return;
+          }
+
+          if (editId) {
+            const guest = state.party.find((item) => item.id === editId);
+            if (!guest) return;
+            Object.assign(guest, {
+              fullName,
+              birthDate,
+              docType,
+              docNumber,
+              responsibleId,
+              minorSupervision,
+              authorizationReference:
+                minorSupervision === 'UNACCOMPANIED_AUTHORIZED' ? authorizationReference : null,
+              ageGroup: 'MINOR',
+            });
+            addHistory(fullName + ': supervisión de menor actualizada');
+          } else {
+            if (
+              state.party.some((item) => item.fullName.toLowerCase() === fullName.toLowerCase())
+            ) {
+              error.textContent = 'Ese huésped ya está en esta reserva.';
+              return;
+            }
+            state.party.push({
+              id: 'g-' + Date.now(),
+              role: 'COMPANION',
+              fullName,
+              birthDate,
+              docType,
+              docNumber,
+              email: '',
+              phone: '',
+              ageGroup: 'MINOR',
+              minorSupervision,
+              responsibleId,
+              authorizationReference:
+                minorSupervision === 'UNACCOMPANIED_AUTHORIZED' ? authorizationReference : null,
+            });
+            addHistory(fullName + ' agregado como menor dependiente');
+          }
+          closeModal();
+          render();
+          setToast(
+            editId
+              ? 'Datos del menor actualizados.'
+              : fullName + ' agregado como menor dependiente.',
+          );
+        }
+
+        function openEditModal(id) {
+          const guest = state.party.find((item) => item.id === id);
+          if (!guest) return;
+          if (groupOf(guest) === 'MINOR') {
+            openMinorModal(guest);
+            return;
+          }
+          const body =
+            '<form id="adult-edit-form" novalidate data-edit-id="' +
+            esc(guest.id) +
+            '">' +
+            '<div class="form-grid">' +
+            '<div class="field full"><label for="edit-name">Nombre completo *</label><input id="edit-name" name="fullName" required minlength="2" maxlength="160" value="' +
+            esc(guest.fullName) +
+            '" /></div>' +
+            '<div class="field"><label for="edit-birth">Fecha de nacimiento *</label><input id="edit-birth" name="birthDate" type="date" required value="' +
+            esc(guest.birthDate || '') +
+            '" /><small>La edad se calcula al check-in.</small></div>' +
+            '<div class="field"><label for="edit-email">Email</label><input id="edit-email" name="email" type="email" value="' +
+            esc(guest.email || '') +
+            '" /></div>' +
+            '<div class="field"><label for="edit-phone">Teléfono</label><input id="edit-phone" name="phone" value="' +
+            esc(guest.phone || '') +
+            '" /></div>' +
+            '<div class="field"><label for="edit-doc-type">Tipo de documento</label><select id="edit-doc-type" name="docType"><option value="">Sin documento</option>' +
+            Object.entries(DOC_LABELS)
+              .map(
+                ([value, label]) =>
+                  '<option value="' +
+                  value +
+                  '"' +
+                  (guest.docType === value ? ' selected' : '') +
+                  '>' +
+                  esc(label) +
+                  '</option>',
+              )
+              .join('') +
+            '</select></div>' +
+            '<div class="field"><label for="edit-doc-number">Número de documento</label><input id="edit-doc-number" name="docNumber" value="' +
+            esc(guest.docNumber || '') +
+            '" /></div>' +
+            '</div>' +
+            '<p class="form-error" id="adult-edit-error" role="alert"></p>' +
+            '<button class="button button-primary" type="submit">Guardar cambios</button>' +
+            '</form>' +
+            (guest.ageGroup === 'MINOR' && groupOf(guest) === 'ADULT'
+              ? '<div class="modal-callout" style="margin-top:12px"><strong>Al check-in tendrá 18 años.</strong>Guardá los datos y usá “Convertir en adulto” en la tarjeta para quitar el vínculo de dependencia.</div>'
+              : '');
+          openModal(
+            modalShell(
+              'Editar adulto',
+              'Los cambios se guardan sólo en esta demo local.',
+              body,
+              '<button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button>',
+            ),
+          );
+        }
+
+        function saveAdultEdit(form) {
+          const data = new FormData(form);
+          const id = form.dataset.editId;
+          const guest = state.party.find((item) => item.id === id);
+          if (!guest) return;
+          const fullName = String(data.get('fullName') || '').trim();
+          const birthDate = String(data.get('birthDate') || '');
+          const email = String(data.get('email') || '').trim();
+          const phone = String(data.get('phone') || '').trim();
+          const docType = String(data.get('docType') || '');
+          const docNumber = String(data.get('docNumber') || '').trim();
+          const error = $('#adult-edit-error');
+          error.textContent = '';
+          if (fullName.length < 2) {
+            error.textContent = 'Ingresá nombre y apellido.';
+            return;
+          }
+          if (!birthDate) {
+            error.textContent = 'La fecha de nacimiento es obligatoria.';
+            return;
+          }
+          if (guest.role === 'PRIMARY' && ageAtCheckIn(birthDate) < 18) {
+            error.textContent = 'El principal debe ser mayor de edad.';
+            return;
+          }
+          if (guest.role !== 'PRIMARY' && ageAtCheckIn(birthDate) < 18) {
+            error.textContent =
+              'Al check-in será menor de edad. Editá la ficha desde “Agregar menor”.';
+            return;
+          }
+          if (docType === 'CPF' && docNumber.replace(/\D/g, '').length !== 11) {
+            error.textContent = 'El CPF debe tener 11 dígitos.';
+            return;
+          }
+          Object.assign(guest, { fullName, birthDate, email, phone, docType, docNumber });
+          addHistory(fullName + ': datos de adulto actualizados');
+          closeModal();
+          render();
+          setToast('Datos del adulto actualizados.');
+        }
+
+        function convertGuest(id, birthDate) {
+          const guest = state.party.find((item) => item.id === id);
+          if (!guest) return;
+          if (birthDate) guest.birthDate = birthDate;
+          guest.ageGroup = 'ADULT';
+          guest.minorSupervision = null;
+          guest.responsibleId = null;
+          guest.authorizationReference = null;
+          addHistory(guest.fullName + ' convertido en adulto al check-in');
+          closeModal();
+          render();
+          setToast(guest.fullName + ' ahora se clasifica como adulto.');
+        }
+
+        function removeGuest(id) {
+          const guest = state.party.find((item) => item.id === id);
+          if (!guest || guest.role === 'PRIMARY') return;
+          if (state.checkedIn || state.fnrh !== 'NOT_SENT') {
+            setToast('No se puede quitar después del check-in o de un envío FNRH.', 'warning');
+            return;
+          }
+          if (!window.confirm('¿Quitar a ' + guest.fullName + ' de esta reserva?')) return;
+          state.party = state.party.filter((item) => item.id !== id);
+          addHistory(guest.fullName + ' quitado de la reserva');
+          render();
+          setToast(guest.fullName + ' quitado de la reserva.', 'warning');
+        }
+
+        function openCheckinModal() {
+          const r = readiness();
+          if (state.checkedIn) {
+            openModal(
+              modalShell(
+                'Check-in realizado',
+                'El check-in hotelero ya está registrado en esta demo.',
+                '<div class="alert alert-success"><div class="alert-icon">✓</div><div><strong>La habitación está ocupada.</strong>La FNRH se muestra como estado separado y no revierte el check-in si falla.</div></div>',
+                '<button class="button button-primary" type="button" data-action="close-modal">Cerrar</button>',
+              ),
+            );
+            return;
+          }
+
+          const checklist = [
+            {
+              label: 'Huéspedes registrados',
+              detail: r.partyComplete ? 'Fiesta completa' : 'Faltan personas por registrar',
+              tone: r.partyComplete ? 'success' : 'warning',
+            },
+            {
+              label: 'Datos FNRH',
+              detail: r.fnrhReady ? 'Listos' : 'Incompletos o bloqueados',
+              tone: r.fnrhReady ? 'success' : 'warning',
+            },
+            {
+              label: 'Menores',
+              detail: r.legalBlocks.length > 0 ? 'Hay un bloqueo legal' : 'Sin bloqueo legal',
+              tone: r.legalBlocks.length > 0 ? 'danger' : 'success',
+            },
+          ]
+            .map(
+              (item) =>
+                '<div class="check-row"><div><strong>' +
+                esc(item.label) +
+                '</strong><span>' +
+                esc(item.detail) +
+                '</span></div>' +
+                badge(item.detail, item.tone) +
+                '</div>',
+            )
+            .join('');
+
+          let alert = '';
+          let primaryAction = '';
+          let secondaryAction = '';
+          if (r.legalBlocks.length > 0) {
+            alert =
+              '<div class="alert alert-danger"><div class="alert-icon">!</div><div><strong>No se puede hacer check-in.</strong>' +
+              esc(r.legalBlocks[0].reason) +
+              ' Registrá la autorización o resolvé el vínculo antes de continuar.</div></div>';
+            primaryAction =
+              '<button class="button button-primary" type="button" data-action="focus-guest" data-id="' +
+              esc(r.legalBlocks[0].guest.id) +
+              '">Revisar menor</button>';
+          } else if (!r.partyComplete) {
+            alert =
+              '<div class="alert alert-warning"><div class="alert-icon">!</div><div><strong>La fiesta está incompleta.</strong>El check-in hotelero puede continuar, pero la FNRH no se enviará hasta registrar a todos los huéspedes.</div></div>';
+            primaryAction =
+              '<button class="button button-outline" type="button" data-action="focus-party">Completar fiesta</button>';
+            secondaryAction =
+              '<button class="button button-primary" type="button" data-action="confirm-checkin">Continuar check-in</button>';
+          } else if (!r.fnrhReady) {
+            alert =
+              '<div class="alert alert-warning"><div class="alert-icon">!</div><div><strong>La FNRH está incompleta.</strong>El check-in puede continuar. La FNRH quedará pendiente y no se enviará con datos incompletos.</div></div>';
+            primaryAction =
+              '<button class="button button-outline" type="button" data-action="focus-party">Completar datos</button>';
+            secondaryAction =
+              '<button class="button button-primary" type="button" data-action="confirm-checkin">Continuar check-in</button>';
+          } else {
+            alert =
+              '<div class="alert alert-success"><div class="alert-icon">✓</div><div><strong>Todo listo.</strong>La fiesta está completa y los datos FNRH están listos.</div></div>';
+            secondaryAction =
+              '<button class="button button-primary" type="button" data-action="confirm-checkin">Confirmar check-in</button>';
+          }
+
+          openModal(
+            modalShell(
+              'Check-in — Reserva ABC-1042',
+              'Revisá la fiesta y los bloqueos antes de confirmar.',
+              '<div class="modal-callout"><strong>Habitación 204 · Ana Silva</strong>2 adultos · 1 menor · 3 noches</div>' +
+                checklist +
+                alert,
+              '<button class="button button-ghost" type="button" data-action="close-modal">Cerrar</button>' +
+                primaryAction +
+                secondaryAction,
+            ),
+          );
+        }
+
+        function confirmCheckin() {
+          const r = readiness();
+          if (r.checkInBlocked) {
+            setToast('No se puede confirmar el check-in con un bloqueo legal.', 'warning');
+            return;
+          }
+          state.checkedIn = true;
+          state.fnrh = 'PENDING';
+          addHistory('Check-in hotelero registrado');
+          closeModal();
+          render();
+          setToast('Check-in registrado. FNRH pendiente de envío.');
+        }
+
+        function highlightGuest(id) {
+          window.setTimeout(() => {
+            const card = document.querySelector('[data-guest-id="' + CSS.escape(id) + '"]');
+            if (!card) return;
+            card.classList.add('highlight');
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const edit = card.querySelector('[data-action="edit"]');
+            if (edit) edit.focus();
+            window.setTimeout(() => card.classList.remove('highlight'), 1500);
+          }, 30);
+        }
+
+        function focusGuest(id) {
+          closeModal();
+          window.setTimeout(() => {
+            const card = document.querySelector('[data-guest-id="' + CSS.escape(id) + '"]');
+            if (!card) return;
+            card.classList.add('highlight');
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const edit = card.querySelector('[data-action="edit"]');
+            if (edit) edit.focus();
+            window.setTimeout(() => card.classList.remove('highlight'), 1800);
+          }, 60);
+        }
+
+        function focusParty() {
+          closeModal();
+          window.setTimeout(() => {
+            $('#party-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            $('[data-action="add-minor"]').focus();
+          }, 60);
+        }
+
+        document.addEventListener('click', (event) => {
+          const target = event.target.closest('[data-action]');
+          if (!target) {
+            if (event.target.matches('[data-backdrop="true"]')) closeModal();
+            return;
+          }
+          const action = target.dataset.action;
+          switch (action) {
+            case 'reset':
+              resetDemo();
+              break;
+            case 'scenario-ready':
+              loadScenarioReady();
+              break;
+            case 'scenario-blocked':
+              loadScenarioBlocked();
+              break;
+            case 'add-adult':
+              openAdultModal();
+              break;
+            case 'add-minor':
+              openMinorModal(null);
+              break;
+            case 'adult-tab':
+              state.adultTab = target.dataset.tab || 'existing';
+              renderAdultModal();
+              break;
+            case 'add-existing':
+              addExistingCandidate(target.dataset.id);
+              break;
+            case 'edit':
+              openEditModal(target.dataset.id);
+              break;
+            case 'remove':
+              removeGuest(target.dataset.id);
+              break;
+            case 'convert':
+              convertGuest(target.dataset.id, target.dataset.birth);
+              break;
+            case 'checkin':
+              openCheckinModal();
+              break;
+            case 'confirm-checkin':
+              confirmCheckin();
+              break;
+            case 'focus-guest':
+              focusGuest(target.dataset.id);
+              break;
+            case 'focus-party':
+              focusParty();
+              break;
+            case 'close-modal':
+              closeModal();
+              break;
+            default:
+              break;
+          }
+        });
+
+        document.addEventListener('submit', (event) => {
+          const form = event.target;
+          if (!(form instanceof HTMLFormElement)) return;
+          if (form.id === 'adult-new-form') {
+            event.preventDefault();
+            addCreatedAdult(form);
+          } else if (form.id === 'minor-form') {
+            event.preventDefault();
+            saveMinor(form);
+          } else if (form.id === 'adult-edit-form') {
+            event.preventDefault();
+            saveAdultEdit(form);
+          }
+        });
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') closeModal();
+        });
+
+        render();
+      })();
+    </script>
+  </body>
+</html>

@@ -1,7 +1,8 @@
-import { ReservationStatus } from '@prisma/client';
+import { GuestDocumentType, MinorSupervision, ReservationStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsEnum,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -175,6 +176,108 @@ export class ReservationAvailabilityQueryDto {
   @IsOptional()
   @IsUUID()
   roomTypeId?: string;
+}
+
+export class AddReservationGuestDto {
+  @IsOptional()
+  @IsUUID()
+  guestId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(254)
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  phone?: string;
+
+  @IsOptional()
+  @IsEnum(GuestDocumentType)
+  documentType?: GuestDocumentType;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(64)
+  documentNumber?: string;
+
+  @IsOptional()
+  @Matches(CALENDAR_DATE_PATTERN, { message: 'birthDate must use YYYY-MM-DD' })
+  birthDate?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  legalIncapacity?: boolean;
+
+  @IsOptional()
+  @IsEnum(MinorSupervision)
+  minorSupervision?: MinorSupervision;
+
+  @IsOptional()
+  @IsUUID()
+  responsibleReservationGuestId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  authorizationReference?: string;
+}
+
+export class UpdateReservationGuestDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(254)
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  phone?: string;
+
+  @IsOptional()
+  @IsEnum(GuestDocumentType)
+  documentType?: GuestDocumentType;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(64)
+  documentNumber?: string;
+
+  @IsOptional()
+  @Matches(CALENDAR_DATE_PATTERN, { message: 'birthDate must use YYYY-MM-DD' })
+  birthDate?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  legalIncapacity?: boolean;
+
+  @IsOptional()
+  @IsEnum(MinorSupervision)
+  minorSupervision?: MinorSupervision;
+
+  @IsOptional()
+  @IsUUID()
+  responsibleReservationGuestId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  authorizationReference?: string;
 }
 
 export class ListReservationHistoryQueryDto {

@@ -44,10 +44,37 @@ enum RoomStatusCategory {
 }
 
 enum GuestDocumentType {
+  CPF
   PASSPORT
+  RG
   NATIONAL_ID
   DRIVER_LICENSE
   OTHER
+}
+
+enum ReservationGuestRole {
+  PRIMARY
+  COMPANION
+}
+
+enum GuestAgeGroup {
+  ADULT
+  MINOR
+  UNKNOWN
+}
+
+enum ReservationGuestOrigin {
+  LEGACY_BACKFILL
+  MANUAL
+  PRE_CHECKIN
+  IMPORT
+}
+
+enum MinorSupervision {
+  ACCOMPANIED
+  UNACCOMPANIED_AUTHORIZED
+  UNACCOMPANIED_WITHOUT_AUTHORIZATION
+  UNKNOWN
 }
 
 enum ReservationStatus {
@@ -129,6 +156,84 @@ enum DocumentPrintEventType {
   REPRINT_REQUESTED
 }
 
+enum InstructionCategory {
+  PAYMENT
+  MEAL
+  BILLING
+  ROOM
+  ARRIVAL
+  IMPORTANT
+  EXTRA
+  CONFIDENTIAL
+  GENERAL
+}
+
+enum InstructionPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum InstructionStatus {
+  NEW
+  ACKNOWLEDGED
+  IN_PROGRESS
+  COMPLETED
+  DISMISSED
+  NEEDS_CLARIFICATION
+}
+
+enum InstructionSource {
+  RESERVATIONS
+  FRONT_DESK
+  GUEST
+  CHANNEL
+  IMPORT
+  SYSTEM
+}
+
+enum InstructionVisibility {
+  ALL_AUTHORIZED
+  FRONT_DESK
+  RESERVATIONS
+  FINANCE
+  MANAGEMENT
+}
+
+enum InstructionActionType {
+  PAYMENT_PREAUTHORIZATION
+  VERIFY_PAYMENT
+  BILLING_TASK
+  ARRIVAL_REMINDER
+}
+
+enum InstructionExecutionMoment {
+  PRE_ARRIVAL
+  CHECK_IN
+  DURING_STAY
+  CHECK_OUT
+}
+
+enum InstructionPaymentMethod {
+  CREDIT_CARD
+  PIX
+  CASH
+  BANK_TRANSFER
+  UNKNOWN
+}
+
+enum InstructionEventType {
+  CREATED
+  UPDATED
+  ACKNOWLEDGED
+  IN_PROGRESS
+  COMPLETED
+  DISMISSED
+  NEEDS_CLARIFICATION
+  CONFIRMED_FROM_SOURCE
+}
+
 enum PilotFeedbackCategory {
   BUG
   UX
@@ -149,14 +254,14 @@ enum PilotFeedbackStatus {
 /// live in Guest; this table only records the import outcome and never stores
 /// the CSV or personal data.
 model GuestImport {
-  id              String   @id @default(uuid()) @db.Uuid
-  organizationId  String   @db.Uuid
-  propertyId      String   @db.Uuid
-  idempotencyKey  String   @db.VarChar(64)
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  propertyId      String       @db.Uuid
+  idempotencyKey  String       @db.VarChar(64)
   rowCount        Int
   createdCount    Int
-  createdByUserId String?  @db.Uuid
-  createdAt       DateTime @default(now())
+  createdByUserId String?      @db.Uuid
+  createdAt       DateTime     @default(now())
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property        Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   createdBy       User?        @relation("GuestImportCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -207,7 +312,9 @@ model Organization {
   roomBlocks          RoomBlock[]
   roomStatusHistory   RoomStatusHistory[]
   guests              Guest[]
+  guestFnrhProfiles   GuestFnrhProfile[]
   reservations        Reservation[]
+  reservationGuests   ReservationGuest[]
   reservationHistory  ReservationHistory[]
   stays               Stay[]
   incidents           Incident[]
@@ -222,6 +329,10 @@ model Organization {
   documentTemplates   DocumentTemplate[]
   generatedDocuments  GeneratedDocument[]
   documentPrintEvents DocumentPrintEvent[]
+  instructions        ReservationInstruction[]
+  sourceNotes         ReservationSourceNote[]
+  instructionEvents   InstructionEvent[]
+  guestNotes          GuestNote[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -245,7 +356,9 @@ model Property {
   roomBlocks          RoomBlock[]
   roomStatusHistory   RoomStatusHistory[]
   guests              Guest[]
+  guestFnrhProfiles   GuestFnrhProfile[]
   reservations        Reservation[]
+  reservationGuests   ReservationGuest[]
   reservationHistory  ReservationHistory[]
   stays               Stay[]
   incidents           Incident[]
@@ -260,6 +373,10 @@ model Property {
   documentTemplates   DocumentTemplate[]
   generatedDocuments  GeneratedDocument[]
   documentPrintEvents DocumentPrintEvent[]
+  instructions        ReservationInstruction[]
+  sourceNotes         ReservationSourceNote[]
+  instructionEvents   InstructionEvent[]
+  guestNotes          GuestNote[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -269,52 +386,59 @@ model Property {
 }
 
 model User {
-  id                      String                   @id @default(uuid()) @db.Uuid
-  email                   String                   @unique
-  name                    String
-  passwordHash            String?
-  status                  RecordStatus             @default(INVITED)
-  mfaSecret               String?
-  mfaEnabled              Boolean                  @default(false)
-  mfaEnrolledAt           DateTime?
-  mfaLastUsedStep         Int?
-  emailVerifiedAt         DateTime?
-  failedLoginAttempts     Int                      @default(0)
-  lockedUntil             DateTime?
-  passwordChangedAt       DateTime?
-  memberships             Membership[]
-  propertyMemberships     PropertyMembership[]
-  auditEvents             AuditEvent[]             @relation("AuditActor")
-  sessions                Session[]
-  passwordResetTokens     PasswordResetToken[]
-  emailVerificationTokens EmailVerificationToken[]
-  securityEvents          SecurityEvent[]          @relation("SecurityEventSubject")
-  securityActions         SecurityEvent[]          @relation("SecurityEventActor")
-  roomBlocksCreated       RoomBlock[]              @relation("RoomBlockCreatedBy")
-  roomStatusHistory       RoomStatusHistory[]      @relation("RoomStatusHistoryActor")
-  reservationsCreated     Reservation[]            @relation("ReservationCreatedBy")
-  reservationHistory      ReservationHistory[]     @relation("ReservationHistoryActor")
-  staysCheckedIn          Stay[]                   @relation("StayCheckedInBy")
-  staysCheckedOut         Stay[]                   @relation("StayCheckedOutBy")
-  incidentsCreated        Incident[]               @relation("IncidentCreatedBy")
-  incidentsResolved       Incident[]               @relation("IncidentResolvedBy")
-  foliosOpened            Folio[]                  @relation("FolioOpenedBy")
-  folioLinesCreated       FolioLine[]              @relation("FolioLineCreatedBy")
-  paymentsReceived        Payment[]                @relation("PaymentReceivedBy")
-  cashSessionsOpened      CashSession[]            @relation("CashSessionOpenedBy")
-  cashSessionsClosed      CashSession[]            @relation("CashSessionClosedBy")
-  cashMovements           CashMovement[]           @relation("CashMovementRecordedBy")
-  operationalCloses       OperationalClose[]       @relation("OperationalCloseClosedBy")
-  operationalReopens      OperationalClose[]       @relation("OperationalCloseReopenedBy")
-  pilotFeedback           PilotFeedback[]          @relation("PilotFeedbackAuthor")
-  pilotFeedbackReviewed   PilotFeedback[]          @relation("PilotFeedbackReviewer")
-  guestImports            GuestImport[]            @relation("GuestImportCreatedBy")
-  documentTemplatesCreated DocumentTemplate[]      @relation("DocumentTemplateCreatedBy")
-  documentsGenerated      GeneratedDocument[]      @relation("DocumentGeneratedBy")
-  documentsReceived       GeneratedDocument[]      @relation("DocumentReceivedBy")
-  documentPrintEvents     DocumentPrintEvent[]     @relation("DocumentPrintRequestedBy")
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
+  id                       String                   @id @default(uuid()) @db.Uuid
+  email                    String                   @unique
+  name                     String
+  passwordHash             String?
+  status                   RecordStatus             @default(INVITED)
+  mfaSecret                String?
+  mfaEnabled               Boolean                  @default(false)
+  mfaEnrolledAt            DateTime?
+  mfaLastUsedStep          Int?
+  emailVerifiedAt          DateTime?
+  failedLoginAttempts      Int                      @default(0)
+  lockedUntil              DateTime?
+  passwordChangedAt        DateTime?
+  memberships              Membership[]
+  propertyMemberships      PropertyMembership[]
+  auditEvents              AuditEvent[]             @relation("AuditActor")
+  sessions                 Session[]
+  passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+  securityEvents           SecurityEvent[]          @relation("SecurityEventSubject")
+  securityActions          SecurityEvent[]          @relation("SecurityEventActor")
+  roomBlocksCreated        RoomBlock[]              @relation("RoomBlockCreatedBy")
+  roomStatusHistory        RoomStatusHistory[]      @relation("RoomStatusHistoryActor")
+  reservationsCreated      Reservation[]            @relation("ReservationCreatedBy")
+  reservationHistory       ReservationHistory[]     @relation("ReservationHistoryActor")
+  staysCheckedIn           Stay[]                   @relation("StayCheckedInBy")
+  staysCheckedOut          Stay[]                   @relation("StayCheckedOutBy")
+  incidentsCreated         Incident[]               @relation("IncidentCreatedBy")
+  incidentsResolved        Incident[]               @relation("IncidentResolvedBy")
+  foliosOpened             Folio[]                  @relation("FolioOpenedBy")
+  folioLinesCreated        FolioLine[]              @relation("FolioLineCreatedBy")
+  paymentsReceived         Payment[]                @relation("PaymentReceivedBy")
+  cashSessionsOpened       CashSession[]            @relation("CashSessionOpenedBy")
+  cashSessionsClosed       CashSession[]            @relation("CashSessionClosedBy")
+  cashMovements            CashMovement[]           @relation("CashMovementRecordedBy")
+  operationalCloses        OperationalClose[]       @relation("OperationalCloseClosedBy")
+  operationalReopens       OperationalClose[]       @relation("OperationalCloseReopenedBy")
+  pilotFeedback            PilotFeedback[]          @relation("PilotFeedbackAuthor")
+  pilotFeedbackReviewed    PilotFeedback[]          @relation("PilotFeedbackReviewer")
+  guestImports             GuestImport[]            @relation("GuestImportCreatedBy")
+  documentTemplatesCreated DocumentTemplate[]       @relation("DocumentTemplateCreatedBy")
+  documentsGenerated       GeneratedDocument[]      @relation("DocumentGeneratedBy")
+  documentsReceived        GeneratedDocument[]      @relation("DocumentReceivedBy")
+  documentPrintEvents      DocumentPrintEvent[]     @relation("DocumentPrintRequestedBy")
+  instructionsCreated      ReservationInstruction[] @relation("InstructionCreatedBy")
+  instructionsCompleted    ReservationInstruction[] @relation("InstructionCompletedBy")
+  instructionsAssigned     ReservationInstruction[] @relation("InstructionAssignedTo")
+  instructionEvents        InstructionEvent[]       @relation("InstructionEventActor")
+  sourceNotesImported      ReservationSourceNote[]   @relation("SourceNoteImportedBy")
+  guestNotesCreated        GuestNote[]              @relation("GuestNoteCreatedBy")
+  guestNotesUpdated        GuestNote[]              @relation("GuestNoteUpdatedBy")
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
 
   @@index([status])
   @@index([lockedUntil])
@@ -535,28 +659,63 @@ model RoomStatusHistory {
 }
 
 model Guest {
-  id             String             @id @default(uuid()) @db.Uuid
-  organizationId String             @db.Uuid
-  propertyId     String             @db.Uuid
-  fullName       String
-  email          String?
-  phone          String?
-  documentType   GuestDocumentType?
-  documentNumber String?
-  notes          String?
-  status         RecordStatus       @default(ACTIVE)
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property       Property           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  reservations   Reservation[]
-  stays          Stay[]
-  documents      GeneratedDocument[] @relation("DocumentGuest")
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id                String              @id @default(uuid()) @db.Uuid
+  organizationId    String              @db.Uuid
+  propertyId        String              @db.Uuid
+  fullName          String
+  email             String?
+  phone             String?
+  documentType      GuestDocumentType?
+  documentNumber    String?
+  notes             String?
+  status            RecordStatus        @default(ACTIVE)
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property          Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservations      Reservation[]
+  stays             Stay[]
+  fnrhProfile       GuestFnrhProfile?
+  reservationGuests ReservationGuest[]  @relation("ReservationGuestGuest")
+  documents         GeneratedDocument[] @relation("DocumentGuest")
+  notesHistory      GuestNote[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
   @@unique([organizationId, propertyId, id])
   @@index([organizationId, propertyId, status])
   @@index([organizationId, propertyId, fullName])
   @@index([organizationId, propertyId, email])
+}
+
+/// FNRH-specific data kept separate from the operational guest profile. The
+/// profile is optional and only the fields needed by the integration are
+/// populated; it is never returned by the guest list.
+model GuestFnrhProfile {
+  guestId                String       @id @db.Uuid
+  organizationId         String       @db.Uuid
+  propertyId             String       @db.Uuid
+  socialName             String?
+  birthDate              DateTime?    @db.Date
+  nationalityCountryCode String?      @db.VarChar(2)
+  residenceCountryCode   String?      @db.VarChar(2)
+  genderCode             String?      @db.VarChar(32)
+  raceCode               String?      @db.VarChar(32)
+  disabilityCode         String?      @db.VarChar(32)
+  disabilityTypeCode     String?      @db.VarChar(32)
+  postalCode             String?      @db.VarChar(16)
+  street                 String?      @db.VarChar(160)
+  number                 String?      @db.VarChar(20)
+  complement             String?      @db.VarChar(80)
+  district               String?      @db.VarChar(80)
+  cityIbgeCode           String?      @db.VarChar(7)
+  cityName               String?      @db.VarChar(120)
+  stateCode              String?      @db.VarChar(2)
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property               Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  guest                  Guest        @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  @@index([organizationId, propertyId])
 }
 
 /// A stay for one or more guests. `checkInDate`/`checkOutDate` are hotel
@@ -589,11 +748,14 @@ model Reservation {
   room               Room?                @relation(fields: [roomId], references: [id], onDelete: Restrict)
   createdBy          User?                @relation("ReservationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   history            ReservationHistory[]
+  guests             ReservationGuest[]
   stay               Stay?
   incidents          Incident[]
   folios             Folio[]
   payments           Payment[]
   documents          GeneratedDocument[]
+  instructions       ReservationInstruction[]
+  sourceNotes        ReservationSourceNote[]
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
@@ -603,6 +765,38 @@ model Reservation {
   @@index([organizationId, propertyId, status, checkInDate])
   @@index([organizationId, propertyId, roomId, checkInDate, checkOutDate])
   @@index([organizationId, propertyId, guestId])
+}
+
+/// Reservation-scoped party. Exactly one PRIMARY must match
+/// Reservation.guestId; companions and dependents are optional. Minors and
+/// legally incapable adults point at an adult responsible in the same party.
+model ReservationGuest {
+  id                            String                 @id @default(uuid()) @db.Uuid
+  organizationId                String                 @db.Uuid
+  propertyId                    String                 @db.Uuid
+  reservationId                 String                 @db.Uuid
+  guestId                       String                 @db.Uuid
+  role                          ReservationGuestRole
+  ageGroup                      GuestAgeGroup          @default(UNKNOWN)
+  legalIncapacity               Boolean                @default(false)
+  minorSupervision              MinorSupervision?
+  authorizationReference        String?                @db.VarChar(120)
+  origin                        ReservationGuestOrigin @default(MANUAL)
+  responsibleReservationGuestId String?                @db.Uuid
+  organization                  Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property                      Property               @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservation                   Reservation            @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  guest                         Guest                  @relation("ReservationGuestGuest", fields: [guestId], references: [id], onDelete: Restrict)
+  responsible                   ReservationGuest?      @relation("ReservationGuestResponsible", fields: [responsibleReservationGuestId], references: [id], onDelete: Restrict)
+  dependents                    ReservationGuest[]     @relation("ReservationGuestResponsible")
+  createdAt                     DateTime               @default(now())
+  updatedAt                     DateTime               @updatedAt
+
+  @@unique([reservationId, guestId])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, reservationId])
+  @@index([organizationId, propertyId, guestId])
+  @@index([responsibleReservationGuestId])
 }
 
 /// Append-only trail for reservation creation, modification, room assignment
@@ -632,32 +826,32 @@ model ReservationHistory {
 /// One front-office stay per reservation. Occupancy is derived from an
 /// `IN_HOUSE` stay and is intentionally separate from housekeeping state.
 model Stay {
-  id                 String       @id @default(uuid()) @db.Uuid
-  organizationId     String       @db.Uuid
-  propertyId         String       @db.Uuid
-  reservationId      String       @unique @db.Uuid
-  guestId            String       @db.Uuid
-  roomId             String       @db.Uuid
-  status             StayStatus   @default(IN_HOUSE)
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  propertyId         String              @db.Uuid
+  reservationId      String              @unique @db.Uuid
+  guestId            String              @db.Uuid
+  roomId             String              @db.Uuid
+  status             StayStatus          @default(IN_HOUSE)
   checkedInAt        DateTime
-  checkedInByUserId  String?      @db.Uuid
+  checkedInByUserId  String?             @db.Uuid
   checkedOutAt       DateTime?
-  checkedOutByUserId String?      @db.Uuid
+  checkedOutByUserId String?             @db.Uuid
   checkOutNotes      String?
-  moveCount          Int          @default(0)
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property           Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  reservation        Reservation  @relation(fields: [reservationId], references: [id], onDelete: Restrict)
-  guest              Guest        @relation(fields: [guestId], references: [id], onDelete: Restrict)
-  room               Room         @relation(fields: [roomId], references: [id], onDelete: Restrict)
-  checkedInBy        User?        @relation("StayCheckedInBy", fields: [checkedInByUserId], references: [id], onDelete: SetNull)
-  checkedOutBy       User?        @relation("StayCheckedOutBy", fields: [checkedOutByUserId], references: [id], onDelete: SetNull)
+  moveCount          Int                 @default(0)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservation        Reservation         @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  guest              Guest               @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  room               Room                @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  checkedInBy        User?               @relation("StayCheckedInBy", fields: [checkedInByUserId], references: [id], onDelete: SetNull)
+  checkedOutBy       User?               @relation("StayCheckedOutBy", fields: [checkedOutByUserId], references: [id], onDelete: SetNull)
   incidents          Incident[]
   folios             Folio[]
   payments           Payment[]
   documents          GeneratedDocument[]
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@unique([organizationId, propertyId, id])
   @@index([organizationId, propertyId, status])
@@ -772,11 +966,11 @@ model Folio {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  stay         Stay?        @relation(fields: [stayId], references: [id], onDelete: Restrict)
-  reservation  Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
-  openedBy     User?        @relation("FolioOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  stay         Stay?               @relation(fields: [stayId], references: [id], onDelete: Restrict)
+  reservation  Reservation?        @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  openedBy     User?               @relation("FolioOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
   lines        FolioLine[]
   payments     Payment[]
   documents    GeneratedDocument[]
@@ -944,21 +1138,21 @@ model OperationalClose {
 /// controlled sections only: it is escaped by the renderer and never treated
 /// as arbitrary HTML.
 model DocumentTemplate {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid
-  propertyId     String       @db.Uuid
-  key            String       @db.VarChar(64)
-  name           String       @db.VarChar(160)
-  locale         String       @default("pt-BR") @db.VarChar(10)
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  propertyId     String    @db.Uuid
+  key            String    @db.VarChar(64)
+  name           String    @db.VarChar(160)
+  locale         String    @default("pt-BR") @db.VarChar(10)
   version        Int
-  title          String       @db.VarChar(200)
-  body           String       @db.Text
-  isPublished    Boolean      @default(false)
-  isActive       Boolean      @default(true)
-  createdById    String?      @db.Uuid
+  title          String    @db.VarChar(200)
+  body           String    @db.Text
+  isPublished    Boolean   @default(false)
+  isActive       Boolean   @default(true)
+  createdById    String?   @db.Uuid
   publishedAt    DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property     Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
@@ -973,35 +1167,35 @@ model DocumentTemplate {
 /// for v1 because the product has no object-storage provider; downloads are
 /// authenticated and never expose a public storage URL.
 model GeneratedDocument {
-  id               String         @id @default(uuid()) @db.Uuid
-  organizationId   String         @db.Uuid
-  propertyId       String         @db.Uuid
-  templateId       String         @db.Uuid
-  number           String         @db.VarChar(48)
-  documentType     String         @db.VarChar(64)
-  status           DocumentStatus @default(GENERATED)
-  locale           String         @db.VarChar(10)
-  templateVersion  Int
-  guestId          String?        @db.Uuid
-  reservationId    String?        @db.Uuid
-  stayId           String?        @db.Uuid
-  folioId          String?        @db.Uuid
-  generatedById    String?        @db.Uuid
-  generatedAt      DateTime       @default(now())
-  snapshot         Json
-  content          Bytes
-  mimeType         String         @default("application/pdf") @db.VarChar(80)
-  fileSizeBytes    Int
-  pageCount        Int
-  sha256           String         @db.VarChar(64)
-  storageKey       String         @db.VarChar(160)
-  receivedAt       DateTime?
-  receivedById     String?        @db.Uuid
-  receivedNotes    String?        @db.Text
-  voidedAt         DateTime?
-  voidReason       String?        @db.Text
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @db.Uuid
+  propertyId      String         @db.Uuid
+  templateId      String         @db.Uuid
+  number          String         @db.VarChar(48)
+  documentType    String         @db.VarChar(64)
+  status          DocumentStatus @default(GENERATED)
+  locale          String         @db.VarChar(10)
+  templateVersion Int
+  guestId         String?        @db.Uuid
+  reservationId   String?        @db.Uuid
+  stayId          String?        @db.Uuid
+  folioId         String?        @db.Uuid
+  generatedById   String?        @db.Uuid
+  generatedAt     DateTime       @default(now())
+  snapshot        Json
+  content         Bytes
+  mimeType        String         @default("application/pdf") @db.VarChar(80)
+  fileSizeBytes   Int
+  pageCount       Int
+  sha256          String         @db.VarChar(64)
+  storageKey      String         @db.VarChar(160)
+  receivedAt      DateTime?
+  receivedById    String?        @db.Uuid
+  receivedNotes   String?        @db.Text
+  voidedAt        DateTime?
+  voidReason      String?        @db.Text
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property     Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
@@ -1038,4 +1232,139 @@ model DocumentPrintEvent {
   requestedBy    User?                  @relation("DocumentPrintRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
 
   @@index([organizationId, propertyId, documentId, requestedAt])
+}
+
+/// Structured reservation note or operational instruction. Descriptive notes
+/// and actionable instructions share the same record; `actionType` marks the
+/// actions that require a human to execute them in another module. Creating one
+/// never changes tariffs, folios, cash or payments.
+model ReservationInstruction {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  organizationId     String                    @db.Uuid
+  propertyId         String                    @db.Uuid
+  reservationId      String                    @db.Uuid
+  sourceNoteId       String?                   @db.Uuid
+  category           InstructionCategory       @default(GENERAL)
+  title              String                    @db.VarChar(160)
+  body               String                    @db.Text
+  priority           InstructionPriority       @default(NORMAL)
+  status             InstructionStatus         @default(NEW)
+  source             InstructionSource         @default(RESERVATIONS)
+  sourceDepartment   String?                   @db.VarChar(64)
+  visibility         InstructionVisibility     @default(ALL_AUTHORIZED)
+  assignedDepartment String?                   @db.VarChar(64)
+  assignedUserId     String?                   @db.Uuid
+  actionType         InstructionActionType?
+  executionMoment    InstructionExecutionMoment?
+  paymentMethod      InstructionPaymentMethod?
+  actionDueAt        DateTime?
+  validFrom          DateTime?
+  validUntil         DateTime?
+  completedAt        DateTime?
+  completedByUserId  String?                   @db.Uuid
+  createdByUserId    String?                   @db.Uuid
+  dedupeKey          String?                   @db.VarChar(64)
+  metadata           Json?
+  organization       Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property           Property                    @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservation        Reservation                 @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  sourceNote         ReservationSourceNote?      @relation(fields: [sourceNoteId], references: [id], onDelete: SetNull)
+  assignedUser       User?                       @relation("InstructionAssignedTo", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  completedBy        User?                       @relation("InstructionCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  createdBy          User?                       @relation("InstructionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  events              InstructionEvent[]
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+
+  @@unique([organizationId, propertyId, id])
+  @@unique([sourceNoteId, dedupeKey])
+  @@index([organizationId, propertyId, reservationId, status, priority], map: "ReservationInstruction_reservation_status_priority_idx")
+  @@index([organizationId, propertyId, reservationId, executionMoment], map: "ReservationInstruction_reservation_moment_idx")
+  @@index([organizationId, propertyId, actionDueAt], map: "ReservationInstruction_action_due_idx")
+  @@index([organizationId, propertyId, assignedDepartment, status], map: "ReservationInstruction_assigned_department_idx")
+}
+
+/// Immutable original text imported from a channel or pasted by staff. Card
+/// numbers and CVV are redacted before persistence; `sourceTextHash` keeps a
+/// verifiable digest of the exact received text and `contentHash` de-duplicates
+/// retries for the same parser version.
+model ReservationSourceNote {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  organizationId      String                    @db.Uuid
+  propertyId          String                    @db.Uuid
+  reservationId       String                    @db.Uuid
+  sourceTextOriginal  String                    @db.Text
+  sourceTextHash      String                    @db.VarChar(64)
+  contentHash         String                    @db.VarChar(64)
+  parserVersion       String                    @db.VarChar(32)
+  redacted            Boolean                   @default(false)
+  suggestions         Json
+  warnings            Json
+  sourceSystem        String?                   @db.VarChar(64)
+  sourceDepartment    String?                   @db.VarChar(64)
+  externalReference   String?                   @db.VarChar(120)
+  importedByUserId    String?                   @db.Uuid
+  importedAt          DateTime                  @default(now())
+  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property            Property                  @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservation         Reservation               @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  importedBy          User?                     @relation("SourceNoteImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
+  instructions        ReservationInstruction[]
+  createdAt           DateTime                  @default(now())
+
+  @@unique([reservationId, contentHash, parserVersion], map: "ReservationSourceNote_content_version_key")
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, reservationId, importedAt], map: "ReservationSourceNote_reservation_imported_idx")
+}
+
+/// Append-only timeline for instruction status changes. The database trigger
+/// rejects UPDATE/DELETE/TRUNCATE.
+model InstructionEvent {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @db.Uuid
+  propertyId     String               @db.Uuid
+  instructionId  String               @db.Uuid
+  eventType      InstructionEventType
+  actorUserId    String?              @db.Uuid
+  fromStatus     InstructionStatus?
+  toStatus       InstructionStatus?
+  reason         String?
+  metadata       Json?
+  occurredAt     DateTime             @default(now())
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property       Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  instruction    ReservationInstruction @relation(fields: [instructionId], references: [id], onDelete: Cascade)
+  actor          User?                @relation("InstructionEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, propertyId, instructionId, occurredAt], map: "InstructionEvent_instruction_occurred_idx")
+}
+
+/// Persistent guest preference or alert. Guest notes are intentionally separate
+/// from reservation instructions and are never copied into a reservation
+/// automatically.
+model GuestNote {
+  id              String                @id @default(uuid()) @db.Uuid
+  organizationId  String                @db.Uuid
+  propertyId      String                @db.Uuid
+  guestId         String                @db.Uuid
+  category        InstructionCategory   @default(GENERAL)
+  body            String                @db.Text
+  priority        InstructionPriority   @default(NORMAL)
+  visibility      InstructionVisibility @default(ALL_AUTHORIZED)
+  purpose         String?               @db.VarChar(64)
+  expiresAt       DateTime?
+  isActive        Boolean               @default(true)
+  createdByUserId String?               @db.Uuid
+  updatedByUserId String?               @db.Uuid
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property        Property              @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  guest           Guest                 @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  createdBy       User?                 @relation("GuestNoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedBy       User?                 @relation("GuestNoteUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, guestId, isActive])
+  @@index([organizationId, propertyId, expiresAt])
 }

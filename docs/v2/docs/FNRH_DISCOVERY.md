@@ -1,98 +1,75 @@
-# FNRH Digital — Discovery y límites de integración
+# FNRH Digital — Discovery y baseline oficial
 
-- Estado: discovery abierto. No hay integración externa implementada.
+- Estado: **discovery cerrado; plan de integración definido; integración externa no implementada**.
 - Fecha de este corte: 2026-11-13.
-- Alcance: entender qué falta para integrar NOVA PMS con la FNRH Digital sin inventar endpoints, credenciales, reglas fiscales ni comportamiento de proveedores.
-- Fuente normativa de referencia: Portaria MTur 41/2025 y la documentación oficial de integração/API publicada por el Ministerio de Turismo. La consulta interna de `docs/v2/docs/TECHNICAL_DESIGN.md` menciona API 2.4.2 en la página oficial al 2026-11-10; **ese dato no se verificó descargando el manual vigente en este workspace**.
+- Plan ejecutable: `docs/v2/docs/FNRH_INTEGRATION_PLAN.md`.
+- Decisión: ADR-045 y ADR-046 en `docs/DECISIONS.md`.
 
-## 1. Qué está confirmado y qué no
+## 1. Qué quedó confirmado
 
-| Tema                                                                  | Estado                                      | Evidencia / límite                                                                                                               |
-| --------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| La FNRH Digital sustituye la ficha física con contingencias previstas | Confirmado a nivel normativo general        | Portaria MTur 41/2025, según el resumen del `TECHNICAL_DESIGN`; leer el texto íntegro antes de afirmar una contingencia concreta |
-| Existe una API de integración PMS                                     | Confirmado por la documentación de producto | Página oficial de integración citada en el diseño técnico                                                                        |
-| Versión vigente del manual/API                                        | **No confirmado**                           | La referencia a 2.4.2 es una consulta histórica, no un manual descargado ni un changelog validado                                |
-| Autenticación, credenciales por establecimiento y homologación        | **No confirmado en detalle**                | Requiere manual y alta en homologación                                                                                           |
-| Endpoints, payloads, códigos de error, límites y rate limits          | **No confirmado**                           | No se debe programar contra nombres inventados                                                                                   |
-| Idempotencia, retry y reconciliación                                  | **No confirmado**                           | Debe surgir del contrato oficial                                                                                                 |
-| Datos obligatorios de huéspedes/dependientes y retención              | **No confirmado**                           | Requiere texto normativo y definición legal del piloto                                                                           |
-| Contingencia legal mediante PDF interno                               | **No confirmado**                           | No declarar que el paquete Documents v1 sustituye la FNRH                                                                        |
-| Modelo de auditoría exigido al PMS                                    | **No confirmado en detalle**                | El diseño asume trazabilidad, pero el formato lo define el contrato oficial                                                      |
+La consulta oficial del 2026-11-13 encontró la página **Meios de Hospedagem com PMS** del Ministerio de Turismo, actualizada el 20/08/2026, con la documentación vigente:
 
-La regla operativa es simple: **si un dato no está en esta tabla como confirmado, no se implementa como si lo estuviera**.
+- [Manual API 2.4.2](https://www.gov.br/turismo/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/ficha-nacional-de-registro-de-hospedes/modulo-meio-de-hospedagem/meios-de-hospedagem-com-pms/documentacao-api-v2-4-2.pdf/@@display-file/file), publicado el 20/08/2026; el PDF se titula “Versão 2.4 de 19/06/2026”.
+- [Changelog 2.4.2](https://www.gov.br/turismo/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/ficha-nacional-de-registro-de-hospedes/modulo-meio-de-hospedagem/meios-de-hospedagem-com-pms/changelog-api-v2-4-2.pdf/@@display-file/file), del 03/08/2026. No cambia endpoints, auth ni reglas; agrega Email/Teléfono al retorno de `GET /pessoas/documento/{tipo}/{numero}`.
+- [Generación de clave API](https://www.gov.br/turismo/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/ficha-nacional-de-registro-de-hospedes/modulo-meio-de-hospedagem/meios-de-hospedagem-com-pms/chave_api.pdf/@@display-file/file): login gov.br con responsable/supervisor, menú “Chaves de API”, generación y rotación. Una clave nueva invalida la anterior.
+- [Ambiente de homologación](https://www.gov.br/turismo/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/ficha-nacional-de-registro-de-hospedes/modulo-meio-de-hospedagem/meios-de-hospedagem-com-pms/AmbienteHomologaoOrientao.pdf/@@display-file/file): instrucciones de acceso al staging de gov.br.
+- [Portaria MTur 41/2025](https://www.in.gov.br/web/dou/-/portaria-mtur-n-41-de-14-de-novembro-de-2025-670238654): FNRH digital, Cadastur, credencial por establecimiento, pre-check-in/check-in/checkout, menores, LGPD, logs y contingencia. La [Portaria MTur 4/2026](https://www.in.gov.br/web/dou/-/portaria-mtur-n-4-de-18-de-fevereiro-de-2026-687612871) fijó su vigencia en 150 días; rige desde el 20/04/2026.
+- [Soporte Serpro](https://form.omni.serpro.gov.br/geral?codigo=3490) para dudas de integración y homologación.
 
-## 2. Fuera de alcance de este corte
+Hechos técnicos confirmados:
 
-- Llamadas reales a la API de FNRH, incluso en homologación.
-- Guardar tokens, certificados o credenciales del establecimiento.
-- Crear endpoints, DTOs o payloads “oficiales” a partir de nombres internos.
-- Declarar cumplimiento fiscal, validez legal o sustitución de la ficha física.
-- Scraping, automatización de portales o ingeniería inversa del proveedor.
-- Enviar datos reales de huéspedes a cualquier entorno externo.
+- API REST v2, JSON UTF-8, HTTPS/TLS 1.2+, versionado en la URL.
+- Autenticación HTTP Basic: `Authorization: Basic base64(usuario:senha)`.
+- Endpoints oficiales para dominios, reservas, huéspedes, personas, hospedaje completo y fichas.
+- Fechas calendario `YYYY-MM-DD`; fecha/hora ISO 8601 UTC con `Z`.
+- `numero_reserva` es único en FNRH.
+- `cpf_solicitante` es obligatorio en operaciones de personas y en `POST /hospedagem/registrar`.
+- La documentación menciona logs de errores de API en el portal para diagnóstico.
 
-## 3. Mapa de datos candidato (para discutir, no contrato)
+## 2. Contradicciones que siguen abiertas
 
-| Dominio NOVA                | Datos que probablemente se necesiten                                     | Observaciones                                                                |
-| --------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `Organization` / `Property` | Establecimiento, CNPJ/identificador, dirección, credencial por propiedad | Confirmar qué identificador exige FNRH y cómo se relaciona con la credencial |
-| `Guest`                     | Nombre, documento, nacionalidad, fecha de nacimiento, contacto           | Minimizar; no asumir que todos los campos son obligatorios                   |
-| `Reservation`               | Código, fechas, cantidad de huéspedes, estado                            | Confirmar mapeo de estados y cancelaciones                                   |
-| `Stay`                      | Check-in/check-out reales, habitación, acompañantes                      | Confirmar si FNRH usa fechas/horas locales o instantes                       |
-| `User` / actor              | Operador que confirma una operación                                      | No enviar credenciales; la auditoría local sigue siendo necesaria            |
-| Documents                   | Ficha interna, términos y PDF                                            | No equivalen automáticamente a FNRH ni a una contingencia aceptada           |
+No se resuelven por suposición; están bloqueadas en la puerta de aceptación del plan:
 
-## 4. Flujo propuesto, sujeto a contrato oficial
+1. **URL base:** el manual declara `fnrh.turismo.serpro.gov.br/FNRH_API/rest/v2`, pero sus ejemplos usan `api.fnrh.gov.br`. Debe confirmarse con Serpro.
+2. **Credencial:** la Portaria habla de identificador + clave/token; el manual usa Basic usuario:senha. No asumir que el usuario es el identificador.
+3. **Paginación:** el manual dice que la primera página es 1, pero un ejemplo usa `page_number=0`.
+4. **Campos obligatorios:** el Swagger no marca required en varios DTO; el manual y la Portaria exigen más datos.
+5. **`cpf_solicitante`:** no existe en NOVA; hay que definir de quién es, con qué finalidad y base legal.
+6. **Idempotencia y rate limits:** no se encontró un contrato explícito en manual, changelog ni Swagger revisados. No se enviará una clave de idempotencia inventada.
 
-1. Habilitar la integración por propiedad mediante feature flag y credencial cifrada.
-2. Validar el establecimiento contra el entorno de homologación.
-3. Mapear y validar los datos mínimos de la reserva/huésped antes de enviar.
-4. Enviar la operación con una clave de idempotencia definida por el contrato oficial.
-5. Persistir localmente un registro de intento, referencia externa, estado y errores seguros.
-6. Ante timeout, consultar estado o reintentar **solo** si el contrato lo permite; nunca crear un segundo registro por un timeout.
-7. Reconciliar estados y mostrar al operador pendientes/errores sin exponer tokens ni PII innecesaria.
-8. Mantener la auditoría local append-only, separando el evento interno del acuse externo.
+## 3. Brecha de datos de NOVA
 
-Este flujo no se implementa hasta confirmar cada paso con el manual y la homologación.
+La integración no puede empezar sólo con el modelo actual:
 
-## 5. Seguridad y LGPD
+- `Guest` no tiene nombre social, nacionalidad, país de residencia, fecha de nacimiento, género, raza/etnia, discapacidad ni dirección.
+- `GuestDocumentType` no distingue CPF de RG; `NATIONAL_ID` no se puede asumir como CPF.
+- La reserva guarda conteos de adultos/menores, pero no huéspedes individuales ni responsables de menores.
+- `Stay` tiene un solo `guestId`; FNRH requiere una ficha por huésped.
+- No hay identificadores externos de FNRH, configuración por establecimiento, credencial cifrada ni ledger de operaciones.
+- `Property` no tiene Cadastur/CNPJ/dirección; parte de eso se gestiona en el portal, no necesariamente en el payload, pero debe resolverse en el onboarding.
 
-- Credenciales por establecimiento en un secret manager/KMS; nunca en frontend, logs, auditoría, capturas ni repositorio. `credentialRef` es una referencia, no el token.
-- Separar homologación y producción; no reutilizar credenciales ni datos.
-- No registrar payloads completos, documentos de identidad ni tokens. Loguear como máximo referencia externa, código seguro y conteos.
-- Aplicar minimización: enviar solo los campos exigidos y durante la finalidad de hospedaje.
-- Definir retención, derecho de acceso/rectificación y borrado antes de producción.
-- Rate limiting, timeout, circuit breaker y alertas de errores; la cola/outbox, si se adopta, debe ser idempotente.
-- Validar que un error del proveedor no convierta una operación local en “cumplida” sin acuse.
+Cualquier campo nuevo de PII requiere finalidad, base legal, retención y control de acceso aprobados antes de migrar.
 
-## 6. Preguntas abiertas para producto, legal y hotel piloto
+El diseño detallado de la fiesta de reserva, acompañantes, menores, perfil FNRH y migración aditiva está en `FNRH_GUEST_MODEL.md`; la revisión oficial y las firmas pendientes están en `FNRH_GUEST_MODEL_REVIEW.md`. No se implementó ni se ejecutó ninguna migración.
 
-1. ¿Cuál es el manual/changelog oficial vigente y cuál es la versión contractual que el piloto debe usar?
-2. ¿Cómo se obtiene la homologación y qué credencial corresponde a cada establecimiento?
-3. ¿Qué operaciones son obligatorias: pre-check-in, check-in, checkout, cancelación, no-show y correcciones?
-4. ¿Qué identificadores de persona y documento son obligatorios, y cómo se tratan acompañantes y menores?
-5. ¿Qué reglas aplican a huéspedes extranjeros, documentos no brasileños y datos faltantes?
-6. ¿FNRH usa fecha calendario, hora local del establecimiento o un instante con offset?
-7. ¿Cuál es la semántica oficial de idempotencia, timeout, retry y reconciliación?
-8. ¿Qué errores son recuperables y cuáles requieren intervención humana?
-9. ¿Qué auditoría y retención exige el proveedor, y qué evidencia debe conservar NOVA?
-10. ¿Qué contingencia permite la norma cuando el establecimiento no tiene conectividad?
-11. ¿Un PDF interno puede usarse como contingencia? ¿Con qué texto, firma y plazo?
-12. ¿Qué datos pueden mostrarse en reportes internos sin ampliar la finalidad del tratamiento?
+## 4. Límites que se mantienen
 
-## 7. Puerta de aceptación para empezar a codificar
+- No hay llamadas reales a FNRH, ni siquiera en homologación, hasta completar la puerta de aceptación.
+- No se guardan credenciales en el repositorio, frontend, logs ni auditoría.
+- No se declara la ficha interna de NOVA como FNRH ni como contingencia legal.
+- No se implementan endpoints, payloads o headers “oficiales” sin validarlos contra el manual y la homologación.
+- No se envían datos reales de huéspedes a staging.
 
-No se abre un PR de integración hasta cumplir todos estos puntos:
+## 5. Siguiente paso
 
-- [ ] Manual oficial vigente descargado y versionado como referencia interna (sin secretos).
-- [ ] Changelog y versión de API confirmados.
-- [ ] Entorno de homologación y credencial de prueba disponibles por canal seguro.
-- [ ] Contrato de autenticación, endpoints, payloads, errores, límites e idempotencia revisado.
-- [ ] Mapa de datos aprobado por producto/legal, con campos obligatorios y minimización.
-- [ ] Diseño de timeout/retry/reconciliación aprobado.
-- [ ] Política de logs, retención y feature flag aprobada.
-- [ ] Casos de prueba con datos sintéticos y criterios de rollback definidos.
-- [ ] Confirmación explícita de que Documents v1 no se presenta como FNRH ni como contingencia legal.
+El plan `FNRH_INTEGRATION_PLAN.md` define:
 
-## 8. Relación con el código actual
+1. baseline oficial y contradicciones;
+2. brecha de datos;
+3. módulo `integrations/fnrh` y puerto interno;
+4. ledger de operaciones y reconciliación sin idempotencia inventada;
+5. mapeo de eventos de reserva, huésped, check-in, checkout, no-show y cancelación;
+6. fases de homologación, pruebas, rollout y rollback;
+7. puerta de aceptación antes de escribir el cliente HTTP.
 
-`docs/v2/src-starters/fnrh-adapter.interface.ts` es un puerto interno de intención. Nombres como `healthCheck`, `synchronizeReservation` o `submitPreCheckIn` **no** son endpoints oficiales. El paquete de documentos actual genera PDFs internos con snapshot y auditoría; no se conecta a FNRH y no debe describirse como integración fiscal.
+La integración sigue **no implementada** y sin fecha comprometida hasta resolver los puntos abiertos y obtener credenciales de homologación.

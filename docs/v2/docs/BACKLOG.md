@@ -28,7 +28,7 @@
 
 ## EPIC D — UX contextual (P1)
 
-- [ ] Ação Documentos em hóspede: sigue pendiente; la generación está atada a una reserva y la lista de huéspedes no elige reserva.
+- [x] Ação Documentos em hóspede: selector de reserva dentro del mismo modal, con reservas canceladas/no-show excluidas.
 - [x] Ação Documentos em reserva, check-in, check-out e folio.
 - [x] Modal seletora de template, preview ampla e histórico dentro del modal.
 - [x] Estados loading/empty/error/denied.
@@ -55,14 +55,21 @@
 
 ## EPIC G — FNRH discovery (P0 discovery, P2 integration)
 
-- [ ] Baixar manual API e changelog oficial vigente.
-- [ ] Confirmar versão, auth, homologação, endpoints, payloads, erros, limites, idempotência.
+- [x] Baixar manual API 2.4.2, changelog, clave e instruções de homologação.
+- [x] Confirmar versão, auth, endpoints principais, formatos e códigos de erro; contradições registradas.
 - [x] Mapear Guest/Reservation/Stay/dependentes (mapa candidato, não contrato).
-- [x] ADR para credenciais, retry, reconciliação e logs.
+- [x] ADR-045/046 para credenciais, retry, reconciliação e logs.
+- [x] Plan de integração, adapter, homologação e critérios de aceite em `FNRH_INTEGRATION_PLAN.md`.
+- [x] Desenho do modelo/migração de hóspedes, acompanhantes e menores em `FNRH_GUEST_MODEL.md`; não implementado.
+- [x] Revisão oficial e matriz de firmas de produto/legal em `FNRH_GUEST_MODEL_REVIEW.md`; aprovações pendentes.
+- [x] Decisões de produto P-01 a P-06 registradas para planejamento; ratificação humana e decisões legais pendentes.
+- [x] Fluxo de UI de acompanhantes/menores em `FNRH_GUEST_UI_FLOW.md`; não implementado.
+- [x] Protótipo navegável da festa da reserva em `prototypes/fnrh-party/index.html`; dados sintéticos, sem backend.
+- [ ] Resolver URL base, formato de credencial, paginação e `cpf_solicitante` com Serpro/legal.
 - [ ] Adapter + mocks somente após contrato confirmado.
 - [ ] Homologação com dados sintéticos; pilot por feature flag; produção após validação.
 
-> Discovery documentado el 2026-11-13 en `FNRH_DISCOVERY.md` y ADR-045. No se descargó el manual, no se abrió homologación y no se implementaron llamadas ni endpoints. La integración sigue bloqueada por la puerta de aceptación del documento.
+> Baseline oficial y plan documentados el 2026-11-13 en `FNRH_DISCOVERY.md` y `FNRH_INTEGRATION_PLAN.md`, con ADR-045/046. El manual 2.4.2 está descargado y enlazado, pero no hay credenciales de homologación ni se implementaron llamadas. La integración sigue bloqueada por la puerta de aceptación del plan, no por falta de discovery.
 
 ## Ordem recomendada
 

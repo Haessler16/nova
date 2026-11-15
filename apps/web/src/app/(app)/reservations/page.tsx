@@ -40,6 +40,8 @@ import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { DateField } from '@/components/date-field';
 import { ReservationDocuments } from '@/components/documents-panel';
+import { ReservationInstructions } from '@/components/instructions-panel';
+import { ReservationParty } from '@/components/reservation-party';
 import { DownloadIcon } from '@/components/icons';
 import {
   Field,
@@ -1542,6 +1544,22 @@ function ReservationsContent() {
                       Editar datos del huésped
                     </Button>
                   )}
+
+                  <ReservationParty
+                    reservationId={selectedReservation.id}
+                    checkInDate={selectedReservation.checkInDate}
+                    editable={selectedReservation.status === 'CONFIRMED'}
+                    onChanged={bumpDetail}
+                  />
+
+                  <ReservationInstructions
+                    reservationId={selectedReservation.id}
+                    canManage={
+                      selectedReservation.status !== 'CANCELLED' &&
+                      selectedReservation.status !== 'CHECKED_OUT'
+                    }
+                    onChanged={bumpDetail}
+                  />
 
                   {selectedReservation.notes !== null && (
                     <Box>

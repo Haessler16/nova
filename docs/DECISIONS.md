@@ -813,15 +813,72 @@ These choices should be confirmed against the existing repository and current st
 
 ### ADR-045 — FNRH Digital remains a discovery/integration boundary, not an invented API client
 
-- Status: accepted (discovery only; integration deferred).
+- Status: accepted (official manual confirmed; integration still deferred).
 - Date: 2026-11-13.
-- Context: Portaria MTur 41/2025 establishes the FNRH Digital and anticipates PMS/API integration, credentials per establishment and an audit trail. The v2 technical draft mentions that the official integration page listed API 2.4.2 during the 2026-11-10 consultation, but the current manual/changelog, homologation access, exact endpoints, payloads, authentication, errors, limits and idempotency contract were not downloaded or confirmed in this workspace.
+- Context: Portaria MTur 41/2025 establishes the FNRH Digital and anticipates PMS/API integration, credentials per establishment and an audit trail. On 2026-11-13 the official MTur page was consulted again: it lists API 2.4.2 and links the manual (`Versão 2.4` of 19/06/2026), the 2.4.2 changelog (03/08/2026), key-generation steps and homologation instructions. The manual confirms REST v2, Basic authentication, the main reservation/guest/person endpoints, date formats and the two base URLs, but it conflicts with its own examples on the base URL and with the Portaria on the credential format; pagination examples also disagree. No official idempotency or rate-limit contract was found in the manual, changelog or public Swagger reviewed.
 - Decision:
-  - Do not implement external FNRH calls, credentials, endpoints, payloads, retries or fiscal assertions in this iteration. Do not treat the internal operations in `docs/v2/src-starters/fnrh-adapter.interface.ts` as an official contract.
-  - Record the discovery scope, known/unknown facts, data mapping and acceptance gates in `docs/v2/docs/FNRH_DISCOVERY.md`.
-  - When integration starts, isolate it behind an internal provider port, use encrypted secret references (never raw tokens in the frontend, repository or logs), separate homologation from production, and require an idempotency/status-reconciliation design confirmed against the official manual.
+  - Do not implement external FNRH calls, credentials, payloads, retries or fiscal assertions until the acceptance gate in `docs/v2/docs/FNRH_INTEGRATION_PLAN.md` is approved. Do not treat the internal operations in `docs/v2/src-starters/fnrh-adapter.interface.ts` as an official contract.
+  - Record the official baseline, contradictions, data mapping, adapter design, homologation phases and acceptance gates in `docs/v2/docs/FNRH_INTEGRATION_PLAN.md`; keep `docs/v2/docs/FNRH_DISCOVERY.md` as the short status document.
+  - Isolate the integration behind an internal provider port, use encrypted secret references (never raw tokens in the frontend, repository or logs), separate homologation from production, and use a local operation ledger with status reconciliation instead of an invented idempotency header.
   - The existing internal PDF/document package is not declared a legal FNRH contingency. That claim requires legal/operational validation and the full current regulation text.
 - Consequences:
-  - The product has no FNRH integration yet; the discovery document is the source of truth for what remains unverified.
+  - The product has no FNRH integration yet; the plan is the source of truth for what remains unverified.
   - No external credentials or sandbox accounts are required to build or test NOVA today.
-  - Integration cannot be estimated responsibly until the official manual, homologation access and pilot requirements are confirmed.
+  - Integration cannot be estimated responsibly until homologation access, the base URL/credential format and the guest/minor data model are confirmed.
+
+### ADR-046 — FNRH integration uses an isolated adapter and a durable operation ledger
+
+- Status: accepted for design; HTTP client blocked on homologation.
+- Date: 2026-11-13.
+- Context: FNRH requires per-establishment credentials, sends personal data (including documents and possibly a requester CPF) and does not publish a confirmed idempotency contract. Calling it directly from reservation, guest or Front Office code would duplicate retries, leak credentials and make ambiguous failures unreconcilable.
+- Decision:
+  - Put the integration in `apps/api/src/integrations/fnrh`, with a NestJS module, an internal `FnrhProvider` port, one HTTP provider, a mapper, an application service, a repository and typed errors. No controller or web component calls FNRH directly.
+  - Persist `FnrhIntegrationConfig` per property/environment, `FnrhOperation` as an append-only state ledger, and external IDs for reservations and guests. The credential is a secret reference, never a database value.
+  - Every operation has a stable local key and one of `PENDING`, `SENDING`, `CONFIRMED`, `FAILED_RETRYABLE`, `FAILED_TERMINAL` or `UNKNOWN`. Ambiguous POSTs become `UNKNOWN` and are reconciled by querying the reservation code or guest document; they are not retried blindly.
+  - Keep the feature flag off by default and scope it per organization/property. Homologation and production use separate configuration and credentials. Rollback disables the flag and leaves the local ledger intact for reconciliation.
+  - Treat the adapter as incomplete until the plan's acceptance gate is satisfied; do not ship a partial HTTP client that can send real PII.
+- Consequences:
+  - A schema migration and a guest/companion model are prerequisites, not follow-up work.
+  - The operation ledger adds storage and reconciliation work but preserves evidence for audit and support.
+  - The integration remains intentionally unable to run in production until credentials, contradictions and legal/privacy decisions are closed.
+
+### ADR-047 — FNRH party is explicit, not inferred from reservation counts
+
+- Status: proposed for design approval; official documentation review applied; product/legal signatures pending; not implemented.
+- Date: 2026-11-13.
+- Context: `Reservation` stores one `guestId` plus `adults`/`children` counts, and `Stay` stores one primary guest. FNRH generates one ficha per guest aged 18 or over; minors and legally incapable people are linked to the responsible person's ficha (Portaria 41/2025, art. 29 and 37; FAQ 2.2). Creating placeholder guests from the counts would fabricate PII; adding FNRH fields directly to `Guest` would expose sensitive data in ordinary guest reads and mix operational and regulatory purposes.
+- Decision:
+  - Keep `Reservation.guestId` as the canonical primary guest and `Stay` as the occupancy/check-in source of truth. Do not drop or rename either in this initiative.
+  - Add `ReservationGuest` with one `PRIMARY` row matching `Reservation.guestId` and explicit `COMPANION` rows. The primary must be an adult and legally capable. Minors carry `ageGroup=MINOR`, `minorSupervision`, and a responsible adult/capable `ReservationGuest` from the same reservation; legally incapable people carry `legalIncapacity=true` and a responsible. Minors do not get an independent FNRH ficha. `adults`/`children` remain operational counts and are compared against the party for FNRH readiness.
+  - Add an optional 1:1 `GuestFnrhProfile` for the additional FNRH fields (social name, birth date, nationality/residence, gender, race/ethnicity, disability and address), rather than widening the general guest profile.
+  - Backfill only the primary row from existing reservations with `ageGroup=UNKNOWN`; never create companion/minor placeholders. Existing `children > 0` reservations remain incomplete until an operator supplies identities.
+  - Extend `GuestDocumentType` with `CPF` and `RG` while keeping legacy values. Only `CPF` and `PASSPORT` are FNRH-ready; do not auto-convert `NATIONAL_ID` to CPF or add a unique document constraint before duplicate cleanup.
+  - Treat `cpf_solicitante` as the CPF of the operator performing the registration, not the guest. Its storage/origin is an integration and legal decision, not a guest-profile field.
+  - Apply the product planning decisions: age at check-in, complete party before batch check-in, no historical sync before the cutover, no `StayGuest` in v1, and operator CPF via `requesterCpfRef` in integration configuration. These remain subject to product-owner ratification in `FNRH_GUEST_MODEL_REVIEW.md`.
+  - Defer per-guest stay timestamps and a `StayGuest` model; initial FNRH check-in/check-out uses the reservation-level `Stay`.
+- Consequences:
+  - The migration is additive and reversible without changing existing reservation/occupancy behavior, but historical reservations with companions will require manual completion before FNRH sync.
+  - Readiness must be computed, not stored, and the FNRH module must not block hotel check-in on incomplete regulatory data.
+  - Product/legal approval is still required for capturing birth date, document, address and minors' data, the legal basis/retention policy, and the origin of `cpf_solicitante`. `FNRH_GUEST_MODEL_REVIEW.md` records the pending signatures.
+
+### ADR-048 — Notes & Instructions v1 separates source text, suggestions, instructions and guest notes
+
+- Status: accepted and implemented for v1.
+- Date: 2026-11-14.
+- Context: reservation observations arrive as long free-text blocks that mix descriptive notes, operational instructions, payment claims, billing requests and confidential information. Converting them automatically into payments, charges, tariffs or room assignments would create irreversible financial and occupancy errors. Existing `Reservation.notes` and `Guest.notes` are single editable fields and cannot express visibility, status, assignment, provenance or audit history.
+- Decision:
+  - Add additive models `ReservationInstruction`, `ReservationSourceNote`, `InstructionEvent` and `GuestNote`. Keep `Reservation.notes`/`Guest.notes` unchanged for compatibility.
+  - Treat `ReservationSourceNote` as immutable: store the redacted original text, a SHA-256 digest of the exact received text (`sourceTextHash`), a normalized content hash for retry de-duplication, the parser version and the stored suggestions. A database trigger rejects UPDATE/DELETE.
+  - Treat `InstructionEvent` as append-only, protected by a database trigger. Status changes and edits write both the event timeline and the general audit log.
+  - Use a deterministic pt-BR parser (`pt-br-notes-v1`) that only proposes suggestions with `requiresHumanConfirmation: true`. Confirmation is a separate endpoint and only creates instruction rows. The parser and confirmation paths never create payments, charges, pre-authorizations, folio lines, tariff changes or room assignments.
+  - Map `PGTO DIRETO NO HOTEL` to a pending `PAYMENT_PREAUTHORIZATION` instruction at `CHECK_IN` with `CREDIT_CARD`. It is neither a completed payment nor an approved authorization. Starting a real pre-authorization remains in the payment module with an explicitly confirmed amount, permission and tokenized provider.
+  - Redact labelled and bare PAN/CVV-like values before persistence. Card data is never stored, logged or copied into instruction metadata; a later real provider token is the only payment credential.
+  - Scope every query and mutation by server-resolved `organizationId` and `propertyId`, with composite tenant foreign keys and explicit reservation/guest lookups. Visibility is derived from permissions: `FRONT_DESK`, `RESERVATIONS`, `FINANCE` (`reports.financial`) and `MANAGEMENT`; `CONFIDENTIAL` additionally requires management-level access.
+  - Keep guest notes separate. Creating or reading a reservation instruction never copies data into `GuestNote`, and guest notes are not injected into future reservations.
+  - Expose REST endpoints under the existing header-based tenant context instead of `/properties/:propertyId/...`, matching current API conventions.
+- Consequences:
+  - The migration is additive and keeps legacy notes; no destructive backfill is performed.
+  - Retries are idempotent by source-note content hash and per-source suggestion dedupe key, but confirmation is intentionally advisory: operators can edit suggestions before confirming.
+  - Ambiguous dates and monetary mentions produce warnings instead of hard failures; the source text remains available for human review.
+  - Real pre-authorization, fiscal document issuance and folio routing are still out of scope and must be implemented in their own modules with their own permissions and providers.
+  - E2E coverage requires an isolated schema because source notes and instruction events reject updates/deletes and seed data must be created idempotently.

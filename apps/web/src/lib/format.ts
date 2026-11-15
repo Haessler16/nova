@@ -9,6 +9,11 @@ import type {
   IncidentSeverity,
   IncidentStatus,
   IncidentType,
+  InstructionActionType,
+  InstructionCategory,
+  InstructionExecutionMoment,
+  InstructionPriority,
+  InstructionStatus,
   OperationalCloseStatus,
   PaymentStatus,
   ReservationStatus,
@@ -86,7 +91,9 @@ export const RESERVATION_STATUS_COLORS: Record<ReservationStatus, string> = {
 };
 
 export const DOCUMENT_TYPE_LABELS: Record<GuestDocumentType, string> = {
+  CPF: 'CPF',
   PASSPORT: 'Pasaporte',
+  RG: 'RG',
   NATIONAL_ID: 'Documento nacional',
   DRIVER_LICENSE: 'Licencia de conducir',
   OTHER: 'Otro',
@@ -292,4 +299,62 @@ export const DOCUMENT_STATUS_COLORS: Record<DocumentStatus, string> = {
   GENERATED: 'sky',
   SIGNATURE_RECEIVED: 'mint',
   VOIDED: 'danger',
+};
+
+export const INSTRUCTION_CATEGORY_LABELS: Record<InstructionCategory, string> = {
+  PAYMENT: 'Pago',
+  MEAL: 'Alimentación',
+  BILLING: 'Facturación',
+  ROOM: 'Habitación',
+  ARRIVAL: 'Llegada',
+  IMPORTANT: 'Importante',
+  EXTRA: 'Extras',
+  CONFIDENTIAL: 'Confidencial',
+  GENERAL: 'General',
+};
+
+export const INSTRUCTION_PRIORITY_LABELS: Record<InstructionPriority, string> = {
+  LOW: 'Baja',
+  NORMAL: 'Normal',
+  HIGH: 'Alta',
+  CRITICAL: 'Crítica',
+};
+
+export const INSTRUCTION_PRIORITY_COLORS: Record<InstructionPriority, string> = {
+  LOW: 'gray',
+  NORMAL: 'sky',
+  HIGH: 'warning',
+  CRITICAL: 'danger',
+};
+
+export const INSTRUCTION_STATUS_LABELS: Record<InstructionStatus, string> = {
+  NEW: 'Nueva',
+  ACKNOWLEDGED: 'Reconocida',
+  IN_PROGRESS: 'En curso',
+  COMPLETED: 'Completada',
+  DISMISSED: 'Descartada',
+  NEEDS_CLARIFICATION: 'Necesita aclaración',
+};
+
+export const INSTRUCTION_STATUS_COLORS: Record<InstructionStatus, string> = {
+  NEW: 'sky',
+  ACKNOWLEDGED: 'brand',
+  IN_PROGRESS: 'warning',
+  COMPLETED: 'mint',
+  DISMISSED: 'gray',
+  NEEDS_CLARIFICATION: 'danger',
+};
+
+export const INSTRUCTION_ACTION_LABELS: Record<InstructionActionType, string> = {
+  PAYMENT_PREAUTHORIZATION: 'Preautorización en check-in',
+  VERIFY_PAYMENT: 'Verificar pago en ledger',
+  BILLING_TASK: 'Tarea de facturación',
+  ARRIVAL_REMINDER: 'Recordatorio de llegada',
+};
+
+export const INSTRUCTION_MOMENT_LABELS: Record<InstructionExecutionMoment, string> = {
+  PRE_ARRIVAL: 'Antes de la llegada',
+  CHECK_IN: 'Check-in',
+  DURING_STAY: 'Durante la estadía',
+  CHECK_OUT: 'Check-out',
 };

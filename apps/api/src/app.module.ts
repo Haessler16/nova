@@ -14,6 +14,7 @@ import { FolioModule } from './folio/folio.module';
 import { GuestsModule } from './guests/guests.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
+import { InstructionsModule } from './instructions/instructions.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { NightAuditModule } from './night-audit/night-audit.module';
 import { ObservabilityModule } from './observability/observability.module';
@@ -54,6 +55,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     InventoryModule,
     GuestsModule,
     ReservationsModule,
+    InstructionsModule,
     FrontOfficeModule,
     DocumentsModule,
     FolioModule,

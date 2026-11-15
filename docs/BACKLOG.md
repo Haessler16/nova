@@ -10,9 +10,11 @@ Estimaciones relativas para planificación, no compromisos. `S` = pequeño, `M` 
 
 > **Actualización 2026-11-09 (groundwork Fase 8):** IMP-001 amplía su valor con exportaciones CSV auditadas de huéspedes, reservas y folios (hasta 5000 filas). RPT-002 queda cubierto parcialmente: exportación CSV operativa, sin reportes agregados ni XLSX. Se agrega diagnóstico `/health/version` y filtros de actor/fecha con cursor en auditoría. No se inicia coordinador Edge ni integraciones de proveedor: Fase 8 sigue en discovery. Ver `docs/PHASE_8_GROUNDWORK.md`.
 
-> **Actualización 2026-11-13 (Documents v1):** primer corte de `docs/v2` implementado: plantillas property-scoped versionadas, preview HTML A4 seguro, PDF A4 server-side con PDFKit, snapshot inmutable, SHA-256, historial, descarga autenticada sin URL pública, eventos de impresión append-only y recepción de firma física. UI contextual en el detalle de reserva, llegadas, huéspedes en casa, salidas y folio; la acción desde huésped sigue pendiente porque requiere elegir una reserva. Renderer cubierto con pruebas unitarias de escape HTML y campos opcionales.
+> **Actualización 2026-11-13 (Documents v1):** primer corte de `docs/v2` implementado: plantillas property-scoped versionadas, preview HTML A4 seguro, PDF A4 server-side con PDFKit, snapshot inmutable, SHA-256, historial, descarga autenticada sin URL pública, eventos de impresión append-only y recepción de firma física. UI contextual en el detalle de reserva, llegadas, huéspedes en casa, salidas, folio y huésped (selector de reserva dentro del modal). Renderer cubierto con pruebas unitarias de escape HTML y campos opcionales.
 
 > **Actualización 2026-11-13 (Reports v1 + FNRH discovery):** reportes operativos implementados con catálogo fijo (ocupación, llegadas, salidas, reservas y caja diaria), permisos `reports.read`/`reports.financial`, filtros de hasta 62 días, paginación, PDF A4 horizontal, CSV con neutralización de fórmulas, auditoría de ejecuciones/exportaciones e historial derivado del audit log. La UI `/reports` quedó integrada. FNRH queda en discovery documentado (`docs/v2/docs/FNRH_DISCOVERY.md` y ADR-045): sin llamadas, credenciales, endpoints ni afirmaciones fiscales inventadas. RPT-002 se cubre en su alcance operativo; XLSX, reportes programados e historial persistente de artefactos siguen pendientes.
+
+> **Actualización 2026-11-13 (FNRH baseline + plan + modelo de huéspedes):** el discovery de FNRH quedó convertido en un plan ejecutable (`docs/v2/docs/FNRH_INTEGRATION_PLAN.md`), con manual oficial 2.4.2, changelog, generación de clave, homologación, brecha de datos, adapter aislado, ledger de operaciones y matriz de pruebas. El modelo de huéspedes, acompañantes y menores y su migración aditiva quedaron diseñados en `docs/v2/docs/FNRH_GUEST_MODEL.md`, sin ejecutar migraciones ni inventar acompañantes. La revisión oficial confirmó que los menores se vinculan a la FNRH del responsable, que el principal debe ser adulto y que sólo CPF/pasaporte son documentos FNRH; las firmas pendientes de producto/legal están en `docs/v2/docs/FNRH_GUEST_MODEL_REVIEW.md`. El flujo de UI para capturar acompañantes y menores está diseñado en `docs/v2/docs/FNRH_GUEST_UI_FLOW.md`, sin implementar pantallas. `FNRH_DISCOVERY.md` queda como baseline corto y ADR-045/046/047 registran las decisiones. No hay credenciales, llamadas reales ni cliente HTTP: la implementación sigue bloqueada por contradicciones del contrato (URL base, formato de credencial, paginación, `cpf_solicitante`) y por la puerta de homologación.
 
 **Phase 3 — guests y reservas (backend):** CRUD de huéspedes con minimización, búsqueda asistida, ciclo de vida de reserva (`CONFIRMED`/`CANCELLED`), disponibilidad por fechas, asignación de habitación transaccional, idempotencia de creación, historial append-only y garantía de no-solapamiento con exclusion constraint PostgreSQL. Check-in/check-out pertenecen a Phase 4 (Front Office).
 
@@ -98,6 +100,18 @@ Estado P3: FO-001 a FO-006 implementados en API y UI con E2E aislados: room rack
 | RES-003  | Resilience | Outbox + reconciliación           | Could     | XL   | RES-002        | Reintentos idempotentes y conflictos visibles  |
 | EDGE-001 | Edge       | Discovery hardware/red local      | Could     | XL   | Pilot feedback | Requisitos medidos con hotel piloto            |
 | EDGE-002 | Edge       | Coordinador local LAN             | Could     | XL   | EDGE-001       | Diseño de sync, seguridad y operación aprobado |
+
+## P11 — Notes & Instructions v1
+
+| ID      | Épica       | Historia / tarea                                      | Prioridad | Est. | Dependencias | Criterio de aceptación                                                       |
+| ------- | ----------- | ----------------------------------------------------- | --------- | ---- | ------------ | ---------------------------------------------------------------------------- |
+| NTS-001 | Notes       | Instrucciones estructuradas por reserva               | Must      | M    | RSV,FO       | Categoría, prioridad, estado, visibilidad y eventos auditables               |
+| NTS-002 | Notes       | Texto fuente inmutable con redacción de tarjeta       | Must      | M    | NTS-001      | PAN/CVV redactados; hash del texto recibido; trigger rechaza UPDATE/DELETE   |
+| NTS-003 | Parser      | Parser determinista pt-BR que solo sugiere            | Must      | L    | NTS-002      | Requiere confirmación humana; no crea pagos, cargos, tarifas ni habitaciones |
+| NTS-004 | Notes       | Notas persistentes del huésped separadas              | Must      | M    | GST          | No se copian automáticamente a reservas; visibilidad y vencimiento           |
+| NTS-005 | UI          | Panel de notas/instrucciones y resumen de check-in    | Should    | M    | NTS-001..004 | Reserva, huésped y llegada muestran pendientes sin iniciar cobros            |
+
+Estado P11: NTS-001..005 implementados en API y UI con migración, seed sintético, pruebas unitarias del parser y E2E aislados. Preautorización real permanece fuera de alcance: exige el módulo de pagos, permiso, importe confirmado y proveedor tokenizado. `PGTO DIRETO NO HOTEL` se representa como instrucción pendiente en check-in, nunca como pago realizado.
 
 ## Orden de ejecución recomendado
 

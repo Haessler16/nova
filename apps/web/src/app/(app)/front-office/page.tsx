@@ -49,6 +49,11 @@ import {
   INCIDENT_SEVERITY_LABELS,
   INCIDENT_STATUS_LABELS,
   INCIDENT_TYPE_LABELS,
+  INSTRUCTION_ACTION_LABELS,
+  INSTRUCTION_CATEGORY_LABELS,
+  INSTRUCTION_MOMENT_LABELS,
+  INSTRUCTION_PRIORITY_COLORS,
+  INSTRUCTION_PRIORITY_LABELS,
   OPERATIONAL_COLORS,
   OPERATIONAL_LABELS,
   RESERVATION_STATUS_COLORS,
@@ -65,6 +70,7 @@ import type {
   IncidentStatus,
   IncidentType,
   Reservation,
+  ReservationInstruction,
   RoomRackItem,
   Stay,
 } from '@/lib/types';
@@ -195,6 +201,7 @@ function FrontOfficeContent() {
   );
 
   const checkoutModal = useDisclosure();
+  const checkInModal = useDisclosure();
   const moveModal = useDisclosure();
   const noShowModal = useDisclosure();
   const incidentModal = useDisclosure();
@@ -202,6 +209,18 @@ function FrontOfficeContent() {
 
   const [checkoutTarget, setCheckoutTarget] = useState<Stay | null>(null);
   const [checkoutNotes, setCheckoutNotes] = useState('');
+
+  const [checkInTarget, setCheckInTarget] = useState<Reservation | null>(null);
+  const checkInInstructions = useAsyncData<{ items: ReservationInstruction[] }>(
+    () =>
+      checkInTarget === null
+        ? Promise.resolve({ items: [] })
+        : api<{ items: ReservationInstruction[] }>(
+            `/api/v1/reservations/${checkInTarget.id}/instructions?limit=100`,
+            { tenant },
+          ),
+    `${tenant.organizationId}:${tenant.propertyId}:check-in:${checkInTarget?.id ?? 'none'}`,
+  );
 
   const [moveTarget, setMoveTarget] = useState<Stay | null>(null);
   const [moveRoomId, setMoveRoomId] = useState('');
@@ -267,14 +286,27 @@ function FrontOfficeContent() {
   }
 
   function checkIn(reservation: Reservation): void {
-    void run(
-      `check-in:${reservation.id}`,
+    setCheckInTarget(reservation);
+    checkInModal.onOpen();
+  }
+
+  async function confirmCheckIn(): Promise<void> {
+    if (checkInTarget === null) {
+      return;
+    }
+    const target = checkInTarget;
+    await run(
+      `check-in:${target.id}`,
       () =>
-        api(`/api/v1/front-office/reservations/${reservation.id}/check-in`, {
+        api(`/api/v1/front-office/reservations/${target.id}/check-in`, {
           method: 'POST',
           tenant,
         }),
-      `Check-in registrado para ${reservation.guest.fullName}`,
+      `Check-in registrado para ${target.guest.fullName}`,
+      () => {
+        checkInModal.onClose();
+        setCheckInTarget(null);
+      },
     );
   }
 
@@ -1034,6 +1066,92 @@ function FrontOfficeContent() {
           </Stack>
         )}
       </QueryFeedback>
+
+      <Modal isOpen={checkInModal.isOpen} onClose={checkInModal.onClose} size="lg">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            Check-in — {checkInTarget?.guest.fullName ?? 'huésped'}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Stack spacing={4}>
+              <Text fontSize="sm" color="gray.600">
+                Revisá las instrucciones pendientes antes de confirmar. El check-in no inicia
+                preautorizaciones, no cobra pagos y no modifica tarifas.
+              </Text>
+              <QueryFeedback
+                loading={checkInInstructions.loading}
+                error={checkInInstructions.error}
+                onRetry={checkInInstructions.reload}
+                isEmpty={
+                  (checkInInstructions.data?.items ?? []).filter(
+                    (instruction) =>
+                      instruction.status !== 'COMPLETED' && instruction.status !== 'DISMISSED',
+                  ).length === 0
+                }
+                emptyText="Sin instrucciones pendientes para esta llegada."
+              >
+                <Stack spacing={2}>
+                  {(checkInInstructions.data?.items ?? [])
+                    .filter(
+                      (instruction) =>
+                        instruction.status !== 'COMPLETED' && instruction.status !== 'DISMISSED',
+                    )
+                    .map((instruction) => (
+                      <Box
+                        key={instruction.id}
+                        borderWidth="1px"
+                        borderColor="gray.200"
+                        borderRadius="md"
+                        p={3}
+                      >
+                        <HStack spacing={2} wrap="wrap">
+                          <StatusBadge
+                            color={INSTRUCTION_PRIORITY_COLORS[instruction.priority]}
+                            label={INSTRUCTION_PRIORITY_LABELS[instruction.priority]}
+                          />
+                          <Badge colorScheme="gray">
+                            {INSTRUCTION_CATEGORY_LABELS[instruction.category]}
+                          </Badge>
+                          {instruction.executionMoment !== null && (
+                            <Badge colorScheme="brand" textTransform="none">
+                              {INSTRUCTION_MOMENT_LABELS[instruction.executionMoment]}
+                            </Badge>
+                          )}
+                        </HStack>
+                        <Text fontWeight="semibold" mt={1}>
+                          {instruction.title}
+                        </Text>
+                        <Text fontSize="sm" mt={1}>
+                          {instruction.body}
+                        </Text>
+                        {instruction.actionType === 'PAYMENT_PREAUTHORIZATION' && (
+                          <Text fontSize="xs" color="warning.600" mt={1}>
+                            {INSTRUCTION_ACTION_LABELS[instruction.actionType]}: pendiente, no es
+                            un pago realizado.
+                          </Text>
+                        )}
+                      </Box>
+                    ))}
+                </Stack>
+              </QueryFeedback>
+            </Stack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={checkInModal.onClose}>
+              Volver
+            </Button>
+            <Button
+              colorScheme="brand"
+              isLoading={busy === `check-in:${checkInTarget?.id ?? ''}`}
+              onClick={() => void confirmCheckIn()}
+            >
+              Confirmar check-in
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <Modal isOpen={checkoutModal.isOpen} onClose={checkoutModal.onClose} size="md">
         <ModalOverlay />

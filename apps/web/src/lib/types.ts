@@ -12,7 +12,20 @@ export type ReservationStatus =
   | 'CHECKED_OUT'
   | 'CANCELLED'
   | 'NO_SHOW';
-export type GuestDocumentType = 'PASSPORT' | 'NATIONAL_ID' | 'DRIVER_LICENSE' | 'OTHER';
+export type GuestDocumentType =
+  | 'CPF'
+  | 'PASSPORT'
+  | 'RG'
+  | 'NATIONAL_ID'
+  | 'DRIVER_LICENSE'
+  | 'OTHER';
+export type ReservationGuestRole = 'PRIMARY' | 'COMPANION';
+export type GuestAgeGroup = 'ADULT' | 'MINOR' | 'UNKNOWN';
+export type MinorSupervision =
+  | 'ACCOMPANIED'
+  | 'UNACCOMPANIED_AUTHORIZED'
+  | 'UNACCOMPANIED_WITHOUT_AUTHORIZATION'
+  | 'UNKNOWN';
 export type SecuritySeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 export type StayStatus = 'IN_HOUSE' | 'CHECKED_OUT';
 export type IncidentType = 'NOTE' | 'MAINTENANCE' | 'COMPLAINT' | 'SAFETY' | 'OTHER';
@@ -181,6 +194,46 @@ export interface Reservation {
   room: { id: string; number: string; floor: string | null; building: string | null } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReservationPartyMember {
+  reservationGuestId: string | null;
+  guestId: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  documentType: GuestDocumentType | null;
+  documentNumber: string | null;
+  birthDate: string | null;
+  ageAtCheckIn: number | null;
+  ageGroup: GuestAgeGroup;
+  role: ReservationGuestRole;
+  legalIncapacity: boolean;
+  minorSupervision: MinorSupervision | null;
+  authorizationReference: string | null;
+  responsibleReservationGuestId: string | null;
+  responsibleName: string | null;
+}
+
+export interface ReservationParty {
+  reservationId: string;
+  code: string;
+  status: ReservationStatus;
+  primary: ReservationPartyMember | null;
+  companions: ReservationPartyMember[];
+  summary: {
+    adults: number;
+    minors: number;
+    unknown: number;
+    declaredAdults: number;
+    declaredChildren: number;
+  };
+  readiness: {
+    checkIn: 'ALLOWED' | 'BLOCKED';
+    fnrh: 'READY' | 'INCOMPLETE' | 'BLOCKED';
+    codes: string[];
+    legalCodes: string[];
+  };
 }
 
 export interface AvailabilityItem {
@@ -639,4 +692,145 @@ export interface DocumentPreviewResponse {
     version: number;
     locale: string;
   };
+}
+
+export type InstructionCategory =
+  | 'PAYMENT'
+  | 'MEAL'
+  | 'BILLING'
+  | 'ROOM'
+  | 'ARRIVAL'
+  | 'IMPORTANT'
+  | 'EXTRA'
+  | 'CONFIDENTIAL'
+  | 'GENERAL';
+export type InstructionPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+export type InstructionStatus =
+  | 'NEW'
+  | 'ACKNOWLEDGED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'DISMISSED'
+  | 'NEEDS_CLARIFICATION';
+export type InstructionSource =
+  | 'RESERVATIONS'
+  | 'FRONT_DESK'
+  | 'GUEST'
+  | 'CHANNEL'
+  | 'IMPORT'
+  | 'SYSTEM';
+export type InstructionVisibility =
+  | 'ALL_AUTHORIZED'
+  | 'FRONT_DESK'
+  | 'RESERVATIONS'
+  | 'FINANCE'
+  | 'MANAGEMENT';
+export type InstructionActionType =
+  | 'PAYMENT_PREAUTHORIZATION'
+  | 'VERIFY_PAYMENT'
+  | 'BILLING_TASK'
+  | 'ARRIVAL_REMINDER';
+export type InstructionExecutionMoment = 'PRE_ARRIVAL' | 'CHECK_IN' | 'DURING_STAY' | 'CHECK_OUT';
+export type InstructionPaymentMethod = 'CREDIT_CARD' | 'PIX' | 'CASH' | 'BANK_TRANSFER' | 'UNKNOWN';
+
+export interface ReservationInstruction {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  reservationId: string;
+  sourceNoteId: string | null;
+  category: InstructionCategory;
+  title: string;
+  body: string;
+  priority: InstructionPriority;
+  status: InstructionStatus;
+  source: InstructionSource;
+  sourceDepartment: string | null;
+  visibility: InstructionVisibility;
+  assignedDepartment: string | null;
+  assignedUserId: string | null;
+  actionType: InstructionActionType | null;
+  executionMoment: InstructionExecutionMoment | null;
+  paymentMethod: InstructionPaymentMethod | null;
+  actionDueAt: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  completedAt: string | null;
+  completedByUserId: string | null;
+  createdByUserId: string | null;
+  dedupeKey: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ParsedInstructionSuggestion {
+  category: InstructionCategory;
+  title: string;
+  body: string;
+  priority: InstructionPriority;
+  status: 'NEW' | 'NEEDS_CLARIFICATION';
+  sourcePhrase: string;
+  confidence: number;
+  requiresHumanConfirmation: boolean;
+  actionType?: InstructionActionType;
+  executionMoment?: InstructionExecutionMoment;
+  paymentMethod?: InstructionPaymentMethod;
+  assignedDepartment?: string;
+}
+
+export interface ReservationSourceNote {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  reservationId: string;
+  sourceTextOriginal: string;
+  sourceTextHash: string;
+  contentHash: string;
+  parserVersion: string;
+  redacted: boolean;
+  suggestions: ParsedInstructionSuggestion[];
+  warnings: string[];
+  sourceSystem: string | null;
+  sourceDepartment: string | null;
+  externalReference: string | null;
+  importedByUserId: string | null;
+  importedAt: string;
+}
+
+export interface InstructionEvent {
+  id: string;
+  eventType:
+    | 'CREATED'
+    | 'UPDATED'
+    | 'ACKNOWLEDGED'
+    | 'IN_PROGRESS'
+    | 'COMPLETED'
+    | 'DISMISSED'
+    | 'NEEDS_CLARIFICATION'
+    | 'CONFIRMED_FROM_SOURCE';
+  actorUserId: string | null;
+  fromStatus: InstructionStatus | null;
+  toStatus: InstructionStatus | null;
+  reason: string | null;
+  metadata: Record<string, unknown> | null;
+  occurredAt: string;
+}
+
+export interface GuestNote {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  guestId: string;
+  category: InstructionCategory;
+  body: string;
+  priority: InstructionPriority;
+  visibility: InstructionVisibility;
+  purpose: string | null;
+  expiresAt: string | null;
+  isActive: boolean;
+  createdByUserId: string | null;
+  updatedByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

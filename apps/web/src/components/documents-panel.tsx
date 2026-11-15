@@ -28,6 +28,8 @@ import {
   DOCUMENT_STATUS_COLORS,
   DOCUMENT_STATUS_LABELS,
   RESERVATION_DOCUMENT_LABELS,
+  RESERVATION_STATUS_LABELS,
+  formatCalendarDate,
   formatDateTime,
 } from '@/lib/format';
 import type {
@@ -35,6 +37,7 @@ import type {
   DocumentTemplateSummary,
   DocumentType,
   GeneratedDocumentSummary,
+  Reservation,
 } from '@/lib/types';
 
 const DOCUMENT_TYPES: DocumentType[] = ['GUEST_REGISTRATION', 'LODGING_TERMS', 'CHECKIN_SUMMARY'];
@@ -42,6 +45,8 @@ const DOCUMENT_TYPES: DocumentType[] = ['GUEST_REGISTRATION', 'LODGING_TERMS', '
 interface ReservationDocumentsProps {
   reservationId: string;
   reservationCode: string;
+  /** Optional eligible reservations for a guest-level entry point. */
+  reservations?: Reservation[];
   hideTrigger?: boolean;
   defaultOpen?: boolean;
   onClose?: () => void;
@@ -50,6 +55,7 @@ interface ReservationDocumentsProps {
 export function ReservationDocuments({
   reservationId,
   reservationCode,
+  reservations,
   hideTrigger = false,
   defaultOpen = false,
   onClose,
@@ -57,6 +63,7 @@ export function ReservationDocuments({
   const modal = useDisclosure({ defaultIsOpen: defaultOpen });
   const toast = useToast();
   const { organizationId, propertyId } = useSession();
+  const [activeReservationId, setActiveReservationId] = useState(reservationId);
 
   const [templates, setTemplates] = useState<DocumentTemplateSummary[]>([]);
   const [history, setHistory] = useState<GeneratedDocumentSummary[]>([]);
@@ -79,7 +86,7 @@ export function ReservationDocuments({
           tenant: { organizationId, propertyId },
         }),
         api<{ items: GeneratedDocumentSummary[] }>(
-          `/api/v1/documents?reservationId=${encodeURIComponent(reservationId)}`,
+          `/api/v1/documents?reservationId=${encodeURIComponent(activeReservationId)}`,
           { tenant: { organizationId, propertyId } },
         ),
       ]);
@@ -94,7 +101,7 @@ export function ReservationDocuments({
     } finally {
       setLoading(false);
     }
-  }, [organizationId, propertyId, reservationId, type]);
+  }, [organizationId, propertyId, activeReservationId, type]);
 
   useEffect(() => {
     if (modal.isOpen) {
@@ -105,6 +112,16 @@ export function ReservationDocuments({
   const availableTemplates = templates.filter((item) => item.key === type);
   const activeTemplate =
     availableTemplates.find((item) => item.id === templateId) ?? availableTemplates[0] ?? null;
+  const activeReservation =
+    reservations?.find((reservation) => reservation.id === activeReservationId) ?? null;
+  const activeReservationCode = activeReservation?.code ?? reservationCode;
+
+  function changeReservation(next: string): void {
+    setActiveReservationId(next);
+    setPreview(null);
+    setSelected(null);
+    setHistory([]);
+  }
 
   function changeType(next: DocumentType): void {
     setType(next);
@@ -264,7 +281,7 @@ export function ReservationDocuments({
         <ModalOverlay />
         <ModalContent maxW="1180px">
           <ModalHeader>
-            Documentos de la reserva {reservationCode}
+            Documentos de la reserva {activeReservationCode}
             <Text fontSize="sm" fontWeight="normal" color="gray.500">
               Vista previa A4, PDF privado y trazabilidad de impresión y firma física.
             </Text>
@@ -297,6 +314,30 @@ export function ReservationDocuments({
               <>
                 <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6}>
                   <Stack spacing={4}>
+                    {reservations !== undefined && reservations.length > 1 && (
+                      <Box>
+                        <Text fontSize="xs" color="gray.500" mb={1}>
+                          Reserva de origen
+                        </Text>
+                        <Select
+                          aria-label="Reserva de origen"
+                          value={activeReservationId}
+                          onChange={(event) => changeReservation(event.target.value)}
+                        >
+                          {reservations.map((reservation) => (
+                            <option key={reservation.id} value={reservation.id}>
+                              {reservation.code} · {formatCalendarDate(reservation.checkInDate)} →{' '}
+                              {formatCalendarDate(reservation.checkOutDate)} ·{' '}
+                              {RESERVATION_STATUS_LABELS[reservation.status]}
+                            </option>
+                          ))}
+                        </Select>
+                        <Text fontSize="xs" color="gray.500" mt={1}>
+                          Cambiar de reserva reinicia el historial y la vista previa de este modal.
+                        </Text>
+                      </Box>
+                    )}
+
                     <Box>
                       <Text fontWeight="semibold" mb={2}>
                         Nuevo documento

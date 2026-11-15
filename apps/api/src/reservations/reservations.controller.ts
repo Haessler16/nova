@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -23,6 +24,7 @@ import {
 import { PermissionsGuard } from '../tenancy/permissions.guard';
 import { TenantContextGuard } from '../tenancy/tenant-context.guard';
 import {
+  AddReservationGuestDto,
   AssignReservationRoomDto,
   CancelReservationDto,
   CreateReservationDto,
@@ -30,7 +32,9 @@ import {
   ListReservationsQueryDto,
   ReservationAvailabilityQueryDto,
   UpdateReservationDto,
+  UpdateReservationGuestDto,
 } from './dto/reservation.dto';
+import { ReservationPartyService } from './reservation-party.service';
 import { ReservationsService } from './reservations.service';
 
 @ApiTags('reservations')
@@ -40,7 +44,10 @@ import { ReservationsService } from './reservations.service';
 @Controller('reservations')
 @UseGuards(AuthenticationGuard, TenantContextGuard, PermissionsGuard)
 export class ReservationsController {
-  constructor(private readonly reservations: ReservationsService) {}
+  constructor(
+    private readonly reservations: ReservationsService,
+    private readonly party: ReservationPartyService,
+  ) {}
 
   @Get('availability')
   @RequirePermissions(PERMISSIONS.RESERVATIONS_READ)
@@ -64,6 +71,43 @@ export class ReservationsController {
   @RequirePermissions(PERMISSIONS.RESERVATIONS_READ)
   get(@Tenant() tenant: TenantContext, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.reservations.get(tenant, id);
+  }
+
+  @Get(':id/party')
+  @RequirePermissions(PERMISSIONS.RESERVATIONS_READ, PERMISSIONS.GUESTS_READ)
+  getParty(@Tenant() tenant: TenantContext, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.party.get(tenant, id);
+  }
+
+  @Post(':id/party')
+  @RequirePermissions(PERMISSIONS.RESERVATIONS_MANAGE, PERMISSIONS.GUESTS_MANAGE)
+  addPartyGuest(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AddReservationGuestDto,
+  ) {
+    return this.party.add(tenant, id, dto);
+  }
+
+  @Patch(':id/party/:reservationGuestId')
+  @RequirePermissions(PERMISSIONS.RESERVATIONS_MANAGE, PERMISSIONS.GUESTS_MANAGE)
+  updatePartyGuest(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('reservationGuestId', new ParseUUIDPipe()) reservationGuestId: string,
+    @Body() dto: UpdateReservationGuestDto,
+  ) {
+    return this.party.update(tenant, id, reservationGuestId, dto);
+  }
+
+  @Delete(':id/party/:reservationGuestId')
+  @RequirePermissions(PERMISSIONS.RESERVATIONS_MANAGE, PERMISSIONS.GUESTS_MANAGE)
+  removePartyGuest(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('reservationGuestId', new ParseUUIDPipe()) reservationGuestId: string,
+  ) {
+    return this.party.remove(tenant, id, reservationGuestId);
   }
 
   @Patch(':id')

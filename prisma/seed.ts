@@ -6,6 +6,15 @@ import {
   GuestDocumentType,
   ReservationStatus,
   StayStatus,
+  InstructionActionType,
+  InstructionCategory,
+  InstructionEventType,
+  InstructionExecutionMoment,
+  InstructionPaymentMethod,
+  InstructionPriority,
+  InstructionSource,
+  InstructionStatus,
+  InstructionVisibility,
 } from '@prisma/client';
 import { createHash, scryptSync } from 'node:crypto';
 
@@ -111,6 +120,13 @@ const IDS = {
   reservationFuture1: '00000000-0000-4000-8000-000000000106',
   reservationPastStay: '00000000-0000-4000-8000-000000000107',
   reservationFuture2: '00000000-0000-4000-8000-000000000108',
+
+  sourceNoteArrival: '00000000-0000-4000-8000-000000000111',
+  instructionPaymentPreauth: '00000000-0000-4000-8000-000000000121',
+  instructionBreakfast: '00000000-0000-4000-8000-000000000122',
+  instructionWarnCheckIn: '00000000-0000-4000-8000-000000000123',
+  guestNoteAnaPreference: '00000000-0000-4000-8000-000000000131',
+  guestNoteAnaAllergy: '00000000-0000-4000-8000-000000000132',
 } as const;
 
 const PROPERTY_TIMEZONE = 'America/Sao_Paulo';
@@ -1402,6 +1418,229 @@ async function seed(): Promise<void> {
       });
     }
   }
+
+  // Demo rows for Notes & Instructions v1. Source notes are immutable at the
+  // database level, so seeding checks for an existing row before inserting.
+  const parserVersion = 'pt-br-notes-v1';
+  const arrivalSourceText =
+    'RSV COM CAFE / TRF DBL R$ 606,00 + 15% / PGTO DIRETO NO HOTEL (12-15/11) / AVISAR NO CHECK IN';
+  const contentHash = createHash('sha256')
+    .update(arrivalSourceText.replace(/\s+/g, ' ').trim().toLowerCase(), 'utf8')
+    .digest('hex');
+
+  const existingSourceNote = await prisma.reservationSourceNote.findFirst({
+    where: {
+      reservationId: IDS.reservationArrivalToday,
+      contentHash,
+      parserVersion,
+    },
+    select: { id: true },
+  });
+
+  const demoSourceNote =
+    existingSourceNote ??
+    (await prisma.reservationSourceNote.create({
+      data: {
+        id: IDS.sourceNoteArrival,
+        organizationId: IDS.organizationA,
+        propertyId: IDS.propertyCentro,
+        reservationId: IDS.reservationArrivalToday,
+        sourceTextOriginal: arrivalSourceText,
+        sourceTextHash: createHash('sha256').update(arrivalSourceText, 'utf8').digest('hex'),
+        contentHash,
+        parserVersion,
+        redacted: false,
+        suggestions: [
+          {
+            category: 'PAYMENT',
+            title: 'Realizar preautorización de cartão no check-in',
+            body: 'Pendente de preautorização com cartão de crédito no check-in. Não é pagamento realizado.',
+            priority: 'HIGH',
+            status: 'NEW',
+            sourcePhrase: 'PGTO DIRETO NO HOTEL',
+            confidence: 0.97,
+            requiresHumanConfirmation: true,
+            actionType: 'PAYMENT_PREAUTHORIZATION',
+            executionMoment: 'CHECK_IN',
+            paymentMethod: 'CREDIT_CARD',
+            assignedDepartment: 'FRONT_DESK',
+          },
+          {
+            category: 'MEAL',
+            title: 'Desayuno incluido — conciliar con el plano de tarifa',
+            body: 'O texto indica café da manhã incluído. Reconciliar com o RatePlan.',
+            priority: 'NORMAL',
+            status: 'NEW',
+            sourcePhrase: 'RSV COM CAFE',
+            confidence: 0.9,
+            requiresHumanConfirmation: true,
+            executionMoment: 'DURING_STAY',
+            assignedDepartment: 'RESERVATIONS',
+          },
+        ],
+        warnings: [
+          'O texto contém uma data sem ano (por exemplo, 12-15/11). Resolver com o contexto da reserva.',
+          'O texto menciona valores monetários. O parser não altera tarifa, folio nem caixa.',
+        ],
+        sourceSystem: 'DEMO',
+        sourceDepartment: 'RESERVATIONS',
+        importedByUserId: IDS.userAdmin,
+      },
+      select: { id: true },
+    }));
+
+  const demoInstructions = [
+    {
+      id: IDS.instructionPaymentPreauth,
+      reservationId: IDS.reservationArrivalToday,
+      sourceNoteId: demoSourceNote.id as string | null,
+      dedupeKey: createHash('sha256')
+        .update('PAYMENT|preauth|checkin')
+        .digest('hex'),
+      category: InstructionCategory.PAYMENT,
+      title: 'Realizar preautorización de cartão no check-in',
+      body: 'Pendente de preautorização com cartão de crédito no check-in. Confirmar o valor no módulo de pagamentos. Não é pagamento realizado nem autorização obtida.',
+      priority: InstructionPriority.HIGH,
+      status: InstructionStatus.NEW,
+      source: InstructionSource.IMPORT,
+      visibility: InstructionVisibility.ALL_AUTHORIZED,
+      assignedDepartment: 'FRONT_DESK',
+      actionType: InstructionActionType.PAYMENT_PREAUTHORIZATION,
+      executionMoment: InstructionExecutionMoment.CHECK_IN,
+      paymentMethod: InstructionPaymentMethod.CREDIT_CARD,
+    },
+    {
+      id: IDS.instructionBreakfast,
+      reservationId: IDS.reservationArrivalToday,
+      sourceNoteId: demoSourceNote.id as string | null,
+      dedupeKey: createHash('sha256').update('MEAL|breakfast|rateplan').digest('hex'),
+      category: InstructionCategory.MEAL,
+      title: 'Desayuno incluido — conciliar con el plano de tarifa',
+      body: 'O texto indica café da manhã incluído. Reconciliar com o RatePlan para não duplicar o benefício; não alterar a tarifa.',
+      priority: InstructionPriority.NORMAL,
+      status: InstructionStatus.NEW,
+      source: InstructionSource.IMPORT,
+      visibility: InstructionVisibility.ALL_AUTHORIZED,
+      assignedDepartment: 'RESERVATIONS',
+      actionType: null,
+      executionMoment: InstructionExecutionMoment.DURING_STAY,
+      paymentMethod: null,
+    },
+    {
+      id: IDS.instructionWarnCheckIn,
+      reservationId: IDS.reservationUnassignedToday,
+      sourceNoteId: null,
+      dedupeKey: null,
+      category: InstructionCategory.IMPORTANT,
+      title: 'Avisar no check-in',
+      body: 'Recordatório sintético: avisar o hóspede sobre a política de chegada no check-in. Não altera a reserva.',
+      priority: InstructionPriority.HIGH,
+      status: InstructionStatus.NEW,
+      source: InstructionSource.FRONT_DESK,
+      visibility: InstructionVisibility.ALL_AUTHORIZED,
+      assignedDepartment: 'FRONT_DESK',
+      actionType: InstructionActionType.ARRIVAL_REMINDER,
+      executionMoment: InstructionExecutionMoment.CHECK_IN,
+      paymentMethod: null,
+    },
+  ] as const;
+
+  for (const instruction of demoInstructions) {
+    await prisma.reservationInstruction.upsert({
+      where: { id: instruction.id },
+      update: {
+        title: instruction.title,
+        body: instruction.body,
+        priority: instruction.priority,
+        category: instruction.category,
+        assignedDepartment: instruction.assignedDepartment,
+      },
+      create: {
+        id: instruction.id,
+        organizationId: IDS.organizationA,
+        propertyId: IDS.propertyCentro,
+        reservationId: instruction.reservationId,
+        sourceNoteId: instruction.sourceNoteId,
+        dedupeKey: instruction.dedupeKey,
+        category: instruction.category,
+        title: instruction.title,
+        body: instruction.body,
+        priority: instruction.priority,
+        status: instruction.status,
+        source: instruction.source,
+        visibility: instruction.visibility,
+        assignedDepartment: instruction.assignedDepartment,
+        actionType: instruction.actionType,
+        executionMoment: instruction.executionMoment,
+        paymentMethod: instruction.paymentMethod,
+        createdByUserId: IDS.userAdmin,
+      },
+    });
+
+    // InstructionEvent is append-only. Create the seed event only once.
+    const existingEvent = await prisma.instructionEvent.findFirst({
+      where: {
+        instructionId: instruction.id,
+        eventType: InstructionEventType.CREATED,
+      },
+      select: { id: true },
+    });
+    if (existingEvent === null) {
+      await prisma.instructionEvent.create({
+        data: {
+          organizationId: IDS.organizationA,
+          propertyId: IDS.propertyCentro,
+          instructionId: instruction.id,
+          eventType: InstructionEventType.CREATED,
+          actorUserId: IDS.userAdmin,
+          toStatus: InstructionStatus.NEW,
+        },
+      });
+    }
+  }
+
+  // Persistent guest notes are deliberately independent from reservations.
+  await prisma.guestNote.upsert({
+    where: { id: IDS.guestNoteAnaPreference },
+    update: {
+      body: 'Prefiere habitación en piso alto y tranquilo. Sintético.',
+      isActive: true,
+    },
+    create: {
+      id: IDS.guestNoteAnaPreference,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      guestId: IDS.guestAna,
+      category: InstructionCategory.ROOM,
+      body: 'Prefiere habitación en piso alto y tranquilo. Sintético.',
+      priority: InstructionPriority.NORMAL,
+      visibility: InstructionVisibility.ALL_AUTHORIZED,
+      purpose: 'PREFERENCE',
+      createdByUserId: IDS.userAdmin,
+      updatedByUserId: IDS.userAdmin,
+    },
+  });
+
+  await prisma.guestNote.upsert({
+    where: { id: IDS.guestNoteAnaAllergy },
+    update: {
+      body: 'Alergia leve a frutos secos. Verificar con el huésped antes de ofrecer extras. Sintético.',
+      isActive: true,
+    },
+    create: {
+      id: IDS.guestNoteAnaAllergy,
+      organizationId: IDS.organizationA,
+      propertyId: IDS.propertyCentro,
+      guestId: IDS.guestAna,
+      category: InstructionCategory.MEAL,
+      body: 'Alergia leve a frutos secos. Verificar con el huésped antes de ofrecer extras. Sintético.',
+      priority: InstructionPriority.HIGH,
+      visibility: InstructionVisibility.ALL_AUTHORIZED,
+      purpose: 'SAFETY',
+      createdByUserId: IDS.userAdmin,
+      updatedByUserId: IDS.userAdmin,
+    },
+  });
 
   const [organizations, properties, usersCount, roles, roomTypesCount, roomsCount, guestsCount] =
     await Promise.all([

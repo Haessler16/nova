@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ReservationStatus } from '@prisma/client';
+import {
+  GuestAgeGroup,
+  Prisma,
+  ReservationGuestOrigin,
+  ReservationGuestRole,
+  ReservationStatus,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { requirePropertyContext, RoomStateService } from '../inventory/room-state.service';
@@ -264,6 +270,19 @@ export class ReservationsService {
           select: RESERVATION_SELECT,
         });
 
+        await transaction.reservationGuest.create({
+          data: {
+            organizationId: context.organizationId,
+            propertyId,
+            reservationId: reservation.id,
+            guestId: reservation.guestId,
+            role: ReservationGuestRole.PRIMARY,
+            ageGroup: GuestAgeGroup.UNKNOWN,
+            origin: ReservationGuestOrigin.MANUAL,
+          },
+          select: { id: true },
+        });
+
         await transaction.reservationHistory.create({
           data: {
             organizationId: context.organizationId,
@@ -396,6 +415,50 @@ export class ReservationsService {
         },
         select: RESERVATION_SELECT,
       });
+
+      if (guestId !== current.guestId) {
+        const duplicate = await transaction.reservationGuest.findFirst({
+          where: {
+            reservationId: current.id,
+            guestId,
+            role: { not: ReservationGuestRole.PRIMARY },
+          },
+          select: { id: true },
+        });
+        if (duplicate !== null) {
+          throw new ConflictException({
+            code: 'guest_already_in_party',
+            message: 'That guest is already a companion in this reservation party.',
+          });
+        }
+        const primary = await transaction.reservationGuest.findFirst({
+          where: {
+            reservationId: current.id,
+            role: ReservationGuestRole.PRIMARY,
+          },
+          select: { id: true },
+        });
+        if (primary === null) {
+          await transaction.reservationGuest.create({
+            data: {
+              organizationId: context.organizationId,
+              propertyId,
+              reservationId: current.id,
+              guestId,
+              role: ReservationGuestRole.PRIMARY,
+              ageGroup: GuestAgeGroup.UNKNOWN,
+              origin: ReservationGuestOrigin.MANUAL,
+            },
+            select: { id: true },
+          });
+        } else {
+          await transaction.reservationGuest.update({
+            where: { id: primary.id },
+            data: { guestId },
+            select: { id: true },
+          });
+        }
+      }
 
       await transaction.reservationHistory.create({
         data: {

@@ -18,6 +18,7 @@ import {
   nightsBetween,
   parseCalendarDate,
 } from '../reservations/reservation-dates';
+import { evaluatePartyReadiness } from '../reservations/reservation-party';
 import {
   CheckOutDto,
   CreateIncidentDto,
@@ -543,6 +544,57 @@ export class FrontOfficeService {
             code: 'reservation_room_required',
             message: 'Assign a room to the reservation before checking in.',
           });
+        }
+
+        const party = await transaction.reservationGuest.findMany({
+          where: {
+            organizationId: context.organizationId,
+            propertyId,
+            reservationId: reservation.id,
+          },
+          select: {
+            id: true,
+            guestId: true,
+            role: true,
+            legalIncapacity: true,
+            minorSupervision: true,
+            authorizationReference: true,
+            responsibleReservationGuestId: true,
+            guest: {
+              select: {
+                documentType: true,
+                documentNumber: true,
+                fnrhProfile: { select: { birthDate: true } },
+              },
+            },
+          },
+        });
+        if (party.length > 0) {
+          const readiness = evaluatePartyReadiness({
+            members: party.map((row) => ({
+              id: row.id,
+              guestId: row.guestId,
+              role: row.role,
+              birthDate: row.guest.fnrhProfile?.birthDate ?? null,
+              documentType: row.guest.documentType,
+              documentNumber: row.guest.documentNumber,
+              legalIncapacity: row.legalIncapacity,
+              minorSupervision: row.minorSupervision,
+              authorizationReference: row.authorizationReference,
+              responsibleReservationGuestId: row.responsibleReservationGuestId,
+            })),
+            checkInDate: reservation.checkInDate,
+            primaryGuestId: reservation.guestId,
+            declaredAdults: reservation.adults,
+            declaredChildren: reservation.children,
+          });
+          if (readiness.checkInBlocked) {
+            throw new ConflictException({
+              code: 'reservation_party_check_in_blocked',
+              message: 'Resolve the reservation party legal block before checking in.',
+              details: { codes: readiness.legalCodes },
+            });
+          }
         }
 
         const room = await this.lockRoom(
