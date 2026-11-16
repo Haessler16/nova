@@ -17,18 +17,26 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Table,
+  TableContainer,
   Tab,
   TabList,
   TabPanel,
   TabPanels,
   Tabs,
+  Tbody,
+  Td,
   Text,
   Textarea,
+  Th,
+  Thead,
+  Tr,
   useDisclosure,
   useToast,
 } from '@chakra-ui/react';
 import NextLink from 'next/link';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { CheckInWizard } from '@/components/check-in-wizard';
 import { PropertyGate } from '@/components/app-shell';
 import { DateField } from '@/components/date-field';
 import { ReservationDocuments } from '@/components/documents-panel';
@@ -49,12 +57,6 @@ import {
   INCIDENT_SEVERITY_LABELS,
   INCIDENT_STATUS_LABELS,
   INCIDENT_TYPE_LABELS,
-  INSTRUCTION_ACTION_LABELS,
-  INSTRUCTION_CATEGORY_LABELS,
-  INSTRUCTION_MOMENT_LABELS,
-  INSTRUCTION_PRIORITY_COLORS,
-  INSTRUCTION_PRIORITY_LABELS,
-  INSTRUCTION_STATUS_LABELS,
   OPERATIONAL_COLORS,
   OPERATIONAL_LABELS,
   RESERVATION_STATUS_COLORS,
@@ -71,7 +73,7 @@ import type {
   IncidentStatus,
   IncidentType,
   Reservation,
-  ReservationInstruction,
+  ReservationStatus,
   RoomRackItem,
   Stay,
 } from '@/lib/types';
@@ -91,28 +93,21 @@ const TAB_INDEX: Record<string, number> = {
   incidents: 4,
 };
 
-/**
- * The check-in summary is intentionally narrower than the reservation panel:
- * only instructions actionable at arrival/check-in or high-risk alerts are
- * shown. Billing, check-out tasks and general notes stay in the reservation.
- */
-function isCheckInRelevant(instruction: ReservationInstruction): boolean {
-  if (instruction.status === 'COMPLETED' || instruction.status === 'DISMISSED') {
-    return false;
-  }
-  if (instruction.executionMoment === 'PRE_ARRIVAL' || instruction.executionMoment === 'CHECK_IN') {
-    return true;
-  }
-  if (
-    instruction.actionType === 'PAYMENT_PREAUTHORIZATION' ||
-    instruction.actionType === 'ARRIVAL_REMINDER'
-  ) {
-    return true;
-  }
-  // Critical alerts are surfaced even without an explicit moment so the front
-  // desk cannot miss e.g. "do not cancel" instructions.
-  return instruction.priority === 'CRITICAL';
+interface SearchFilters {
+  q: string;
+  roomNumber: string;
+  fromDate: string;
+  toDate: string;
+  status: ReservationStatus | '';
 }
+
+const EMPTY_SEARCH_FILTERS: SearchFilters = {
+  q: '',
+  roomNumber: '',
+  fromDate: '',
+  toDate: '',
+  status: '',
+};
 
 function StayCard({
   stay,
@@ -189,13 +184,13 @@ function FrontOfficeContent() {
   const [busy, setBusy] = useState<string | null>(null);
   const [tabIndex, setTabIndex] = useState(0);
   const [selectedDate, setSelectedDate] = useState('');
-
-  useEffect(() => {
-    const tab = new URLSearchParams(window.location.search).get('tab');
-    if (tab !== null && TAB_INDEX[tab] !== undefined) {
-      setTabIndex(TAB_INDEX[tab]);
-    }
-  }, []);
+  const [searchInputs, setSearchInputs] = useState<SearchFilters>(EMPTY_SEARCH_FILTERS);
+  const [searchFilters, setSearchFilters] = useState<SearchFilters>(EMPTY_SEARCH_FILTERS);
+  const [searchResults, setSearchResults] = useState<Reservation[]>([]);
+  const [searchNextCursor, setSearchNextCursor] = useState<string | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<unknown>(null);
+  const [searchActive, setSearchActive] = useState(false);
 
   const overview = useAsyncData<FrontOfficeOverview>(
     () =>
@@ -236,20 +231,6 @@ function FrontOfficeContent() {
   const [checkoutNotes, setCheckoutNotes] = useState('');
 
   const [checkInTarget, setCheckInTarget] = useState<Reservation | null>(null);
-  const [instructionBusyId, setInstructionBusyId] = useState<string | null>(null);
-  const checkInInstructions = useAsyncData<{ items: ReservationInstruction[] }>(
-    () =>
-      checkInTarget === null
-        ? Promise.resolve({ items: [] })
-        : api<{ items: ReservationInstruction[] }>(
-            `/api/v1/reservations/${checkInTarget.id}/instructions?limit=100`,
-            { tenant },
-          ),
-    `${tenant.organizationId}:${tenant.propertyId}:check-in:${checkInTarget?.id ?? 'none'}`,
-  );
-  const relevantCheckInInstructions = (checkInInstructions.data?.items ?? []).filter(
-    isCheckInRelevant,
-  );
 
   const [moveTarget, setMoveTarget] = useState<Stay | null>(null);
   const [moveRoomId, setMoveRoomId] = useState('');
@@ -314,54 +295,122 @@ function FrontOfficeContent() {
     }
   }
 
-  function checkIn(reservation: Reservation): void {
+  function openGuidedCheckIn(reservation: Reservation): void {
     setCheckInTarget(reservation);
     checkInModal.onOpen();
   }
 
-  async function confirmCheckIn(): Promise<void> {
-    if (checkInTarget === null) {
-      return;
+  async function performSearch(filters: SearchFilters, cursor?: string): Promise<void> {
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      const params = new URLSearchParams({ limit: '25' });
+      if (filters.q.trim() !== '') params.set('search', filters.q.trim());
+      if (filters.roomNumber.trim() !== '') params.set('roomNumber', filters.roomNumber.trim());
+      if (filters.fromDate !== '') params.set('fromDate', filters.fromDate);
+      if (filters.toDate !== '') params.set('toDate', filters.toDate);
+      if (filters.status !== '') params.set('status', filters.status);
+      if (cursor !== undefined) params.set('cursor', cursor);
+      const body = await api<{ items: Reservation[]; nextCursor: string | null }>(
+        `/api/v1/reservations?${params.toString()}`,
+        { tenant },
+      );
+      setSearchResults((current) =>
+        cursor === undefined ? body.items : [...current, ...body.items],
+      );
+      setSearchNextCursor(body.nextCursor);
+    } catch (cause) {
+      setSearchError(cause);
+    } finally {
+      setSearchLoading(false);
     }
-    const target = checkInTarget;
-    await run(
-      `check-in:${target.id}`,
-      () =>
-        api(`/api/v1/front-office/reservations/${target.id}/check-in`, {
-          method: 'POST',
-          tenant,
-        }),
-      `Check-in registrado para ${target.guest.fullName}`,
-      () => {
-        checkInModal.onClose();
-        setCheckInTarget(null);
-      },
+  }
+
+  function syncSearchQuery(filters: SearchFilters): void {
+    const params = new URLSearchParams(window.location.search);
+    const mapping: Array<[keyof SearchFilters, string]> = [
+      ['q', 'q'],
+      ['roomNumber', 'roomNumber'],
+      ['fromDate', 'fromDate'],
+      ['toDate', 'toDate'],
+      ['status', 'status'],
+    ];
+    for (const [key, param] of mapping) {
+      const value = filters[key].trim();
+      if (value === '') {
+        params.delete(param);
+      } else {
+        params.set(param, value);
+      }
+    }
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${query === '' ? '' : `?${query}`}`,
     );
   }
 
-  async function acknowledgeInstruction(instruction: ReservationInstruction): Promise<void> {
-    if (checkInTarget === null) {
+  function applySearch(event?: FormEvent): void {
+    event?.preventDefault();
+    const next = { ...searchInputs };
+    setSearchFilters(next);
+    setSearchActive(true);
+    setSearchResults([]);
+    setSearchNextCursor(null);
+    syncSearchQuery(next);
+    void performSearch(next);
+  }
+
+  function clearSearch(): void {
+    setSearchInputs(EMPTY_SEARCH_FILTERS);
+    setSearchFilters(EMPTY_SEARCH_FILTERS);
+    setSearchActive(false);
+    setSearchResults([]);
+    setSearchNextCursor(null);
+    setSearchError(null);
+    syncSearchQuery(EMPTY_SEARCH_FILTERS);
+  }
+
+  function updateSearchInput<K extends keyof SearchFilters>(
+    key: K,
+    value: SearchFilters[K],
+  ): void {
+    setSearchInputs((current) => ({ ...current, [key]: value }));
+  }
+
+  const searchBootstrapped = useRef(false);
+  const performSearchRef = useRef(performSearch);
+  performSearchRef.current = performSearch;
+  useEffect(() => {
+    if (searchBootstrapped.current) {
       return;
     }
-    setInstructionBusyId(instruction.id);
-    try {
-      await api(
-        `/api/v1/reservations/${checkInTarget.id}/instructions/${instruction.id}/acknowledge`,
-        { method: 'POST', tenant, body: {} },
-      );
-      checkInInstructions.reload();
-      toast({ title: 'Lectura registrada', status: 'success' });
-    } catch (cause) {
-      toast({
-        title: 'No se pudo registrar la lectura',
-        description: errorMessage(cause),
-        status: 'error',
-        duration: 8000,
-      });
-    } finally {
-      setInstructionBusyId(null);
+    searchBootstrapped.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab !== null && TAB_INDEX[tab] !== undefined) {
+      setTabIndex(TAB_INDEX[tab]);
     }
-  }
+    const status = params.get('status');
+    const initial: SearchFilters = {
+      q: params.get('q') ?? '',
+      roomNumber: params.get('roomNumber') ?? '',
+      fromDate: params.get('fromDate') ?? '',
+      toDate: params.get('toDate') ?? '',
+      status:
+        status !== null && Object.prototype.hasOwnProperty.call(RESERVATION_STATUS_LABELS, status)
+          ? (status as ReservationStatus)
+          : '',
+    };
+    const active = Object.values(initial).some((value) => value !== '');
+    if (active) {
+      setSearchInputs(initial);
+      setSearchFilters(initial);
+      setSearchActive(true);
+      void performSearchRef.current(initial);
+    }
+  }, []);
 
   function openCheckOut(stay: Stay): void {
     setCheckoutTarget(stay);
@@ -574,6 +623,172 @@ function FrontOfficeContent() {
         }
       />
 
+      <SectionCard mb={6}>
+        <form onSubmit={applySearch}>
+          <Stack spacing={3}>
+            <HStack justify="space-between" wrap="wrap">
+              <Box>
+                <Text fontWeight="semibold">Búsqueda operativa</Text>
+                <Text fontSize="xs" color="gray.500">
+                  Huésped (sin importar acentos), código de reserva o UH. Combiná con fechas y
+                  estado.
+                </Text>
+              </Box>
+              {searchActive && (
+                <Button size="xs" variant="ghost" onClick={clearSearch}>
+                  Limpiar filtros
+                </Button>
+              )}
+            </HStack>
+            <SimpleGrid columns={{ base: 1, md: 2, xl: 5 }} spacing={3}>
+              <Field label="Huésped, reserva o UH">
+                <Input
+                  value={searchInputs.q}
+                  placeholder="Ej.: José, DEMO-1104, 201"
+                  onChange={(event) => updateSearchInput('q', event.target.value)}
+                />
+              </Field>
+              <Field label="UH" helper="Opcional">
+                <Input
+                  value={searchInputs.roomNumber}
+                  placeholder="Ej.: 201"
+                  onChange={(event) => updateSearchInput('roomNumber', event.target.value)}
+                />
+              </Field>
+              <Field label="Desde">
+                <DateField
+                  value={searchInputs.fromDate}
+                  onChange={(value) => updateSearchInput('fromDate', value)}
+                  placeholder="Cualquier fecha"
+                  ariaLabel="Desde"
+                />
+              </Field>
+              <Field label="Hasta">
+                <DateField
+                  value={searchInputs.toDate}
+                  onChange={(value) => updateSearchInput('toDate', value)}
+                  placeholder="Cualquier fecha"
+                  ariaLabel="Hasta"
+                />
+              </Field>
+              <Field label="Estado">
+                <Select
+                  value={searchInputs.status}
+                  onChange={(event) =>
+                    updateSearchInput('status', event.target.value as ReservationStatus | '')
+                  }
+                >
+                  <option value="">Todos</option>
+                  {Object.entries(RESERVATION_STATUS_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </SimpleGrid>
+            <HStack justify="space-between" wrap="wrap">
+              <Text fontSize="xs" color="gray.500">
+                Las fechas filtran reservas que solapan el rango elegido.
+              </Text>
+              <Button type="submit" size="sm" colorScheme="brand" isLoading={searchLoading}>
+                Buscar
+              </Button>
+            </HStack>
+          </Stack>
+        </form>
+
+        {searchActive && (
+          <Box mt={4}>
+            <QueryFeedback
+              loading={searchLoading && searchResults.length === 0}
+              error={searchError}
+              onRetry={() => void performSearch(searchFilters)}
+              isEmpty={!searchLoading && searchResults.length === 0}
+              emptyText="Ninguna reserva coincide con los filtros."
+            >
+              <TableContainer overflowX="auto">
+                <Table size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Huésped</Th>
+                      <Th>Reserva</Th>
+                      <Th>UH</Th>
+                      <Th>Llegada</Th>
+                      <Th>Salida</Th>
+                      <Th>Estado</Th>
+                      <Th>Tipo</Th>
+                      <Th />
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {searchResults.map((reservation) => (
+                      <Tr key={reservation.id}>
+                        <Td>
+                          <Text fontWeight="medium">{reservation.guest.fullName}</Text>
+                        </Td>
+                        <Td>{reservation.code}</Td>
+                        <Td>{reservation.room?.number ?? 'Sin UH'}</Td>
+                        <Td>{formatCalendarDate(reservation.checkInDate)}</Td>
+                        <Td>{formatCalendarDate(reservation.checkOutDate)}</Td>
+                        <Td>
+                          <StatusBadge
+                            color={RESERVATION_STATUS_COLORS[reservation.status] ?? 'gray'}
+                            label={RESERVATION_STATUS_LABELS[reservation.status]}
+                          />
+                        </Td>
+                        <Td>{reservation.roomType.name}</Td>
+                        <Td>
+                          <HStack spacing={1} justify="flex-end" wrap="wrap">
+                            <Button
+                              as={NextLink}
+                              href={`/reservations?reservation=${reservation.id}`}
+                              size="xs"
+                              variant="ghost"
+                            >
+                              Abrir
+                            </Button>
+                            <Button
+                              as={NextLink}
+                              href={`/guests?search=${encodeURIComponent(reservation.guest.fullName)}`}
+                              size="xs"
+                              variant="ghost"
+                            >
+                              Huésped
+                            </Button>
+                            {reservation.status === 'CONFIRMED' && (
+                              <Button
+                                size="xs"
+                                colorScheme="brand"
+                                onClick={() => openGuidedCheckIn(reservation)}
+                              >
+                                Check-in
+                              </Button>
+                            )}
+                          </HStack>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+              {searchNextCursor !== null && (
+                <HStack justify="center" mt={3}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    isLoading={searchLoading}
+                    onClick={() => void performSearch(searchFilters, searchNextCursor)}
+                  >
+                    Cargar más
+                  </Button>
+                </HStack>
+              )}
+            </QueryFeedback>
+          </Box>
+        )}
+      </SectionCard>
+
       <QueryFeedback
         loading={overview.loading && data === null}
         error={overview.error}
@@ -660,7 +875,7 @@ function FrontOfficeContent() {
                     <Text fontSize="xs" color="gray.500" mb={3}>
                       {data.isHistorical
                         ? 'Reservas con llegada ese día, incluidos los estados finales. Vista de solo lectura.'
-                        : `Reservas confirmadas con llegada hasta ${formatCalendarDate(operationalDate)}. El check-in exige habitación asignada y disponible.`}
+                        : `Reservas confirmadas con llegada hasta ${formatCalendarDate(operationalDate)}. El check-in se guía desde el flujo: valida habitación limpia, disponible y sin bloqueos.`}
                     </Text>
                     <QueryFeedback
                       loading={false}
@@ -731,26 +946,16 @@ function FrontOfficeContent() {
                                     reservationId={reservation.id}
                                     reservationCode={reservation.code}
                                   />
-                                  {!data.isHistorical &&
-                                    (missingRoom ? (
-                                      <Button
-                                        as={NextLink}
-                                        href="/reservations"
-                                        size="xs"
-                                        variant="outline"
-                                      >
-                                        Asignar habitación
-                                      </Button>
-                                    ) : (
-                                      <Button
-                                        size="xs"
-                                        colorScheme="brand"
-                                        onClick={() => checkIn(reservation)}
-                                        isLoading={busy === `check-in:${reservation.id}`}
-                                      >
-                                        Check-in
-                                      </Button>
-                                    ))}
+                                  {!data.isHistorical && (
+                                    <Button
+                                      size="xs"
+                                      colorScheme="brand"
+                                      onClick={() => openGuidedCheckIn(reservation)}
+                                      isLoading={busy === `check-in:${reservation.id}`}
+                                    >
+                                      Check-in
+                                    </Button>
+                                  )}
                                   {!data.isHistorical && late && (
                                     <Button
                                       size="xs"
@@ -1121,100 +1326,16 @@ function FrontOfficeContent() {
         )}
       </QueryFeedback>
 
-      <Modal isOpen={checkInModal.isOpen} onClose={checkInModal.onClose} size="lg">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Check-in — {checkInTarget?.guest.fullName ?? 'huésped'}</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Stack spacing={4}>
-              <Text fontSize="sm" color="gray.600">
-                Solo se muestran instrucciones relevantes para la llegada y el check-in. Revisá y
-                confirmá su lectura antes de continuar. El check-in no inicia preautorizaciones, no
-                cobra pagos y no modifica tarifas.
-              </Text>
-              <QueryFeedback
-                loading={checkInInstructions.loading}
-                error={checkInInstructions.error}
-                onRetry={checkInInstructions.reload}
-                isEmpty={relevantCheckInInstructions.length === 0}
-                emptyText="Sin instrucciones relevantes para esta llegada."
-              >
-                <Stack spacing={2}>
-                  {relevantCheckInInstructions.map((instruction) => (
-                    <Box
-                      key={instruction.id}
-                      borderWidth="1px"
-                      borderColor="gray.200"
-                      borderRadius="md"
-                      p={3}
-                    >
-                      <HStack spacing={2} wrap="wrap">
-                        <StatusBadge
-                          color={INSTRUCTION_PRIORITY_COLORS[instruction.priority]}
-                          label={INSTRUCTION_PRIORITY_LABELS[instruction.priority]}
-                        />
-                        <Badge colorScheme="gray">
-                          {INSTRUCTION_CATEGORY_LABELS[instruction.category]}
-                        </Badge>
-                        {instruction.executionMoment !== null && (
-                          <Badge colorScheme="brand" textTransform="none">
-                            {INSTRUCTION_MOMENT_LABELS[instruction.executionMoment]}
-                          </Badge>
-                        )}
-                        {instruction.status !== 'NEW' && (
-                          <Badge colorScheme="gray" textTransform="none">
-                            {instruction.status === 'ACKNOWLEDGED'
-                              ? 'Leída'
-                              : INSTRUCTION_STATUS_LABELS[instruction.status]}
-                          </Badge>
-                        )}
-                      </HStack>
-                      <Text fontWeight="semibold" mt={1}>
-                        {instruction.title}
-                      </Text>
-                      <Text fontSize="sm" mt={1}>
-                        {instruction.body}
-                      </Text>
-                      {instruction.actionType === 'PAYMENT_PREAUTHORIZATION' && (
-                        <Text fontSize="xs" color="warning.600" mt={1}>
-                          {INSTRUCTION_ACTION_LABELS[instruction.actionType]}: pendiente de
-                          ejecución en el módulo de pagos. No es un pago realizado ni una
-                          autorización aprobada.
-                        </Text>
-                      )}
-                      {instruction.status === 'NEW' && (
-                        <Button
-                          mt={2}
-                          size="xs"
-                          variant="outline"
-                          colorScheme="brand"
-                          isLoading={instructionBusyId === instruction.id}
-                          onClick={() => void acknowledgeInstruction(instruction)}
-                        >
-                          Confirmar lectura
-                        </Button>
-                      )}
-                    </Box>
-                  ))}
-                </Stack>
-              </QueryFeedback>
-            </Stack>
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={checkInModal.onClose}>
-              Volver
-            </Button>
-            <Button
-              colorScheme="brand"
-              isLoading={busy === `check-in:${checkInTarget?.id ?? ''}`}
-              onClick={() => void confirmCheckIn()}
-            >
-              Confirmar check-in
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <CheckInWizard
+        isOpen={checkInModal.isOpen}
+        reservation={checkInTarget}
+        tenant={tenant}
+        onClose={() => {
+          checkInModal.onClose();
+          setCheckInTarget(null);
+        }}
+        onCompleted={reloadAll}
+      />
 
       <Modal isOpen={checkoutModal.isOpen} onClose={checkoutModal.onClose} size="md">
         <ModalOverlay />

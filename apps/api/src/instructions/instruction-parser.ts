@@ -309,6 +309,17 @@ const CARD_LABEL =
 const CVV_LABEL =
   /\b(?:cvv|cvc|cod(?:igo)?\.?\s*(?:de\s*)?seg(?:uran[cç]a)?)\s*[:=]?\s*\d{3,4}\b/gi;
 
+// NSU, authorization code and provider references are opaque payment
+// identifiers: unlike a PAN they have no checksum, so only a labelled value is
+// redacted. The value must look like a reference code (>= 2 digits) to avoid
+// redacting ordinary prose such as "o NSU é obrigatório".
+const NSU_LABEL =
+  /\b(?:nsu|n[uú]mero\s+sequencial(?:\s+[uú]nico)?)\b\s*(?:n[oº°]?\.?|[:=#])?\s*([A-Za-z0-9][A-Za-z0-9._-]{3,31})(?![A-Za-z0-9._-])/gi;
+const AUTH_CODE_LABEL =
+  /\b(?:auth(?:orization)?\s*(?:code|c[oó]digo)?|c[oó]d(?:igo)?\s*(?:de\s*)?autoriza[cç][aã]o|autoriza[cç][aã]o|aut\.?)\b\s*(?:n[oº°]?\.?|[:=#])?\s*([A-Za-z0-9][A-Za-z0-9._-]{3,31})(?![A-Za-z0-9._-])/gi;
+const PROVIDER_REF_LABEL =
+  /\b(?:tid|transaction\s*id|id\s*da\s*transa[cç][aã]o|refer[eê]ncia\s+(?:do\s+)?(?:pagamento|provedor|transa[cç][aã]o))\b\s*(?:n[oº°]?\.?|[:=#])?\s*([A-Za-z0-9][A-Za-z0-9._-]{3,31})(?![A-Za-z0-9._-])/gi;
+
 function normalizeWhitespace(value: string): string {
   return value.replace(/\r\n/g, '\n').trim();
 }
@@ -334,14 +345,34 @@ function luhnValid(digits: string): boolean {
   return sum > 0 && sum % 10 === 0;
 }
 
+function looksLikeReferenceCode(value: string): boolean {
+  return value.replace(/\D/g, '').length >= 2;
+}
+
 /**
- * Removes card numbers and CVV from free text. The digest of the exact received
- * text is kept separately, so redaction does not erase traceability while
- * avoiding PAN/CVV at rest.
+ * Removes card numbers, CVV, NSU, authorization codes and provider references
+ * from free text. The digest of the exact received text is kept separately, so
+ * redaction does not erase traceability while avoiding payment secrets at rest.
  */
 export function redactSensitiveCardData(input: string): { text: string; redacted: boolean } {
   let redacted = false;
-  let text = input.replace(CVV_LABEL, () => {
+  let text = input;
+
+  const redactLabelledReference = (pattern: RegExp, placeholder: string): void => {
+    text = text.replace(pattern, (match: string, value: string) => {
+      if (!looksLikeReferenceCode(value)) {
+        return match;
+      }
+      redacted = true;
+      return `${match.slice(0, match.length - value.length)}${placeholder}`;
+    });
+  };
+
+  redactLabelledReference(AUTH_CODE_LABEL, '[AUTH_CODE_REDACTED]');
+  redactLabelledReference(NSU_LABEL, '[NSU_REDACTED]');
+  redactLabelledReference(PROVIDER_REF_LABEL, '[PROVIDER_REF_REDACTED]');
+
+  text = text.replace(CVV_LABEL, () => {
     redacted = true;
     return '[CVV_REDACTED]';
   });
@@ -403,7 +434,7 @@ export function parseSourceNote(input: string): ParsedSourceNote {
 
   if (redaction.redacted) {
     warnings.push(
-      'Dados de cartão foram redigidos antes de salvar o texto original. Não armazene PAN/CVV.',
+      'Dados sensíveis de pagamento (cartão, CVV, NSU ou código de autorização) foram redigidos antes de salvar o texto original. Não armazene esses valores.',
     );
   }
 

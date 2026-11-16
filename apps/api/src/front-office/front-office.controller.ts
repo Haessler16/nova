@@ -47,6 +47,15 @@ export class FrontOfficeController {
     return this.frontOffice.overview(tenant, query);
   }
 
+  @Get('reservations/:id/check-in-readiness')
+  @RequirePermissions(PERMISSIONS.FRONT_OFFICE_READ)
+  checkInReadiness(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.frontOffice.checkInReadiness(tenant, id);
+  }
+
   @Post('reservations/:id/check-in')
   @RequirePermissions(PERMISSIONS.FRONT_OFFICE_MANAGE)
   checkIn(@Tenant() tenant: TenantContext, @Param('id', new ParseUUIDPipe()) id: string) {

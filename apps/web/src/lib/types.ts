@@ -336,6 +336,52 @@ export interface FrontOfficeOverview {
   roomRack: RoomRackItem[];
 }
 
+export type CheckInRoomBlockReason =
+  | 'ROOM_OUT_OF_SERVICE'
+  | 'ROOM_BLOCKED'
+  | 'ROOM_OCCUPIED'
+  | 'ROOM_NOT_AVAILABLE'
+  | 'HOUSEKEEPING_NOT_READY';
+
+export interface CheckInRoomOption {
+  id: string;
+  number: string;
+  floor: string | null;
+  building: string | null;
+  roomType: { id: string; name: string; code: string };
+  housekeepingState: HousekeepingState;
+  operationalState: RoomOperationalState;
+  occupancy: 'VACANT' | 'OCCUPIED';
+  activeBlock: { id: string; type: string; endsAt: string } | null;
+  eligible: boolean;
+  reasons: CheckInRoomBlockReason[];
+}
+
+export interface CheckInReadiness {
+  reservation: {
+    id: string;
+    code: string;
+    status: ReservationStatus;
+    checkInDate: string;
+    checkOutDate: string;
+    nights: number;
+    adults: number;
+    children: number;
+    notes: string | null;
+    roomId: string | null;
+    guest: { id: string; fullName: string; email: string | null; phone: string | null };
+    roomType: { id: string; name: string; code: string };
+    room: { id: string; number: string; floor: string | null; building: string | null } | null;
+  };
+  housekeepingPolicy: {
+    blockedStates: HousekeepingState[];
+    inspectionPendingBlocksCheckIn: boolean;
+  };
+  currentRoomId: string | null;
+  currentRoomEligible: boolean | null;
+  rooms: CheckInRoomOption[];
+}
+
 export interface Incident {
   id: string;
   type: IncidentType;

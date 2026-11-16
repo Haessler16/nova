@@ -126,17 +126,20 @@ Esta ficha persigue seis resultados operativos:
 
 ## Fase 0 — Cierre de riesgos y validación técnica
 
-**Prioridad:** P0/P1.  
+**Prioridad:** P0/P1.
+
 **No requiere rediseño visual.**
 
+**Estado:** ejecutada el 2026-11-16 — evidencia en `docs/v4/FASE_0_REPORT.md`.
+
 Tareas:
-- [ ] Hacer una inspección actual del repositorio y confirmar la línea base.
-- [ ] Corregir H-01: actualizar `guests-reservations.e2e-spec.ts` para afirmar que la habitación bloqueada `ROOM_DLX_201` no aparece y que `ROOM_DLX_202` sí puede aparecer si cumple las reglas. No modificar lógica de disponibilidad salvo decisión de producto documentada.
-- [ ] Corregir H-02/N-07: ampliar `redactSensitiveCardData` para detectar/redactar NSU y authorization code etiquetados y formatos conocidos.
-- [ ] Añadir tests positivos y negativos para PAN, CVV, NSU, authcode y referencias de proveedor.
-- [ ] Mantener hash del texto fuente para trazabilidad sin conservar el secreto redactado.
-- [ ] Definir si la redacción ocurre antes de persistir `ReservationSourceNote.text`; confirmar que ninguna ruta alternativa conserva el valor original sensible.
-- [ ] Añadir prueba de regresión que confirme que el parser no crea pagos, cargos ni preautorizaciones reales.
+- [x] Hacer una inspección actual del repositorio y confirmar la línea base.
+- [x] Corregir H-01: actualizar `guests-reservations.e2e-spec.ts` para afirmar que la habitación bloqueada `ROOM_DLX_201` no aparece y que `ROOM_DLX_202` sí puede aparecer si cumple las reglas. No modificar lógica de disponibilidad salvo decisión de producto documentada. _(Ya estaba corregido en `1a836bd`; se verificó con la suite aislada sin cambiar el test ni la lógica.)_
+- [x] Corregir H-02/N-07: ampliar `redactSensitiveCardData` para detectar/redactar NSU y authorization code etiquetados y formatos conocidos.
+- [x] Añadir tests positivos y negativos para PAN, CVV, NSU, authcode y referencias de proveedor.
+- [x] Mantener hash del texto fuente para trazabilidad sin conservar el secreto redactado.
+- [x] Definir si la redacción ocurre antes de persistir `ReservationSourceNote.text`; confirmar que ninguna ruta alternativa conserva el valor original sensible. _(Redacción previa a persistir; única ruta de escritura en `InstructionsService.parseSource`.)_
+- [x] Añadir prueba de regresión que confirme que el parser no crea pagos, cargos ni preautorizaciones reales. _(Conteos de `Payment`, `Folio` y `FolioLine` sin cambios.)_
 
 **Aceptación:**
 - E2E aislado vuelve a 14/14 suites verdes, o cualquier suite ajena al alcance se reporta separadamente con evidencia.
@@ -146,8 +149,11 @@ Tareas:
 
 ## Fase 1 — Front Desk: búsqueda operativa y flujo de check-in
 
-**Prioridad:** P1.  
+**Prioridad:** P1.
+
 **Módulo existente:** `apps/web/src/app/(app)/front-office/page.tsx`; servicios de reservas/huéspedes/Front Office existentes.
+
+**Estado:** ejecutada el 2026-11-16 — evidencia en `docs/v4/FASE_1_REPORT.md`.
 
 ### 1.1 Buscador visible en Front Desk
 
@@ -235,12 +241,12 @@ Reglas:
 - Mostrar instrucciones pendientes y no marcarlas completadas automáticamente.
 
 **Aceptación Fase 1:**
-- Recepción encuentra una reserva por cualquiera de los criterios principales.
-- Puede combinar fecha y estado.
-- Puede abrir la reserva correcta y continuar el check-in.
-- La habitación destino se revalida en backend.
-- Pruebas de permisos, tenant, paginación, estados vacíos y errores.
-- Pruebas UI de interacción y navegación, sin mocks en producción.
+- [x] Recepción encuentra una reserva por cualquiera de los criterios principales. _(texto, UH, fechas y estado sobre `GET /reservations`; acentos resueltos con `unaccent`)_
+- [x] Puede combinar fecha y estado. _(filtros combinables y conservados en query string)_
+- [x] Puede abrir la reserva correcta y continuar el check-in. _(acciones Abrir/Huésped/Check-in; wizard de 4 pasos)_
+- [x] La habitación destino se revalida en backend. _(`check-in-readiness` de solo lectura + revalidación transaccional en `POST /check-in`)_
+- [x] Pruebas de permisos, tenant, paginación, estados vacíos y errores. _(E2E aislado 15/15 suites, 130/130 tests)_
+- [x] Pruebas UI de interacción y navegación, sin mocks en producción. _(Playwright `front-office-checkin.spec.ts` 1/1 contra API y web reales)_
 
 ---
 

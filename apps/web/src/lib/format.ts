@@ -1,6 +1,7 @@
 import type {
   CashMovementType,
   CashSessionStatus,
+  CheckInRoomBlockReason,
   DocumentStatus,
   DocumentType,
   FolioStatus,
@@ -36,6 +37,14 @@ export const RECORD_STATUS_COLORS: Record<string, string> = {
   SUSPENDED: 'warning',
   INVITED: 'sky',
   DISABLED: 'gray',
+};
+
+export const CHECK_IN_BLOCK_REASON_LABELS: Record<CheckInRoomBlockReason, string> = {
+  ROOM_OUT_OF_SERVICE: 'Habitación fuera de servicio',
+  ROOM_BLOCKED: 'Bloqueo operativo activo',
+  ROOM_OCCUPIED: 'Habitación ocupada',
+  ROOM_NOT_AVAILABLE: 'Otra reserva ocupa esas fechas',
+  HOUSEKEEPING_NOT_READY: 'Housekeeping no lista',
 };
 
 export const HOUSEKEEPING_LABELS: Record<HousekeepingState, string> = {

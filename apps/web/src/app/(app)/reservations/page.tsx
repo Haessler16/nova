@@ -490,15 +490,32 @@ function ReservationsContent() {
   const openedFromQuery = useRef(false);
   const openCreateRef = useRef(openCreate);
   openCreateRef.current = openCreate;
+  const openDetailRef = useRef(openDetail);
+  openDetailRef.current = openDetail;
   useEffect(() => {
     if (openedFromQuery.current) {
       return;
     }
     openedFromQuery.current = true;
-    if (new URLSearchParams(window.location.search).get('new') === '1') {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('new') === '1') {
       openCreateRef.current();
     }
-  }, []);
+    const search = params.get('search');
+    if (search !== null && search.trim() !== '') {
+      setSearchInput(search.trim());
+      setFilters((current) => ({ ...current, search: search.trim() }));
+    }
+    // Deep link from Front Desk search results: open the reservation drawer.
+    const reservationParam = params.get('reservation');
+    if (reservationParam !== null) {
+      void api<Reservation>(`/api/v1/reservations/${reservationParam}`, { tenant })
+        .then((reservation) => openDetailRef.current(reservation))
+        .catch(() => {
+          // The list stays usable if the deep link is stale or unauthorized.
+        });
+    }
+  }, [tenant]);
 
   function openDetail(reservation: Reservation): void {
     setSelectedId(reservation.id);

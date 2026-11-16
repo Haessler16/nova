@@ -56,6 +56,7 @@ describe('Guests and reservations (E2E)', () => {
 
   let guestId: string;
   let firstReservationId: string;
+  let firstRoomNumber: string;
   let backToBackReservationId: string;
 
   beforeAll(async () => {
@@ -151,6 +152,7 @@ describe('Guests and reservations (E2E)', () => {
         .expect(201);
 
       firstReservationId = created.body.id;
+      firstRoomNumber = created.body.room.number;
       expect(created.body.status).toBe('CONFIRMED');
       expect(created.body.checkInDate).toBe(day1);
       expect(created.body.checkOutDate).toBe(day3);
@@ -175,6 +177,77 @@ describe('Guests and reservations (E2E)', () => {
         .expect(200);
 
       expect(list.body.items.map((item: { id: string }) => item.id)).toContain(firstReservationId);
+    });
+
+    it('searches by accented guest name, room number, code and paginated window', async () => {
+      const accentedGuest = await request(app.getHttpServer())
+        .post('/api/v1/guests')
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .send({ fullName: `José Acción ${suffix}` })
+        .expect(201);
+
+      const unassigned = await request(app.getHttpServer())
+        .post('/api/v1/reservations')
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .send({
+          checkInDate: day4,
+          checkOutDate: day6,
+          adults: 1,
+          guestId: accentedGuest.body.id,
+          roomTypeId: ROOM_TYPE_STD,
+        })
+        .expect(201);
+
+      const withoutAccent = await request(app.getHttpServer())
+        .get('/api/v1/reservations')
+        .query({ search: 'jose accion' })
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(
+        withoutAccent.body.items.map((item: { id: string }) => item.id),
+      ).toContain(unassigned.body.id);
+
+      const withAccent = await request(app.getHttpServer())
+        .get('/api/v1/reservations')
+        .query({ search: 'JOSÉ' })
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(withAccent.body.items.map((item: { id: string }) => item.id)).toContain(
+        unassigned.body.id,
+      );
+
+      const byRoomNumber = await request(app.getHttpServer())
+        .get('/api/v1/reservations')
+        .query({ roomNumber: firstRoomNumber })
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(byRoomNumber.body.items.map((item: { id: string }) => item.id)).toContain(
+        firstReservationId,
+      );
+
+      const byCode = await request(app.getHttpServer())
+        .get('/api/v1/reservations')
+        .query({ search: unassigned.body.code.toLowerCase() })
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(byCode.body.items.map((item: { id: string }) => item.id)).toContain(
+        unassigned.body.id,
+      );
+
+      const missing = await request(app.getHttpServer())
+        .get('/api/v1/reservations')
+        .query({ search: `no-match-${suffix.toLowerCase()}` })
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(missing.body.items).toEqual([]);
+
+      const firstPage = await request(app.getHttpServer())
+        .get('/api/v1/reservations')
+        .query({ fromDate: day1, toDate: day6, limit: 1 })
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(firstPage.body.items).toHaveLength(1);
+      expect(firstPage.body.nextCursor).toEqual(expect.any(String));
     });
 
     it('allows back-to-back stays but rejects an overlapping assignment', async () => {

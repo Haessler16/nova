@@ -126,7 +126,7 @@
 
 ### Notes and instructions (Phase 11)
 
-- `ReservationSourceNote`, `InstructionEvent` and their truncate guards are append-only. Card PAN/CVV are redacted before persistence; `sourceTextHash` preserves a digest of the exact received text.
+- `ReservationSourceNote`, `InstructionEvent` and their truncate guards are append-only. Card PAN/CVV, labelled NSU, authorization codes and provider references are redacted before persistence; `sourceTextHash` preserves a digest of the exact received text.
 - The deterministic parser only produces suggestions (`requiresHumanConfirmation: true`). Confirmation is a separate human action; parsing or confirming never creates payments, folio charges, rates or room assignments.
 - Instruction visibility is enforced server-side by permission (`front_office.read/manage`, `reservations.manage`, `reports.financial`, `property.manage`/`audit.read`/`organization.properties.manage`). Confidential instructions are readable only by management/audit roles and reads are audited.
 - Guest notes are independent from reservation instructions and are never copied automatically. Expired/inactive notes are filtered by default; confidential categories follow the same role checks.

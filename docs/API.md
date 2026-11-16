@@ -235,6 +235,12 @@ Notas persistentes del huésped:
 | PATCH  | `/api/v1/reservations/:id/party/:reservationGuestId` | auth + tenant | `reservations.manage` + `guests.manage` | 200    |
 | DELETE | `/api/v1/reservations/:id/party/:reservationGuestId` | auth + tenant | `reservations.manage` + `guests.manage` | 200    |
 
+Listado y búsqueda operativa:
+
+- `GET /reservations` devuelve `{ items, nextCursor }`. `limit` va de 1 a 100 (default 50) y `cursor` es el `id` de la última reserva de la página anterior; el orden es `checkInDate ASC, id ASC`.
+- Filtros: `search` (código de reserva, nombre del huésped principal o número de UH; insensible a mayúsculas y acentos), `roomNumber` (UH, coincidencia parcial insensible a mayúsculas), `status`, `guestId`, `roomTypeId`, `roomId`, `fromDate`/`toDate` (solapamiento con `[checkInDate, checkOutDate)`).
+- `search` resuelve acentos con la extensión PostgreSQL `unaccent` (por ejemplo `jose` encuentra `José`) y combina esos IDs con el mismo `OR` y el scoping de organización/propiedad; los demás filtros se aplican en la misma consulta.
+
 Fechas y ocupación:
 
 - `checkInDate`/`checkOutDate` son fechas calendario `YYYY-MM-DD` de la propiedad. La estancia ocupa `[checkInDate, checkOutDate)`; `checkOutDate > checkInDate`; máximo 366 noches; no se crea una reserva que empiece en el pasado.
@@ -280,7 +286,7 @@ Errores específicos: `reservation_not_found`, `reservation_party_not_editable`,
 - `POST` acepta `title` (2–160), `body` (2–4000), hasta 10 `tags` (≤ 32 cada uno), categoría, prioridad, visibilidad, departamento, usuario asignado, `actionType`, `executionMoment`, `paymentMethod`, `actionDueAt`, `validFrom` y `validUntil` ISO-8601. `validFrom` debe ser anterior a `validUntil` (`400 instruction_invalid_validity`).
 - Las transiciones siguen una máquina de estados; una transición no permitida responde `409 instruction_invalid_transition`. Cada cambio escribe un `InstructionEvent` append-only y un `AuditEvent`. Repetir la transición al mismo estado es idempotente.
 - `GET` filtra por `status`, `priority`, `category`, `actionType`, `executionMoment`, `includeCompleted`, `cursor` y `limit` (≤ 100). Por defecto excluye `COMPLETED`/`DISMISSED`. La visibilidad se aplica en el servidor: `FRONT_DESK` requiere `front_office.read|manage`, `RESERVATIONS` requiere `reservations.manage`, `FINANCE` requiere `reports.financial` y `MANAGEMENT` requiere `property.manage`, `audit.read` u `organization.properties.manage`. Las instrucciones `CONFIDENTIAL` sólo son legibles por esos últimos roles y su lectura se audita.
-- `POST /source-notes/parse` acepta texto de 1–8000 caracteres y sólo genera sugerencias (`requiresHumanConfirmation: true`). El parser pt-BR `pt-br-notes-v1` redacta PAN/CVV antes de persistir, conserva `sourceTextHash` y `contentHash`, y nunca crea pagos, cargos, tarifas ni asignaciones. Es idempotente por `contentHash` + versión del parser.
+- `POST /source-notes/parse` acepta texto de 1–8000 caracteres y sólo genera sugerencias (`requiresHumanConfirmation: true`). El parser pt-BR `pt-br-notes-v1` redacta PAN/CVV, NSU, códigos de autorización y referencias de proveedor antes de persistir, conserva `sourceTextHash` y `contentHash`, y nunca crea pagos, cargos, tarifas ni asignaciones. Es idempotente por `contentHash` + versión del parser.
 - `POST /source-notes/:sourceNoteId/confirm` acepta hasta 50 sugerencias y crea instrucciones sólo tras confirmación humana; deduplica por sugerencia y devuelve `created`/`skipped`. No ejecuta la acción descrita: una preautorización queda como instrucción pendiente, nunca como pago realizado.
 - Errores: `reservation_not_found`, `instruction_not_found`, `instruction_invalid_transition`, `instruction_invalid_validity`, `instruction_visibility_forbidden`, `instruction_confidential_forbidden`, `source_note_not_found`, `source_note_empty`, `invalid_date`.
 
@@ -288,8 +294,9 @@ Errores específicos: `reservation_not_found`, `reservation_party_not_editable`,
 
 | Método | Ruta                                             | Guard         | Permiso               | Status |
 | ------ | ------------------------------------------------ | ------------- | --------------------- | ------ |
-| GET    | `/api/v1/front-office/overview`                  | auth + tenant | `front_office.read`   | 200    |
-| POST   | `/api/v1/front-office/reservations/:id/check-in` | auth + tenant | `front_office.manage` | 201    |
+| GET    | `/api/v1/front-office/overview`                             | auth + tenant | `front_office.read`   | 200    |
+| GET    | `/api/v1/front-office/reservations/:id/check-in-readiness`  | auth + tenant | `front_office.read`   | 200    |
+| POST   | `/api/v1/front-office/reservations/:id/check-in`            | auth + tenant | `front_office.manage` | 201    |
 | POST   | `/api/v1/front-office/reservations/:id/no-show`  | auth + tenant | `front_office.manage` | 201    |
 | POST   | `/api/v1/front-office/stays/:id/check-out`       | auth + tenant | `front_office.manage` | 201    |
 | POST   | `/api/v1/front-office/stays/:id/room-move`       | auth + tenant | `front_office.manage` | 201    |
@@ -301,6 +308,8 @@ Errores específicos: `reservation_not_found`, `reservation_party_not_editable`,
 - Para el día operativo actual, las listas mantienen semántica de trabajo pendiente: llegadas `CONFIRMED`, estancias `IN_HOUSE` y salidas cuya fecha de check-out ya llegó.
 - Para una fecha anterior al día operativo, `isHistorical` es `true` y las listas reconstruyen lo ocurrido: llegadas con `checkInDate` ese día (todos los estados salvo `CANCELLED`), estancias activas en algún momento del día (según `checkedInAt`/`checkedOutAt` en la timezone de la propiedad) y check-outs registrados ese día. `roomRack` e incidencias siguen reflejando el estado actual; la UI histórica los oculta y no permite mutaciones.
 - La vista histórica no reconstruye la habitación ocupada en ese día si hubo cambios de habitación: muestra la última asignada.
+- `GET /reservations/:id/check-in-readiness` es de solo lectura y alimenta el flujo guiado. Devuelve `reservation`, `housekeepingPolicy` (`blockedStates`, `inspectionPendingBlocksCheckIn`), `currentRoomId`, `currentRoomEligible` y `rooms`: unidades `ACTIVE` del room type de la reserva con `housekeepingState`, `operationalState`, `occupancy`, `activeBlock`, `eligible` y `reasons`. Razones posibles: `ROOM_OUT_OF_SERVICE`, `ROOM_BLOCKED`, `ROOM_OCCUPIED`, `ROOM_NOT_AVAILABLE`, `HOUSEKEEPING_NOT_READY`. No reserva, no bloquea la habitación y no sustituye la validación transaccional del check-in.
+- Política de housekeeping del check-in: `DIRTY` y `CLEANING` bloquean; `CLEAN` e `INSPECTED` permiten; `INSPECTION_PENDING` se admite por defecto hasta que el hotel piloto defina lo contrario (decisión reversible, ver `DECISIONS.md`).
 - Check-in: solo `CONFIRMED`, con habitación asignada, `ACTIVE`/`AVAILABLE`, sin bloqueo activo y sin otra estancia in-house. Se habilita desde la fecha local de llegada y hasta el check-out. Idempotente: si la reserva ya está `CHECKED_IN`, devuelve la misma estancia. Si la fiesta de la reserva tiene un bloqueo legal (principal menor/incapaz, menor sin responsable o supervisión, autorización faltante) responde `409 reservation_party_check_in_blocked`; una FNRH incompleta o un conteo distinto no bloquean el check-in hotelero.
 - Check-out: idempotente, marca `Stay.CHECKED_OUT`, la reserva `CHECKED_OUT` y libera la habitación. Acepta `notes` opcionales (≤ 2000).
 - Room move: mismo room type, habitación libre, sin bloqueo ni reserva solapada; actualiza `Stay.roomId`, `Reservation.roomId` e incrementa `moveCount`.
@@ -308,7 +317,7 @@ Errores específicos: `reservation_not_found`, `reservation_party_not_editable`,
 - Incidencias: `type` (`NOTE`, `MAINTENANCE`, `COMPLAINT`, `SAFETY`, `OTHER`), `severity` (`LOW`, `MEDIUM`, `HIGH`), título 3–120, descripción 3–4000 y alcance opcional por `roomId`, `reservationId` o `stayId`. Si se envía `stayId`, el alcance se deriva de la estancia y no puede contradecirla. Resolver exige `resolution` de 3–4000 y es idempotente.
 - Cada acción escribe `ReservationHistory` (check-in/out/move/no-show) y `AuditEvent` en la misma transacción.
 
-Errores específicos: `reservation_room_required`, `check_in_too_early`, `check_in_window_elapsed`, `room_out_of_service`, `room_occupied`, `stay_inconsistent`, `reservation_not_check_in_eligible`, `reservation_party_check_in_blocked`, `stay_not_check_out_eligible`, `stay_not_in_house`, `no_show_too_early`, `reservation_has_stay`, `reservation_not_no_show_eligible`, `stay_not_found`, `incident_not_found`, `incident_scope_mismatch`.
+Errores específicos: `reservation_room_required`, `check_in_too_early`, `check_in_window_elapsed`, `room_out_of_service`, `room_occupied`, `room_housekeeping_not_ready`, `stay_inconsistent`, `reservation_not_check_in_eligible`, `reservation_party_check_in_blocked`, `stay_not_check_out_eligible`, `stay_not_in_house`, `no_show_too_early`, `reservation_has_stay`, `reservation_not_no_show_eligible`, `stay_not_found`, `incident_not_found`, `incident_scope_mismatch`.
 
 ### Folio, caja y night audit
 

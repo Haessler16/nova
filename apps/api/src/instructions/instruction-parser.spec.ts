@@ -1,5 +1,6 @@
 import {
   hashContent,
+  hashSourceText,
   INSTRUCTION_PARSER_VERSION,
   parseSourceNote,
   redactSensitiveCardData,
@@ -141,6 +142,53 @@ describe('pt-BR instruction parser', () => {
     expect(redacted.text).not.toContain('123');
     expect(redacted.text).toContain('[CARD_REDACTED]');
     expect(redacted.text).toContain('[CVV_REDACTED]');
+  });
+
+  it('redacts labelled NSU, authorization codes and provider references', () => {
+    const redacted = redactSensitiveCardData(
+      'NSU: 123456 / AUT 654321 / Authorization Code: A1B2C3D4 / TID: 99887766',
+    );
+
+    expect(redacted.redacted).toBe(true);
+    expect(redacted.text).toContain('[NSU_REDACTED]');
+    expect(redacted.text).toContain('[AUTH_CODE_REDACTED]');
+    expect(redacted.text).toContain('[PROVIDER_REF_REDACTED]');
+    for (const secret of ['123456', '654321', 'A1B2C3D4', '99887766']) {
+      expect(redacted.text).not.toContain(secret);
+    }
+  });
+
+  it('normalizes Portuguese and Spanish authorization labels without keeping the value', () => {
+    const redacted = redactSensitiveCardData(
+      'Código de autorização: 445566 / Cód. autorização 778899 / Número sequencial único 112233',
+    );
+
+    expect(redacted.redacted).toBe(true);
+    expect(redacted.text).not.toContain('445566');
+    expect(redacted.text).not.toContain('778899');
+    expect(redacted.text).not.toContain('112233');
+  });
+
+  it('keeps payment vocabulary and non-payment numbers when no reference value is present', () => {
+    const prose = 'O NSU é obrigatório e a autorização deve ser obtida no adquirente.';
+    const reservation = 'Reserva 123456 / CPF 123.456.789-09';
+
+    const redactedProse = redactSensitiveCardData(prose);
+    const redactedReservation = redactSensitiveCardData(reservation);
+
+    expect(redactedProse.redacted).toBe(false);
+    expect(redactedProse.text).toBe(prose);
+    expect(redactedReservation.redacted).toBe(false);
+    expect(redactedReservation.text).toBe(reservation);
+  });
+
+  it('keeps a digest of the exact received text so redaction stays traceable', () => {
+    const raw = 'NSU: 123456 / AUT 654321';
+    const redacted = redactSensitiveCardData(raw);
+
+    expect(redacted.text).not.toContain('123456');
+    expect(hashSourceText(raw)).toMatch(/^[a-f0-9]{64}$/);
+    expect(hashSourceText(raw)).not.toBe(hashSourceText(redacted.text));
   });
 
   it('returns warnings instead of inventing instructions for unknown text', () => {

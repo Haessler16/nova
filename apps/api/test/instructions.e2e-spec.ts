@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -68,6 +69,9 @@ describe('Reservation instructions and guest notes (E2E)', () => {
     it('parses PGTO DIRETO NO HOTEL into a pending card pre-authorization suggestion without money side effects', async () => {
       const paymentsBefore = await prisma.payment.count({ where: { reservationId } });
       const foliosBefore = await prisma.folio.count({ where: { reservationId } });
+      const folioLinesBefore = await prisma.folioLine.count({
+        where: { folio: { reservationId } },
+      });
 
       const parsed = await request(app.getHttpServer())
         .post(`/api/v1/reservations/${reservationId}/source-notes/parse`)
@@ -97,8 +101,12 @@ describe('Reservation instructions and guest notes (E2E)', () => {
 
       const paymentsAfter = await prisma.payment.count({ where: { reservationId } });
       const foliosAfter = await prisma.folio.count({ where: { reservationId } });
+      const folioLinesAfter = await prisma.folioLine.count({
+        where: { folio: { reservationId } },
+      });
       expect(paymentsAfter).toBe(paymentsBefore);
       expect(foliosAfter).toBe(foliosBefore);
+      expect(folioLinesAfter).toBe(folioLinesBefore);
 
       const instructions = await request(app.getHttpServer())
         .get(`/api/v1/reservations/${reservationId}/instructions`)
@@ -129,6 +137,34 @@ describe('Reservation instructions and guest notes (E2E)', () => {
       expect(parsed.body.sourceTextOriginal).not.toContain('123');
       expect(parsed.body.sourceTextOriginal).toContain('[CARD_REDACTED]');
       expect(parsed.body.sourceTextHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it('redacts NSU and authorization codes from the stored source text and keeps the raw digest', async () => {
+      const raw = `PGTO DIRETO NO HOTEL / NSU: 123456 / AUT 654321 / TID: 99887766 / ${suffix}`;
+
+      const parsed = await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservationId}/source-notes/parse`)
+        .set(headers(RECEPTION))
+        .send({ text: raw, sourceSystem: 'E2E' })
+        .expect(201);
+
+      expect(parsed.body.redacted).toBe(true);
+      for (const secret of ['123456', '654321', '99887766']) {
+        expect(parsed.body.sourceTextOriginal).not.toContain(secret);
+      }
+      expect(parsed.body.sourceTextOriginal).toContain('[NSU_REDACTED]');
+      expect(parsed.body.sourceTextOriginal).toContain('[AUTH_CODE_REDACTED]');
+      expect(parsed.body.sourceTextOriginal).toContain('[PROVIDER_REF_REDACTED]');
+      expect(parsed.body.sourceTextHash).toBe(
+        createHash('sha256').update(raw, 'utf8').digest('hex'),
+      );
+
+      const stored = await prisma.reservationSourceNote.findFirst({
+        where: { id: parsed.body.id },
+      });
+      expect(stored?.sourceTextOriginal).not.toContain('123456');
+      expect(stored?.sourceTextOriginal).not.toContain('654321');
+      expect(stored?.sourceTextHash).toBe(parsed.body.sourceTextHash);
     });
 
     it('recognizes the confirmed bare room category without assigning a room', async () => {
@@ -416,13 +452,17 @@ describe('Reservation instructions and guest notes (E2E)', () => {
         .set(headers(RECEPTION))
         .send({
           title: `Tarjeta 4111 1111 1111 1111 ${suffix}`,
-          body: 'Cobrar en el check-in. CVV: 123',
+          body: 'Cobrar en el check-in. CVV: 123 NSU: 778899 AUT: 665544',
         })
         .expect(201);
 
       expect(instruction.body.title).not.toContain('4111');
       expect(instruction.body.title).toContain('[CARD_REDACTED]');
-      expect(instruction.body.body).not.toContain('123');
+      expect(instruction.body.body).not.toContain('778899');
+      expect(instruction.body.body).not.toContain('665544');
+      expect(instruction.body.body).toContain('[NSU_REDACTED]');
+      expect(instruction.body.body).toContain('[AUTH_CODE_REDACTED]');
+      expect(instruction.body.body).not.toContain('123 ');
       expect(instruction.body.body).toContain('[CVV_REDACTED]');
 
       const note = await request(app.getHttpServer())

@@ -874,7 +874,7 @@ These choices should be confirmed against the existing repository and current st
   - Audit confidential list reads (`instruction.confidential_listed`) in addition to individual confidential reads.
   - Use a deterministic pt-BR parser (`pt-br-notes-v1`) that only proposes suggestions with `requiresHumanConfirmation: true`. Confirmation is a separate endpoint and only creates instruction rows. The parser and confirmation paths never create payments, charges, pre-authorizations, folio lines, tariff changes or room assignments.
   - Map `PGTO DIRETO NO HOTEL` to a pending `PAYMENT_PREAUTHORIZATION` instruction at `CHECK_IN` with `CREDIT_CARD`. It is neither a completed payment nor an approved authorization. Starting a real pre-authorization remains in the payment module with an explicitly confirmed amount, permission and tokenized provider.
-  - Redact labelled and bare PAN/CVV-like values before persistence. Card data is never stored, logged or copied into instruction metadata; a later real provider token is the only payment credential.
+  - Redact labelled and bare PAN/CVV-like values, and labelled NSU, authorization-code and provider-reference values, before persistence. Reference values are redacted only when labelled and shaped like a code, so ordinary prose that mentions NSU or authorization is preserved. Card data is never stored, logged or copied into instruction metadata; a later real provider token is the only payment credential.
   - Scope every query and mutation by server-resolved `organizationId` and `propertyId`, with composite tenant foreign keys and explicit reservation/guest lookups. Visibility is derived from permissions: `FRONT_DESK`, `RESERVATIONS`, `FINANCE` (`reports.financial`) and `MANAGEMENT`; `CONFIDENTIAL` additionally requires management-level access.
   - Keep guest notes separate. Creating or reading a reservation instruction never copies data into `GuestNote`, and guest notes are not injected into future reservations.
   - Expose REST endpoints under the existing header-based tenant context instead of `/properties/:propertyId/...`, matching current API conventions.
@@ -902,3 +902,31 @@ These choices should be confirmed against the existing repository and current st
   - Business numbers and downloaded file names can legitimately differ across local midnight; that is the intended hotel-day behavior.
   - No migration or data backfill is required: stored date-only values were already correct.
   - Editing wall-clock values (room blocks, instruction validity) still interprets `datetime-local` input in the browser timezone. Aligning those forms with the property timezone is a separate UI task because it requires converting a property-local wall time back to an instant.
+
+### ADR-050 — Front Desk search reuses the reservations list and check-in eligibility is advisory until confirmation
+
+- Status: accepted and implemented for Fase 1.
+- Date: 2026-11-16.
+- Context: Fase 1 needs a reception search by guest, reservation code, UH, date range and status, plus a guided check-in that shows why a room cannot be used. Creating `/front-office/search` would duplicate `GET /reservations`, which already owns tenant scoping, pagination, status and overlap filters. PostgreSQL `contains` does not fold accents, so typing `jose` did not find `José`. The existing check-in modal assigned a room and confirmed in one step, surfacing backend conflicts only as a generic error.
+- Options:
+  1. add a second Front Desk search endpoint with its own projection (rejected: duplicated filters, pagination and tenant rules);
+  2. extend `GET /reservations` with `roomNumber` and accent-insensitive matching (chosen);
+  3. denormalize a lowercase/unaccented search column (rejected for now: another write path and backfill for a small dataset).
+- Decision:
+  - Reuse `GET /reservations` for the Front Desk search. Add `roomNumber` (partial, case-insensitive) and keep `search`, `status`, `fromDate`/`toDate`, `cursor` and `limit`.
+  - Resolve accents with the `unaccent` extension in a bounded raw query that returns only IDs, scoped by `organizationId` and `propertyId`, with the LIKE pattern escaped and `LIMIT 200`. Add those IDs to the existing Prisma `OR`; every other filter still applies. Prisma runs tenant connections with `search_path` limited to their schema, so the migration pins the extension to `public` and the query calls `public.unaccent(...)` explicitly; this also keeps isolated E2E schemas working.
+  - Add read-only `GET /front-office/reservations/:id/check-in-readiness` (`front_office.read`) that mirrors the check-in rules: active room of the reservation's type, operational `AVAILABLE`, no active overlapping block, no in-house stay, no overlapping active reservation and housekeeping ready. Each room exposes `eligible` and machine-readable `reasons`.
+  - `checkIn` remains the only authority and revalidates inside its transaction. It now rejects `DIRTY`/`CLEANING` with `409 room_housekeeping_not_ready`; `CLEAN` and `INSPECTED` are accepted, and `INSPECTION_PENDING` is accepted by default until the pilot sets a policy. The readiness response publishes `blockedStates` and `inspectionPendingBlocksCheckIn` so the UI does not invent a parallel policy.
+  - Extract the guided flow into `check-in-wizard.tsx` with four steps (reservation, room, party, confirmation). It assigns the chosen room through the existing room-assignment endpoint and only shows success after the check-in response.
+  - Keep filters in the query string (`q`, `roomNumber`, `fromDate`, `toDate`, `status`) with `history.replaceState`, so refresh and deep links preserve the search without adding history entries.
+- Consequences:
+  - Search results are reservations, not guests or folios; the guest profile is reachable by link and folio actions remain outside the list to avoid exposing balances without the folio contract.
+  - Accent-insensitive matching is capped at 200 IDs. A very broad accented search can omit matches beyond that cap, while exact/case-insensitive `contains` still runs in the same `OR`.
+  - Deployments must allow `CREATE EXTENSION unaccent` (or have a DBA create it in `public`); the migration fails otherwise.
+  - Readiness can go stale between opening the wizard and confirming. The wizard refreshes on failure and the transactional check-in decides; the endpoint never reserves the room.
+  - The check-in window (`check_in_too_early`/`check_in_window_elapsed`) is not exposed by readiness yet, so those errors appear only at confirmation.
+  - UI copy stays in Spanish to match the existing app even though the ficha prioritizes pt-BR; domain enums and API values are unchanged.
+- Validation required:
+  - pilot policy for `INSPECTION_PENDING` and for balance/pre-authorization blocks at check-in;
+  - whether readiness should include check-in window and occupancy pricing before room selection;
+  - whether folio balance should be exposed in results with a dedicated permission-aware projection.

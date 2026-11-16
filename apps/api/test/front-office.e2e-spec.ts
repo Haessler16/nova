@@ -55,6 +55,8 @@ describe('Front Office (E2E)', () => {
   let incidentId: string;
   let roomAId: string;
   let roomBId: string;
+  let dirtyRoomId: string;
+  let blockedRoomId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -65,7 +67,7 @@ describe('Front Office (E2E)', () => {
 
     // The seed intentionally fills the demo rooms with in-house stays. Dedicated
     // rooms keep this suite deterministic without mutating demo data.
-    const [roomA, roomB] = await Promise.all([
+    const [roomA, roomB, dirtyRoom, blockedRoom] = await Promise.all([
       prisma.room.create({
         data: {
           organizationId: ORG_A,
@@ -90,9 +92,35 @@ describe('Front Office (E2E)', () => {
         },
         select: { id: true },
       }),
+      prisma.room.create({
+        data: {
+          organizationId: ORG_A,
+          propertyId: PROPERTY_CENTRO,
+          roomTypeId: ROOM_TYPE_STD,
+          number: `E2E-${suffix.slice(-4)}-C`,
+          floor: '9',
+          building: 'E2E',
+          housekeepingState: HousekeepingState.DIRTY,
+        },
+        select: { id: true },
+      }),
+      prisma.room.create({
+        data: {
+          organizationId: ORG_A,
+          propertyId: PROPERTY_CENTRO,
+          roomTypeId: ROOM_TYPE_STD,
+          number: `E2E-${suffix.slice(-4)}-D`,
+          floor: '9',
+          building: 'E2E',
+          housekeepingState: HousekeepingState.CLEAN,
+        },
+        select: { id: true },
+      }),
     ]);
     roomAId = roomA.id;
     roomBId = roomB.id;
+    dirtyRoomId = dirtyRoom.id;
+    blockedRoomId = blockedRoom.id;
   });
 
   afterAll(async () => {
@@ -126,6 +154,108 @@ describe('Front Office (E2E)', () => {
     const rackRoomA = overview.body.roomRack.find((room: { id: string }) => room.id === roomAId);
     expect(rackRoomA.occupancy).toBe('VACANT');
     expect(rackRoomA.nextArrival.reservationId).toBe(reservationId);
+  });
+
+  it('exposes check-in readiness with per-room eligibility reasons', async () => {
+    const readinessOut = calendarDate(4);
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/reservations')
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .send({
+        checkInDate: dayAfter,
+        checkOutDate: readinessOut,
+        adults: 2,
+        guestId: GUEST_ANA,
+        roomTypeId: ROOM_TYPE_STD,
+        source: 'front-office-readiness',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/inventory/rooms/${blockedRoomId}/blocks`)
+      .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+      .send({
+        type: 'OUT_OF_ORDER',
+        reason: 'Synthetic readiness block',
+        startsAt: instant(today),
+        endsAt: instant(readinessOut),
+      })
+      .expect(201);
+
+    const readiness = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/reservations/${created.body.id}/check-in-readiness`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+
+    expect(readiness.body.reservation.id).toBe(created.body.id);
+    expect(readiness.body.currentRoomId).toBeNull();
+    expect(readiness.body.currentRoomEligible).toBeNull();
+    expect(readiness.body.housekeepingPolicy.blockedStates).toEqual(['DIRTY', 'CLEANING']);
+    expect(readiness.body.housekeepingPolicy.inspectionPendingBlocksCheckIn).toBe(false);
+
+    const byId = new Map(
+      (readiness.body.rooms as Array<{ id: string; eligible: boolean; reasons: string[] }>).map(
+        (room) => [room.id, room],
+      ),
+    );
+    expect(byId.get(roomAId)?.eligible).toBe(true);
+    expect(byId.get(roomAId)?.reasons).toEqual([]);
+    expect(byId.get(dirtyRoomId)?.eligible).toBe(false);
+    expect(byId.get(dirtyRoomId)?.reasons).toContain('HOUSEKEEPING_NOT_READY');
+    expect(byId.get(blockedRoomId)?.eligible).toBe(false);
+    expect(byId.get(blockedRoomId)?.reasons).toEqual(
+      expect.arrayContaining(['ROOM_BLOCKED', 'ROOM_OUT_OF_SERVICE']),
+    );
+  });
+
+  it('rejects check-in into a room that is not clean', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/reservations')
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .send({
+        checkInDate: today,
+        checkOutDate: tomorrow,
+        adults: 1,
+        guestId: GUEST_ANA,
+        roomTypeId: ROOM_TYPE_STD,
+        roomId: dirtyRoomId,
+        source: 'front-office-dirty-room',
+      })
+      .expect(201);
+
+    const rejected = await request(app.getHttpServer())
+      .post(`/api/v1/front-office/reservations/${created.body.id}/check-in`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(409);
+
+    expect(rejected.body.code).toBe('room_housekeeping_not_ready');
+    expect(rejected.body.details.housekeepingState).toBe('DIRTY');
+
+    const stay = await prisma.stay.findUnique({ where: { reservationId: created.body.id } });
+    expect(stay).toBeNull();
+
+    const reservation = await prisma.reservation.findUniqueOrThrow({
+      where: { id: created.body.id },
+    });
+    expect(reservation.status).toBe(ReservationStatus.CONFIRMED);
+  });
+
+  it('keeps check-in readiness tenant-scoped and reports missing reservations', async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/front-office/reservations/${reservationId}/check-in-readiness`)
+      .set(headers(ADMIN_B, ORG_A, PROPERTY_CENTRO))
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/front-office/reservations/${reservationId}/check-in-readiness`)
+      .set(headers(AUDITOR, ORG_A, PROPERTY_CENTRO))
+      .expect(403);
+
+    const missing = await request(app.getHttpServer())
+      .get('/api/v1/front-office/reservations/00000000-0000-4000-8000-0000000000ff/check-in-readiness')
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(404);
+    expect(missing.body.code).toBe('reservation_not_found');
   });
 
   it('allows front-office read to housekeeping but denies check-in without manage', async () => {

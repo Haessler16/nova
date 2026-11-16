@@ -25,7 +25,7 @@ import {
   useDisclosure,
   useToast,
 } from '@chakra-ui/react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { GuestDocuments } from '@/components/guest-documents';
 import { GuestNotesPanel } from '@/components/guest-notes-panel';
@@ -76,6 +76,20 @@ function GuestsContent() {
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({ search: '', status: '' });
   const [exporting, setExporting] = useState(false);
+
+  const appliedQuery = useRef(false);
+  useEffect(() => {
+    if (appliedQuery.current) {
+      return;
+    }
+    appliedQuery.current = true;
+    // Deep link from Front Desk search results.
+    const search = new URLSearchParams(window.location.search).get('search');
+    if (search !== null && search.trim() !== '') {
+      setSearchInput(search.trim());
+      setFilters({ search: search.trim(), status: '' });
+    }
+  }, []);
 
   const { data, loading, error, reload } = useAsyncData<{ items: Guest[] }>(
     () => {

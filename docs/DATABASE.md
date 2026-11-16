@@ -525,7 +525,7 @@ Aplicado en `prisma/migrations/20261115130000_phase11_notes_instructions`, `2026
 
 ### ReservationSourceNote
 
-- Texto original inmutable recibido de un canal o pegado por recepción; PAN/CVV se redactan antes de persistir.
+- Texto original inmutable recibido de un canal o pegado por recepción; PAN/CVV, NSU, códigos de autorización y referencias de proveedor se redactan antes de persistir.
 - `sourceTextHash` conserva el digest del texto exacto recibido; `contentHash` + `parserVersion` deduplican reintentos.
 - `suggestions` y `warnings` son JSON; el parser sólo sugiere y nunca ejecuta pagos, cargos, tarifas ni asignaciones.
 - Trigger rechaza `UPDATE`/`DELETE`/`TRUNCATE`.
@@ -545,6 +545,15 @@ Aplicado en `prisma/migrations/20261115130000_phase11_notes_instructions`, `2026
 
 - Nota persistente del huésped, independiente de las instrucciones de reserva; no se copia automáticamente a una reserva.
 - Categoría, prioridad, visibilidad, propósito, vencimiento y `isActive`. La visibilidad y las categorías confidenciales se filtran en el servidor.
+
+## Phase 12 implementation notes — Front Desk operational search
+
+Aplicado en `prisma/migrations/20261116120000_phase12_search_unaccent/migration.sql`.
+
+- `CREATE EXTENSION IF NOT EXISTS unaccent;` habilita la búsqueda de huéspedes, códigos y UH sin acentos. No crea tablas, columnas ni índices y es reversible con `DROP EXTENSION IF EXISTS unaccent;` si ningún otro objeto la usa.
+- `ALTER EXTENSION unaccent SET SCHEMA public;` fija la extensión en `public`: Prisma limita `search_path` al esquema de la conexión (por ejemplo, un esquema E2E aislado), así que la consulta llama `public.unaccent(...)` de forma calificada.
+- La consulta usa `public.unaccent(lower(...)) LIKE public.unaccent(pattern) ESCAPE '!'`, con el patrón escapado, filtros de `organizationId`/`propertyId` y `LIMIT 200`. Sólo devuelve IDs; el resto de filtros y el scoping tenant se reaplican en la consulta Prisma que los consume.
+- Requiere permiso para crear extensiones en la base, o que un DBA la cree antes de migrar. Si el rol de despliegue no puede, la migración falla y debe resolverse en infraestructura, no en la aplicación.
 
 ## Prisma
 

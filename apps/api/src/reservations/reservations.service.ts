@@ -137,6 +137,9 @@ export class ReservationsService {
       ...(query.guestId !== undefined ? { guestId: query.guestId } : {}),
       ...(query.roomTypeId !== undefined ? { roomTypeId: query.roomTypeId } : {}),
       ...(query.roomId !== undefined ? { roomId: query.roomId } : {}),
+      ...(query.roomNumber !== undefined && query.roomNumber.trim().length > 0
+        ? { room: { is: { number: { contains: query.roomNumber.trim(), mode: 'insensitive' } } } }
+        : {}),
     };
 
     if (query.fromDate !== undefined || query.toDate !== undefined) {
@@ -160,7 +163,21 @@ export class ReservationsService {
       where.OR = [
         { code: { contains: search, mode: 'insensitive' } },
         { guest: { fullName: { contains: search, mode: 'insensitive' } } },
+        { room: { is: { number: { contains: search, mode: 'insensitive' } } } },
       ];
+      // PostgreSQL `contains` does not fold accents. Front desk searches usually
+      // type "jose" for "José", so resolve matching ids with `unaccent` and add
+      // them to the same OR. The list stays tenant-scoped by the outer where.
+      if (/[a-zA-Z\u00c0-\u024f]/.test(search)) {
+        const accentIds = await this.accentInsensitiveReservationIds(
+          context.organizationId,
+          propertyId,
+          search,
+        );
+        if (accentIds.length > 0) {
+          where.OR.push({ id: { in: accentIds } });
+        }
+      }
     }
 
     const rows = await this.prisma.reservation.findMany({
@@ -732,6 +749,34 @@ export class ReservationsService {
       items,
       nextCursor: hasMore ? (items[items.length - 1]?.id ?? null) : null,
     };
+  }
+
+  private async accentInsensitiveReservationIds(
+    organizationId: string,
+    propertyId: string,
+    search: string,
+  ): Promise<string[]> {
+    // `!` is the LIKE escape character so user input cannot turn into a
+    // wildcard. The query returns ids only; the caller re-applies every other
+    // filter and the tenant scope through Prisma.
+    const escaped = search.toLowerCase().replace(/[!%_]/g, (value) => `!${value}`);
+    const pattern = `%${escaped}%`;
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT r."id"
+      FROM "Reservation" r
+      JOIN "Guest" g ON g."id" = r."guestId"
+      LEFT JOIN "Room" rm ON rm."id" = r."roomId"
+      WHERE r."organizationId" = ${organizationId}::uuid
+        AND r."propertyId" = ${propertyId}::uuid
+        AND (
+          public.unaccent(lower(g."fullName")) LIKE public.unaccent(${pattern}::text) ESCAPE '!'
+          OR public.unaccent(lower(r."code")) LIKE public.unaccent(${pattern}::text) ESCAPE '!'
+          OR public.unaccent(lower(coalesce(rm."number", ''))) LIKE public.unaccent(${pattern}::text) ESCAPE '!'
+        )
+      ORDER BY r."checkInDate" ASC, r."id" ASC
+      LIMIT 200
+    `;
+    return rows.map((row) => row.id);
   }
 
   async availability(

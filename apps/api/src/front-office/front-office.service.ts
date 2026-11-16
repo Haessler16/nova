@@ -1,10 +1,12 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  HousekeepingState,
   IncidentSeverity,
   IncidentStatus,
   IncidentType,
   Prisma,
   ReservationStatus,
+  RoomOperationalState,
   StayStatus,
 } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -30,6 +32,17 @@ import {
 } from './dto/front-office.dto';
 
 type Transaction = Prisma.TransactionClient;
+
+/**
+ * Housekeeping states that block a normal check-in. `CLEAN` is accepted even
+ * though inspection has not been recorded: whether pending inspection blocks
+ * check-in is a property policy decision, so the default is reversible and
+ * documented as an open question. DIRTY/CLEANING always block.
+ */
+export const CHECK_IN_BLOCKED_HOUSEKEEPING_STATES: HousekeepingState[] = [
+  HousekeepingState.DIRTY,
+  HousekeepingState.CLEANING,
+];
 
 const RESERVATION_SUMMARY_SELECT = {
   id: true,
@@ -193,6 +206,31 @@ export interface FrontOfficeOverview {
   inHouse: StayResponse[];
   noShowCandidates: ReservationSummaryResponse[];
   roomRack: RoomRackItem[];
+}
+
+export interface CheckInRoomOption {
+  id: string;
+  number: string;
+  floor: string | null;
+  building: string | null;
+  roomType: { id: string; name: string; code: string };
+  housekeepingState: HousekeepingState;
+  operationalState: RoomOperationalState;
+  occupancy: 'VACANT' | 'OCCUPIED';
+  activeBlock: { id: string; type: string; endsAt: Date } | null;
+  eligible: boolean;
+  reasons: string[];
+}
+
+export interface CheckInReadiness {
+  reservation: ReservationSummaryResponse;
+  housekeepingPolicy: {
+    blockedStates: HousekeepingState[];
+    inspectionPendingBlocksCheckIn: boolean;
+  };
+  currentRoomId: string | null;
+  currentRoomEligible: boolean | null;
+  rooms: CheckInRoomOption[];
 }
 
 export interface IncidentResponse {
@@ -477,6 +515,165 @@ export class FrontOfficeService {
     };
   }
 
+  /**
+   * Read-only check-in checklist for the guided front-desk flow. It mirrors the
+   * backend rules used by `checkIn` so the operator sees why a room is not
+   * selectable, but the confirmation transaction remains the authority.
+   */
+  async checkInReadiness(
+    context: TenantContext,
+    reservationId: string,
+  ): Promise<CheckInReadiness> {
+    const propertyId = requirePropertyContext(context);
+    await this.roomState.reconcileProperty({
+      organizationId: context.organizationId,
+      propertyId,
+      correlationId: context.correlationId,
+    });
+
+    const reservation = await this.prisma.reservation.findFirst({
+      where: {
+        id: reservationId,
+        organizationId: context.organizationId,
+        propertyId,
+      },
+      select: RESERVATION_SUMMARY_SELECT,
+    });
+    if (reservation === null) {
+      throw new NotFoundException({
+        code: 'reservation_not_found',
+        message: 'Reservation not found in the selected property.',
+      });
+    }
+
+    const rooms = await this.prisma.room.findMany({
+      where: {
+        organizationId: context.organizationId,
+        propertyId,
+        status: 'ACTIVE',
+        roomTypeId: reservation.roomTypeId,
+      },
+      orderBy: [{ number: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        number: true,
+        floor: true,
+        building: true,
+        housekeepingState: true,
+        operationalState: true,
+        roomType: { select: { id: true, name: true, code: true } },
+      },
+    });
+
+    if (rooms.length === 0) {
+      return {
+        reservation: mapReservationSummary(reservation),
+        housekeepingPolicy: {
+          blockedStates: CHECK_IN_BLOCKED_HOUSEKEEPING_STATES,
+          inspectionPendingBlocksCheckIn: false,
+        },
+        currentRoomId: reservation.roomId,
+        currentRoomEligible: reservation.roomId === null ? null : false,
+        rooms: [],
+      };
+    }
+
+    const roomIds = rooms.map((room) => room.id);
+    const [stays, blocks, overlapping] = await Promise.all([
+      this.prisma.stay.findMany({
+        where: {
+          organizationId: context.organizationId,
+          propertyId,
+          roomId: { in: roomIds },
+          status: StayStatus.IN_HOUSE,
+        },
+        select: { roomId: true },
+      }),
+      this.prisma.roomBlock.findMany({
+        where: {
+          organizationId: context.organizationId,
+          propertyId,
+          roomId: { in: roomIds },
+          status: 'ACTIVE',
+          startsAt: { lt: reservation.checkOutDate },
+          endsAt: { gt: reservation.checkInDate },
+        },
+        select: { id: true, roomId: true, type: true, endsAt: true },
+        orderBy: [{ endsAt: 'asc' }, { id: 'asc' }],
+      }),
+      this.prisma.reservation.findMany({
+        where: {
+          organizationId: context.organizationId,
+          propertyId,
+          roomId: { in: roomIds },
+          id: { not: reservation.id },
+          status: { in: [ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN] },
+          checkInDate: { lt: reservation.checkOutDate },
+          checkOutDate: { gt: reservation.checkInDate },
+        },
+        select: { roomId: true },
+      }),
+    ]);
+
+    const occupiedRooms = new Set(stays.map((stay) => stay.roomId));
+    const overlappingRooms = new Set(
+      overlapping.map((row) => row.roomId).filter((value): value is string => value !== null),
+    );
+    const blockByRoom = new Map<string, (typeof blocks)[number]>();
+    for (const block of blocks) {
+      if (!blockByRoom.has(block.roomId)) {
+        blockByRoom.set(block.roomId, block);
+      }
+    }
+
+    const options: CheckInRoomOption[] = rooms.map((room) => {
+      const reasons: string[] = [];
+      if (room.operationalState !== RoomOperationalState.AVAILABLE) {
+        reasons.push('ROOM_OUT_OF_SERVICE');
+      }
+      if (blockByRoom.has(room.id)) {
+        reasons.push('ROOM_BLOCKED');
+      }
+      if (occupiedRooms.has(room.id)) {
+        reasons.push('ROOM_OCCUPIED');
+      }
+      if (overlappingRooms.has(room.id)) {
+        reasons.push('ROOM_NOT_AVAILABLE');
+      }
+      if (CHECK_IN_BLOCKED_HOUSEKEEPING_STATES.includes(room.housekeepingState)) {
+        reasons.push('HOUSEKEEPING_NOT_READY');
+      }
+      const block = blockByRoom.get(room.id);
+      return {
+        id: room.id,
+        number: room.number,
+        floor: room.floor,
+        building: room.building,
+        roomType: room.roomType,
+        housekeepingState: room.housekeepingState,
+        operationalState: room.operationalState,
+        occupancy: occupiedRooms.has(room.id) ? 'OCCUPIED' : 'VACANT',
+        activeBlock:
+          block === undefined ? null : { id: block.id, type: block.type, endsAt: block.endsAt },
+        eligible: reasons.length === 0,
+        reasons,
+      };
+    });
+
+    const current = options.find((room) => room.id === reservation.roomId);
+
+    return {
+      reservation: mapReservationSummary(reservation),
+      housekeepingPolicy: {
+        blockedStates: CHECK_IN_BLOCKED_HOUSEKEEPING_STATES,
+        inspectionPendingBlocksCheckIn: false,
+      },
+      currentRoomId: reservation.roomId,
+      currentRoomEligible: reservation.roomId === null ? null : current?.eligible === true,
+      rooms: options,
+    };
+  }
+
   async checkIn(
     context: TenantContext,
     reservationId: string,
@@ -615,6 +812,13 @@ export class FrontOfficeService {
             code: 'room_out_of_service',
             message: 'The assigned room is not operationally available.',
             details: { operationalState: room.operationalState },
+          });
+        }
+        if (CHECK_IN_BLOCKED_HOUSEKEEPING_STATES.includes(room.housekeepingState)) {
+          throw new ConflictException({
+            code: 'room_housekeeping_not_ready',
+            message: 'The assigned room is not clean enough for check-in.',
+            details: { housekeepingState: room.housekeepingState },
           });
         }
 
@@ -1346,12 +1550,19 @@ export class FrontOfficeService {
     id: string;
     status: string;
     operationalState: string;
+    housekeepingState: HousekeepingState;
     roomTypeId: string;
   }> {
     await this.roomState.lockRoom(transaction, organizationId, propertyId, roomId);
     const room = await transaction.room.findFirst({
       where: { id: roomId, organizationId, propertyId },
-      select: { id: true, status: true, operationalState: true, roomTypeId: true },
+      select: {
+        id: true,
+        status: true,
+        operationalState: true,
+        housekeepingState: true,
+        roomTypeId: true,
+      },
     });
     if (room === null) {
       throw new NotFoundException({
