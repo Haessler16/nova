@@ -28,6 +28,8 @@ Pacote de especificação para OpenCode. Inclui PRD, arquitetura, contratos API,
 - Modelo de huéspedes/acompañantes/menores: `docs/FNRH_GUEST_MODEL.md`
 - Revisión de producto/legal: `docs/FNRH_GUEST_MODEL_REVIEW.md`
 - Flujo de UI de huéspedes/acompañantes/menores: `docs/FNRH_GUEST_UI_FLOW.md`
+- Tareas de implementación derivadas del prototipo y puertas de producto/legal: `docs/FNRH_PARTY_IMPLEMENTATION_TASKS.md`
+- Guía de sesión de validación con recepción y registro de hallazgos: `docs/FNRH_PARTY_VALIDATION_SESSION.md`
 - Manual do usuário: https://www.gov.br/turismo/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/ficha-nacional-de-registro-de-hospedes/manuais/manual-do-usario/manual-do-usuario
 - Manual API 2.4.2: https://www.gov.br/turismo/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/ficha-nacional-de-registro-de-hospedes/modulo-meio-de-hospedagem/meios-de-hospedagem-com-pms/documentacao-api-v2-4-2.pdf/@@display-file/file
 

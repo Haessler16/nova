@@ -34,6 +34,7 @@ import {
   hashSuggestion,
   INSTRUCTION_PARSER_VERSION,
   parseSourceNote,
+  redactSensitiveCardData,
 } from './instruction-parser';
 
 const INSTRUCTION_SELECT = {
@@ -45,6 +46,7 @@ const INSTRUCTION_SELECT = {
   category: true,
   title: true,
   body: true,
+  tags: true,
   priority: true,
   status: true,
   source: true,
@@ -104,7 +106,9 @@ const GUEST_NOTE_SELECT = {
   updatedAt: true,
 } as const;
 
-type InstructionRow = Prisma.ReservationInstructionGetPayload<{ select: typeof INSTRUCTION_SELECT }>;
+type InstructionRow = Prisma.ReservationInstructionGetPayload<{
+  select: typeof INSTRUCTION_SELECT;
+}>;
 type SourceNoteRow = Prisma.ReservationSourceNoteGetPayload<{ select: typeof SOURCE_NOTE_SELECT }>;
 type GuestNoteRow = Prisma.GuestNoteGetPayload<{ select: typeof GUEST_NOTE_SELECT }>;
 
@@ -164,9 +168,7 @@ export class InstructionsService {
       ...(query.priority !== undefined ? { priority: query.priority } : {}),
       ...(query.category !== undefined ? { category: query.category } : {}),
       ...(query.actionType !== undefined ? { actionType: query.actionType } : {}),
-      ...(query.executionMoment !== undefined
-        ? { executionMoment: query.executionMoment }
-        : {}),
+      ...(query.executionMoment !== undefined ? { executionMoment: query.executionMoment } : {}),
     };
 
     if (query.includeCompleted !== true && query.status === undefined) {
@@ -179,17 +181,28 @@ export class InstructionsService {
       where,
       take: take + 1,
       ...(query.cursor !== undefined ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: [
-        { priority: 'desc' },
-        { status: 'asc' },
-        { createdAt: 'desc' },
-        { id: 'desc' },
-      ],
+      orderBy: [{ priority: 'desc' }, { status: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
       select: INSTRUCTION_SELECT,
     });
 
     const hasMore = rows.length > take;
     const items = hasMore ? rows.slice(0, take) : rows;
+
+    const confidentialIds = items
+      .filter((item) => item.category === InstructionCategory.CONFIDENTIAL)
+      .map((item) => item.id);
+    if (confidentialIds.length > 0) {
+      await this.audit.append({
+        organizationId: context.organizationId,
+        propertyId,
+        actorUserId: context.actor.id,
+        action: 'instruction.confidential_listed',
+        entityType: 'Reservation',
+        entityId: reservationId,
+        correlationId: context.correlationId,
+        metadata: { instructionIds: confidentialIds },
+      });
+    }
 
     return {
       items,
@@ -227,6 +240,11 @@ export class InstructionsService {
     await this.assertReservation(context, reservationId);
     this.assertCanWriteVisibility(context, dto.visibility, dto.category);
 
+    const actionDueAt = parseOptionalDate(dto.actionDueAt, 'actionDueAt');
+    const validFrom = parseOptionalDate(dto.validFrom, 'validFrom');
+    const validUntil = parseOptionalDate(dto.validUntil, 'validUntil');
+    assertValidityRange(validFrom, validUntil);
+
     return this.prisma.$transaction(async (transaction) => {
       const created = await transaction.reservationInstruction.create({
         data: {
@@ -234,8 +252,11 @@ export class InstructionsService {
           propertyId,
           reservationId,
           category: dto.category ?? InstructionCategory.GENERAL,
-          title: dto.title.trim(),
-          body: dto.body.trim(),
+          // Defense in depth: never persist a PAN/CVV even if an operator pastes
+          // one into a free-text title or body.
+          title: redactSensitiveCardData(dto.title.trim()).text,
+          body: redactSensitiveCardData(dto.body.trim()).text,
+          tags: normalizeTags(dto.tags),
           priority: dto.priority ?? 'NORMAL',
           visibility: dto.visibility ?? InstructionVisibility.ALL_AUTHORIZED,
           sourceDepartment: dto.sourceDepartment?.trim(),
@@ -244,9 +265,9 @@ export class InstructionsService {
           actionType: dto.actionType,
           executionMoment: dto.executionMoment,
           paymentMethod: dto.paymentMethod,
-          actionDueAt: parseOptionalDate(dto.actionDueAt, 'actionDueAt'),
-          validFrom: parseOptionalDate(dto.validFrom, 'validFrom'),
-          validUntil: parseOptionalDate(dto.validUntil, 'validUntil'),
+          actionDueAt,
+          validFrom,
+          validUntil,
           createdByUserId: context.actor.id,
         },
         select: INSTRUCTION_SELECT,
@@ -301,12 +322,27 @@ export class InstructionsService {
       return current;
     }
 
+    const nextValidFrom =
+      dto.validFrom !== undefined
+        ? parseOptionalDate(dto.validFrom, 'validFrom')
+        : (current.validFrom ?? undefined);
+    const nextValidUntil =
+      dto.validUntil !== undefined
+        ? parseOptionalDate(dto.validUntil, 'validUntil')
+        : (current.validUntil ?? undefined);
+    assertValidityRange(nextValidFrom, nextValidUntil);
+
     return this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.reservationInstruction.update({
         where: { id: current.id },
         data: {
-          ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
-          ...(dto.body !== undefined ? { body: dto.body.trim() } : {}),
+          ...(dto.title !== undefined
+            ? { title: redactSensitiveCardData(dto.title.trim()).text }
+            : {}),
+          ...(dto.body !== undefined
+            ? { body: redactSensitiveCardData(dto.body.trim()).text }
+            : {}),
+          ...(dto.tags !== undefined ? { tags: normalizeTags(dto.tags) } : {}),
           ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
           ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
           ...(dto.assignedDepartment !== undefined
@@ -316,12 +352,8 @@ export class InstructionsService {
           ...(dto.actionDueAt !== undefined
             ? { actionDueAt: parseOptionalDate(dto.actionDueAt, 'actionDueAt') ?? null }
             : {}),
-          ...(dto.validFrom !== undefined
-            ? { validFrom: parseOptionalDate(dto.validFrom, 'validFrom') ?? null }
-            : {}),
-          ...(dto.validUntil !== undefined
-            ? { validUntil: parseOptionalDate(dto.validUntil, 'validUntil') ?? null }
-            : {}),
+          ...(dto.validFrom !== undefined ? { validFrom: nextValidFrom ?? null } : {}),
+          ...(dto.validUntil !== undefined ? { validUntil: nextValidUntil ?? null } : {}),
         },
         select: INSTRUCTION_SELECT,
       });
@@ -500,49 +532,70 @@ export class InstructionsService {
       return existing;
     }
 
-    return this.prisma.$transaction(async (transaction) => {
-      const created = await transaction.reservationSourceNote.create({
-        data: {
-          organizationId: context.organizationId,
-          propertyId,
-          reservationId,
-          sourceTextOriginal: parsed.originalText,
-          sourceTextHash: hashSourceText(dto.text),
-          contentHash,
-          parserVersion: INSTRUCTION_PARSER_VERSION,
-          redacted: parsed.redacted,
-          suggestions: parsed.suggestions as unknown as Prisma.InputJsonValue,
-          warnings: parsed.warnings as unknown as Prisma.InputJsonValue,
-          sourceSystem: dto.sourceSystem?.trim(),
-          sourceDepartment: dto.sourceDepartment?.trim(),
-          externalReference: dto.externalReference?.trim(),
-          importedByUserId: context.actor.id,
-        },
-        select: SOURCE_NOTE_SELECT,
-      });
-
-      await this.audit.append(
-        {
-          organizationId: context.organizationId,
-          propertyId,
-          actorUserId: context.actor.id,
-          action: 'reservation.source_note.imported',
-          entityType: 'ReservationSourceNote',
-          entityId: created.id,
-          correlationId: context.correlationId,
-          metadata: {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const created = await transaction.reservationSourceNote.create({
+          data: {
+            organizationId: context.organizationId,
+            propertyId,
             reservationId,
-            parserVersion: created.parserVersion,
-            redacted: created.redacted,
-            suggestionCount: parsed.suggestions.length,
-            warningCount: parsed.warnings.length,
+            sourceTextOriginal: parsed.originalText,
+            sourceTextHash: hashSourceText(dto.text),
+            contentHash,
+            parserVersion: INSTRUCTION_PARSER_VERSION,
+            redacted: parsed.redacted,
+            suggestions: parsed.suggestions as unknown as Prisma.InputJsonValue,
+            warnings: parsed.warnings as unknown as Prisma.InputJsonValue,
+            sourceSystem: dto.sourceSystem?.trim(),
+            sourceDepartment: dto.sourceDepartment?.trim(),
+            externalReference: dto.externalReference?.trim(),
+            importedByUserId: context.actor.id,
           },
-        },
-        transaction,
-      );
+          select: SOURCE_NOTE_SELECT,
+        });
 
-      return created;
-    });
+        await this.audit.append(
+          {
+            organizationId: context.organizationId,
+            propertyId,
+            actorUserId: context.actor.id,
+            action: 'reservation.source_note.imported',
+            entityType: 'ReservationSourceNote',
+            entityId: created.id,
+            correlationId: context.correlationId,
+            metadata: {
+              reservationId,
+              parserVersion: created.parserVersion,
+              redacted: created.redacted,
+              suggestionCount: parsed.suggestions.length,
+              warningCount: parsed.warnings.length,
+            },
+          },
+          transaction,
+        );
+
+        return created;
+      });
+    } catch (error) {
+      // Two concurrent retries can both pass the pre-check; the unique content
+      // hash is the authority. Return the winner instead of failing the import.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const raced = await this.prisma.reservationSourceNote.findFirst({
+          where: {
+            organizationId: context.organizationId,
+            propertyId,
+            reservationId,
+            contentHash,
+            parserVersion: INSTRUCTION_PARSER_VERSION,
+          },
+          select: SOURCE_NOTE_SELECT,
+        });
+        if (raced !== null) {
+          return raced;
+        }
+      }
+      throw error;
+    }
   }
 
   async listSourceNotes(
@@ -617,8 +670,8 @@ export class InstructionsService {
             reservationId,
             sourceNoteId: sourceNote.id,
             category: suggestion.category,
-            title: suggestion.title.trim(),
-            body: suggestion.body.trim(),
+            title: redactSensitiveCardData(suggestion.title.trim()).text,
+            body: redactSensitiveCardData(suggestion.body.trim()).text,
             priority: suggestion.priority ?? 'NORMAL',
             status: suggestion.status ?? InstructionStatus.NEW,
             source: 'IMPORT',
@@ -720,7 +773,7 @@ export class InstructionsService {
           propertyId,
           guestId,
           category: dto.category ?? InstructionCategory.GENERAL,
-          body: dto.body.trim(),
+          body: redactSensitiveCardData(dto.body.trim()).text,
           priority: dto.priority ?? 'NORMAL',
           visibility: dto.visibility ?? InstructionVisibility.ALL_AUTHORIZED,
           purpose: dto.purpose?.trim(),
@@ -783,7 +836,9 @@ export class InstructionsService {
       const updated = await transaction.guestNote.update({
         where: { id: current.id },
         data: {
-          ...(dto.body !== undefined ? { body: dto.body.trim() } : {}),
+          ...(dto.body !== undefined
+            ? { body: redactSensitiveCardData(dto.body.trim()).text }
+            : {}),
           ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
           ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
           ...(dto.purpose !== undefined ? { purpose: dto.purpose.trim() } : {}),
@@ -931,6 +986,39 @@ export class InstructionsService {
         details: { visibility },
       });
     }
+  }
+}
+
+function normalizeTags(tags: string[] | undefined): string[] {
+  if (tags === undefined) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of tags) {
+    const tag = value.trim().slice(0, 32);
+    if (tag.length === 0) {
+      continue;
+    }
+    const key = tag.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push(tag);
+    if (normalized.length === 10) {
+      break;
+    }
+  }
+  return normalized;
+}
+
+function assertValidityRange(validFrom: Date | undefined, validUntil: Date | undefined): void {
+  if (validFrom !== undefined && validUntil !== undefined && validUntil <= validFrom) {
+    throw new BadRequestException({
+      code: 'instruction_invalid_validity',
+      message: 'validUntil must be later than validFrom.',
+    });
   }
 }
 

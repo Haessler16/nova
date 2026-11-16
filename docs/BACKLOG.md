@@ -103,15 +103,15 @@ Estado P3: FO-001 a FO-006 implementados en API y UI con E2E aislados: room rack
 
 ## P11 — Notes & Instructions v1
 
-| ID      | Épica       | Historia / tarea                                      | Prioridad | Est. | Dependencias | Criterio de aceptación                                                       |
-| ------- | ----------- | ----------------------------------------------------- | --------- | ---- | ------------ | ---------------------------------------------------------------------------- |
-| NTS-001 | Notes       | Instrucciones estructuradas por reserva               | Must      | M    | RSV,FO       | Categoría, prioridad, estado, visibilidad y eventos auditables               |
-| NTS-002 | Notes       | Texto fuente inmutable con redacción de tarjeta       | Must      | M    | NTS-001      | PAN/CVV redactados; hash del texto recibido; trigger rechaza UPDATE/DELETE   |
-| NTS-003 | Parser      | Parser determinista pt-BR que solo sugiere            | Must      | L    | NTS-002      | Requiere confirmación humana; no crea pagos, cargos, tarifas ni habitaciones |
-| NTS-004 | Notes       | Notas persistentes del huésped separadas              | Must      | M    | GST          | No se copian automáticamente a reservas; visibilidad y vencimiento           |
-| NTS-005 | UI          | Panel de notas/instrucciones y resumen de check-in    | Should    | M    | NTS-001..004 | Reserva, huésped y llegada muestran pendientes sin iniciar cobros            |
+| ID      | Épica  | Historia / tarea                                   | Prioridad | Est. | Dependencias | Criterio de aceptación                                                       |
+| ------- | ------ | -------------------------------------------------- | --------- | ---- | ------------ | ---------------------------------------------------------------------------- |
+| NTS-001 | Notes  | Instrucciones estructuradas por reserva            | Must      | M    | RSV,FO       | Categoría, prioridad, estado, visibilidad y eventos auditables               |
+| NTS-002 | Notes  | Texto fuente inmutable con redacción de tarjeta    | Must      | M    | NTS-001      | PAN/CVV redactados; hash del texto recibido; trigger rechaza UPDATE/DELETE   |
+| NTS-003 | Parser | Parser determinista pt-BR que solo sugiere         | Must      | L    | NTS-002      | Requiere confirmación humana; no crea pagos, cargos, tarifas ni habitaciones |
+| NTS-004 | Notes  | Notas persistentes del huésped separadas           | Must      | M    | GST          | No se copian automáticamente a reservas; visibilidad y vencimiento           |
+| NTS-005 | UI     | Panel de notas/instrucciones y resumen de check-in | Should    | M    | NTS-001..004 | Reserva, huésped y llegada muestran pendientes sin iniciar cobros            |
 
-Estado P11: NTS-001..005 implementados en API y UI con migración, seed sintético, pruebas unitarias del parser y E2E aislados. Preautorización real permanece fuera de alcance: exige el módulo de pagos, permiso, importe confirmado y proveedor tokenizado. `PGTO DIRETO NO HOTEL` se representa como instrucción pendiente en check-in, nunca como pago realizado.
+Estado P11: NTS-001..005 implementados en API y UI con migración, seed sintético, pruebas unitarias del parser y E2E aislados. Incluye tags, vigencia validada, historial por instrucción, texto original colapsable, separación de información/acciones, resumen de check-in con “Confirmar lectura” y notas de huésped con propósito/expiración. Los triggers append-only cubren también `TRUNCATE`. Preautorización real permanece fuera de alcance: exige el módulo de pagos, permiso, importe confirmado y proveedor tokenizado; no existe aún un deep-link porque ese módulo no está implementado. `PGTO DIRETO NO HOTEL` se representa como instrucción pendiente en check-in, nunca como pago realizado.
 
 ## Orden de ejecución recomendado
 

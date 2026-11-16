@@ -504,7 +504,7 @@ function ReservationsContent() {
     }
     setSaving(true);
     try {
-      await api<Reservation>('/api/v1/reservations', {
+      const created = await api<Reservation>('/api/v1/reservations', {
         method: 'POST',
         tenant,
         body: {
@@ -524,6 +524,33 @@ function ReservationsContent() {
       toast({ title: 'Reserva creada', status: 'success' });
       createModal.onClose();
       reload();
+
+      // The structured panel lives in the detail. If the operator pasted an
+      // observation at creation time, pre-parse it so suggestions are ready for
+      // human confirmation; the parser never changes money or occupancy.
+      if (createForm.notes.trim() !== '') {
+        try {
+          await api(`/api/v1/reservations/${created.id}/source-notes/parse`, {
+            method: 'POST',
+            tenant,
+            body: { text: createForm.notes.trim(), sourceSystem: 'RESERVATIONS_FORM' },
+          });
+          toast({
+            title: 'Observación interpretada',
+            description: 'Revisá y confirmá las sugerencias en el detalle de la reserva.',
+            status: 'info',
+            duration: 8000,
+          });
+        } catch {
+          toast({
+            title: 'La reserva se creó, pero no se pudo interpretar la observación',
+            description: 'Podés importarla manualmente desde el detalle.',
+            status: 'warning',
+            duration: 8000,
+          });
+        }
+      }
+      openDetail(created);
     } catch (cause) {
       toast({
         title: 'No se pudo crear la reserva',
@@ -1295,11 +1322,15 @@ function ReservationsContent() {
                         />
                       </Field>
                     </SimpleGrid>
-                    <Field label="Notas">
+                    <Field
+                      label="Observación original"
+                      helper="Opcional. Se intentará interpretar al crear la reserva; las sugerencias se confirman en el detalle y nunca modifican pagos, tarifas ni habitaciones."
+                    >
                       <Textarea
                         mt={3}
-                        rows={2}
+                        rows={3}
                         value={createForm.notes}
+                        placeholder="Ej.: RSV COM CAFE / PGTO DIRETO NO HOTEL (12-15/11) / LUXO CASAL"
                         onChange={(event) =>
                           setCreateForm({ ...createForm, notes: event.target.value })
                         }
@@ -1369,7 +1400,10 @@ function ReservationsContent() {
                   />
                 </Field>
               </SimpleGrid>
-              <Field label="Notas">
+              <Field
+                label="Notas de la reserva"
+                helper="Las notas e instrucciones estructuradas se gestionan en el panel del detalle; este campo conserva el texto libre heredado."
+              >
                 <Textarea
                   rows={3}
                   value={editForm.notes}

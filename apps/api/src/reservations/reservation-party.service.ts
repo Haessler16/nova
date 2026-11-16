@@ -238,11 +238,20 @@ export class ReservationPartyService {
         select: { id: true },
       });
 
+      // The guest was selected before the profile upsert, so its in-memory
+      // fnrhProfile is still null. Reflect the persisted birth date in the
+      // party snapshot used for capacity and readiness; otherwise a new minor
+      // is counted as an unknown adult.
+      const guestWithProfile = {
+        ...guest,
+        fnrhProfile: { birthDate },
+      };
+
       await this.syncReservationCounts(transaction, reservation, [
         ...party,
         {
           ...primary,
-          guest,
+          guest: guestWithProfile,
           id: created.id,
           guestId: guest.id,
           role: ReservationGuestRole.COMPANION,
@@ -358,11 +367,11 @@ export class ReservationPartyService {
           where: { id: guest.id },
           data: {
             ...(dto.fullName !== undefined ? { fullName: dto.fullName.trim() } : {}),
-            ...(dto.email !== undefined ? { email: dto.email.trim().toLowerCase() } : {}),
-            ...(dto.phone !== undefined ? { phone: dto.phone.trim() } : {}),
+            ...(dto.email !== undefined ? { email: dto.email.trim().toLowerCase() || null } : {}),
+            ...(dto.phone !== undefined ? { phone: dto.phone.trim() || null } : {}),
             ...(dto.documentType !== undefined ? { documentType: dto.documentType } : {}),
             ...(dto.documentNumber !== undefined
-              ? { documentNumber: dto.documentNumber.trim().toUpperCase() }
+              ? { documentNumber: dto.documentNumber?.trim().toUpperCase() || null }
               : {}),
           },
           select: { id: true },
@@ -405,6 +414,10 @@ export class ReservationPartyService {
           row.id === updated.id
             ? {
                 ...row,
+                guest: {
+                  ...row.guest,
+                  fnrhProfile: nextBirthDate !== null ? { birthDate: nextBirthDate } : null,
+                },
                 ageGroup,
                 legalIncapacity,
                 minorSupervision: supervision,
@@ -634,10 +647,10 @@ export class ReservationPartyService {
         organizationId: context.organizationId,
         propertyId,
         fullName: dto.fullName.trim(),
-        email: dto.email?.trim().toLowerCase() ?? null,
-        phone: dto.phone?.trim() ?? null,
+        email: dto.email?.trim().toLowerCase() || null,
+        phone: dto.phone?.trim() || null,
         documentType: dto.documentType ?? null,
-        documentNumber: dto.documentNumber?.trim().toUpperCase() ?? null,
+        documentNumber: dto.documentNumber?.trim().toUpperCase() || null,
       },
       select: {
         id: true,

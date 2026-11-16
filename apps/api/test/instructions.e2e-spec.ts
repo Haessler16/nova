@@ -131,6 +131,24 @@ describe('Reservation instructions and guest notes (E2E)', () => {
       expect(parsed.body.sourceTextHash).toMatch(/^[a-f0-9]{64}$/);
     });
 
+    it('recognizes the confirmed bare room category without assigning a room', async () => {
+      const parsed = await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservationId}/source-notes/parse`)
+        .set(headers(RECEPTION))
+        .send({
+          text: `RSV COM CAFE / PGTO DIRETO NO HOTEL (12-15/11) / LUXO CASAL / ${suffix}`,
+          sourceSystem: 'E2E',
+        })
+        .expect(201);
+
+      const room = (parsed.body.suggestions as SuggestionBody[]).find(
+        (suggestion) => suggestion.category === 'ROOM',
+      );
+      expect(room?.sourcePhrase).toMatch(/LUXO CASAL/i);
+      expect(room?.actionType).toBeUndefined();
+      expect(room?.body).toMatch(/não atribui habitação/i);
+    });
+
     it('only asks for ledger verification when the text claims a cash payment', async () => {
       const parsed = await request(app.getHttpServer())
         .post(`/api/v1/reservations/${reservationId}/source-notes/parse`)
@@ -195,6 +213,7 @@ describe('Reservation instructions and guest notes (E2E)', () => {
           title: `Avisar no check-in ${suffix}`,
           body: 'Recordatorio sintético para el check-in.',
           priority: 'HIGH',
+          tags: ['VIP', 'CHECK-IN', 'vip'],
           actionType: 'ARRIVAL_REMINDER',
           executionMoment: 'CHECK_IN',
           assignedDepartment: 'FRONT_DESK',
@@ -204,6 +223,7 @@ describe('Reservation instructions and guest notes (E2E)', () => {
       instructionId = created.body.id;
       expect(created.body.status).toBe('NEW');
       expect(created.body.visibility).toBe('ALL_AUTHORIZED');
+      expect(created.body.tags).toEqual(['VIP', 'CHECK-IN']);
 
       await request(app.getHttpServer())
         .post(`/api/v1/reservations/${reservationId}/instructions/${instructionId}/acknowledge`)
@@ -286,6 +306,16 @@ describe('Reservation instructions and guest notes (E2E)', () => {
       const adminIds = adminList.body.items.map((item: { id: string }) => item.id);
       expect(adminIds).toContain(confidential.body.id);
       expect(adminIds).toContain(finance.body.id);
+
+      const audit = await prisma.auditEvent.findFirst({
+        where: {
+          action: 'instruction.confidential_listed',
+          entityType: 'Reservation',
+          entityId: reservationId,
+          actorUserId: ADMIN,
+        },
+      });
+      expect(audit).not.toBeNull();
     });
 
     it('updates an instruction and records the changed fields', async () => {
@@ -303,10 +333,11 @@ describe('Reservation instructions and guest notes (E2E)', () => {
       const updated = await request(app.getHttpServer())
         .patch(`/api/v1/reservations/${reservationId}/instructions/${created.body.id}`)
         .set(headers(RECEPTION))
-        .send({ priority: 'HIGH', assignedDepartment: 'FRONT_DESK' })
+        .send({ priority: 'HIGH', tags: ['UPGRADE'], assignedDepartment: 'FRONT_DESK' })
         .expect(200);
 
       expect(updated.body.priority).toBe('HIGH');
+      expect(updated.body.tags).toEqual(['UPGRADE']);
       expect(updated.body.assignedDepartment).toBe('FRONT_DESK');
 
       const events = await request(app.getHttpServer())
@@ -317,6 +348,126 @@ describe('Reservation instructions and guest notes (E2E)', () => {
         'CREATED',
         'UPDATED',
       ]);
+    });
+
+    it('rejects an inverted validity range', async () => {
+      const rejected = await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservationId}/instructions`)
+        .set(headers(RECEPTION))
+        .send({
+          title: `Vigencia inválida ${suffix}`,
+          body: 'La fecha final debe ser posterior.',
+          validFrom: '2026-12-10T12:00:00.000Z',
+          validUntil: '2026-12-09T12:00:00.000Z',
+        })
+        .expect(400);
+
+      expect(rejected.body.code).toBe('instruction_invalid_validity');
+    });
+
+    it('filters instructions by execution moment for the check-in summary', async () => {
+      const arrival = await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservationId}/instructions`)
+        .set(headers(RECEPTION))
+        .send({
+          category: 'ARRIVAL',
+          title: `Llegada anticipada ${suffix}`,
+          body: 'Recordatorio de llegada.',
+          priority: 'NORMAL',
+          actionType: 'ARRIVAL_REMINDER',
+          executionMoment: 'CHECK_IN',
+        })
+        .expect(201);
+
+      const billing = await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservationId}/instructions`)
+        .set(headers(RECEPTION))
+        .send({
+          category: 'BILLING',
+          title: `Facturar al salir ${suffix}`,
+          body: 'Tarea de check-out.',
+          priority: 'NORMAL',
+          actionType: 'BILLING_TASK',
+          executionMoment: 'CHECK_OUT',
+        })
+        .expect(201);
+
+      const checkInOnly = await request(app.getHttpServer())
+        .get(`/api/v1/reservations/${reservationId}/instructions`)
+        .query({ executionMoment: 'CHECK_IN', includeCompleted: 'true', limit: 100 })
+        .set(headers(RECEPTION))
+        .expect(200);
+
+      const ids = checkInOnly.body.items.map((item: { id: string }) => item.id);
+      expect(ids).toContain(arrival.body.id);
+      expect(ids).not.toContain(billing.body.id);
+      expect(
+        checkInOnly.body.items.every(
+          (item: { executionMoment: string | null }) => item.executionMoment === 'CHECK_IN',
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe('sensitive data', () => {
+    it('redacts card data pasted into manual instructions and guest notes', async () => {
+      const instruction = await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservationId}/instructions`)
+        .set(headers(RECEPTION))
+        .send({
+          title: `Tarjeta 4111 1111 1111 1111 ${suffix}`,
+          body: 'Cobrar en el check-in. CVV: 123',
+        })
+        .expect(201);
+
+      expect(instruction.body.title).not.toContain('4111');
+      expect(instruction.body.title).toContain('[CARD_REDACTED]');
+      expect(instruction.body.body).not.toContain('123');
+      expect(instruction.body.body).toContain('[CVV_REDACTED]');
+
+      const note = await request(app.getHttpServer())
+        .post(`/api/v1/guests/${GUEST_ANA}/notes`)
+        .set(headers(RECEPTION))
+        .send({
+          body: `Nota con tarjeta 4111 1111 1111 1111 y CVV 321 ${suffix}`,
+        })
+        .expect(201);
+
+      expect(note.body.body).not.toContain('4111');
+      expect(note.body.body).not.toContain('321');
+      expect(note.body.body).toContain('[CARD_REDACTED]');
+      expect(note.body.body).toContain('[CVV_REDACTED]');
+    });
+  });
+
+  describe('immutability', () => {
+    it('rejects direct updates to source text and deletes of instruction events', async () => {
+      const sourceNote = await prisma.reservationSourceNote.findFirst({
+        where: { reservationId },
+        orderBy: { importedAt: 'asc' },
+      });
+      expect(sourceNote).not.toBeNull();
+
+      await expect(
+        prisma.reservationSourceNote.update({
+          where: { id: sourceNote!.id },
+          data: { sourceTextOriginal: 'mutated' },
+        }),
+      ).rejects.toThrow(/immutable/i);
+
+      const instruction = await prisma.reservationInstruction.findFirst({
+        where: { reservationId },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(instruction).not.toBeNull();
+      const event = await prisma.instructionEvent.findFirst({
+        where: { instructionId: instruction!.id },
+      });
+      expect(event).not.toBeNull();
+
+      await expect(prisma.instructionEvent.delete({ where: { id: event!.id } })).rejects.toThrow(
+        /append-only/i,
+      );
     });
   });
 
@@ -365,9 +516,7 @@ describe('Reservation instructions and guest notes (E2E)', () => {
         .get(`/api/v1/guests/${GUEST_ANA}/notes`)
         .set(headers(RECEPTION))
         .expect(200);
-      expect(active.body.items.map((item: { id: string }) => item.id)).not.toContain(
-        note.body.id,
-      );
+      expect(active.body.items.map((item: { id: string }) => item.id)).not.toContain(note.body.id);
 
       const all = await request(app.getHttpServer())
         .get(`/api/v1/guests/${GUEST_ANA}/notes`)

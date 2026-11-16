@@ -14,6 +14,7 @@ import type {
   InstructionExecutionMoment,
   InstructionPriority,
   InstructionStatus,
+  InstructionVisibility,
   OperationalCloseStatus,
   PaymentStatus,
   ReservationStatus,
@@ -357,4 +358,12 @@ export const INSTRUCTION_MOMENT_LABELS: Record<InstructionExecutionMoment, strin
   CHECK_IN: 'Check-in',
   DURING_STAY: 'Durante la estadía',
   CHECK_OUT: 'Check-out',
+};
+
+export const INSTRUCTION_VISIBILITY_LABELS: Record<InstructionVisibility, string> = {
+  ALL_AUTHORIZED: 'Todos los autorizados',
+  FRONT_DESK: 'Recepción',
+  RESERVATIONS: 'Reservas',
+  FINANCE: 'Finanzas',
+  MANAGEMENT: 'Gerencia',
 };

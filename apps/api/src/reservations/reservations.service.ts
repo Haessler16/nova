@@ -205,7 +205,7 @@ export class ReservationsService {
     const propertyId = requirePropertyContext(context);
     const checkInDate = parseCalendarDate(dto.checkInDate, 'checkInDate');
     const checkOutDate = parseCalendarDate(dto.checkOutDate, 'checkOutDate');
-    assertStayWindow(checkInDate, checkOutDate);
+    await this.assertStayWindowForProperty(context, propertyId, checkInDate, checkOutDate);
     const children = dto.children ?? 0;
 
     if (dto.idempotencyKey !== undefined) {
@@ -367,7 +367,7 @@ export class ReservationsService {
         dto.checkOutDate !== undefined
           ? parseCalendarDate(dto.checkOutDate, 'checkOutDate')
           : current.checkOutDate;
-      assertStayWindow(checkInDate, checkOutDate);
+      await this.assertStayWindowForProperty(context, propertyId, checkInDate, checkOutDate);
 
       const adults = dto.adults ?? current.adults;
       const children = dto.children ?? current.children;
@@ -948,6 +948,27 @@ export class ReservationsService {
         },
       });
     }
+  }
+
+  private async assertStayWindowForProperty(
+    context: TenantContext,
+    propertyId: string,
+    checkInDate: Date,
+    checkOutDate: Date,
+  ): Promise<void> {
+    const property = await this.prisma.property.findFirst({
+      where: { id: propertyId, organizationId: context.organizationId },
+      select: { timezone: true },
+    });
+    if (property === null) {
+      throw new NotFoundException({
+        code: 'property_not_found',
+        message: 'Property not found in the selected organization.',
+      });
+    }
+    assertStayWindow(checkInDate, checkOutDate, new Date(), {
+      timezone: property.timezone,
+    });
   }
 
   private async assertGuest(

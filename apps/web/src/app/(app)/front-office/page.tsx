@@ -54,6 +54,7 @@ import {
   INSTRUCTION_MOMENT_LABELS,
   INSTRUCTION_PRIORITY_COLORS,
   INSTRUCTION_PRIORITY_LABELS,
+  INSTRUCTION_STATUS_LABELS,
   OPERATIONAL_COLORS,
   OPERATIONAL_LABELS,
   RESERVATION_STATUS_COLORS,
@@ -89,6 +90,29 @@ const TAB_INDEX: Record<string, number> = {
   rack: 3,
   incidents: 4,
 };
+
+/**
+ * The check-in summary is intentionally narrower than the reservation panel:
+ * only instructions actionable at arrival/check-in or high-risk alerts are
+ * shown. Billing, check-out tasks and general notes stay in the reservation.
+ */
+function isCheckInRelevant(instruction: ReservationInstruction): boolean {
+  if (instruction.status === 'COMPLETED' || instruction.status === 'DISMISSED') {
+    return false;
+  }
+  if (instruction.executionMoment === 'PRE_ARRIVAL' || instruction.executionMoment === 'CHECK_IN') {
+    return true;
+  }
+  if (
+    instruction.actionType === 'PAYMENT_PREAUTHORIZATION' ||
+    instruction.actionType === 'ARRIVAL_REMINDER'
+  ) {
+    return true;
+  }
+  // Critical alerts are surfaced even without an explicit moment so the front
+  // desk cannot miss e.g. "do not cancel" instructions.
+  return instruction.priority === 'CRITICAL';
+}
 
 function StayCard({
   stay,
@@ -211,6 +235,7 @@ function FrontOfficeContent() {
   const [checkoutNotes, setCheckoutNotes] = useState('');
 
   const [checkInTarget, setCheckInTarget] = useState<Reservation | null>(null);
+  const [instructionBusyId, setInstructionBusyId] = useState<string | null>(null);
   const checkInInstructions = useAsyncData<{ items: ReservationInstruction[] }>(
     () =>
       checkInTarget === null
@@ -220,6 +245,9 @@ function FrontOfficeContent() {
             { tenant },
           ),
     `${tenant.organizationId}:${tenant.propertyId}:check-in:${checkInTarget?.id ?? 'none'}`,
+  );
+  const relevantCheckInInstructions = (checkInInstructions.data?.items ?? []).filter(
+    isCheckInRelevant,
   );
 
   const [moveTarget, setMoveTarget] = useState<Stay | null>(null);
@@ -308,6 +336,30 @@ function FrontOfficeContent() {
         setCheckInTarget(null);
       },
     );
+  }
+
+  async function acknowledgeInstruction(instruction: ReservationInstruction): Promise<void> {
+    if (checkInTarget === null) {
+      return;
+    }
+    setInstructionBusyId(instruction.id);
+    try {
+      await api(
+        `/api/v1/reservations/${checkInTarget.id}/instructions/${instruction.id}/acknowledge`,
+        { method: 'POST', tenant, body: {} },
+      );
+      checkInInstructions.reload();
+      toast({ title: 'Lectura registrada', status: 'success' });
+    } catch (cause) {
+      toast({
+        title: 'No se pudo registrar la lectura',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 8000,
+      });
+    } finally {
+      setInstructionBusyId(null);
+    }
   }
 
   function openCheckOut(stay: Stay): void {
@@ -1070,70 +1122,79 @@ function FrontOfficeContent() {
       <Modal isOpen={checkInModal.isOpen} onClose={checkInModal.onClose} size="lg">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>
-            Check-in — {checkInTarget?.guest.fullName ?? 'huésped'}
-          </ModalHeader>
+          <ModalHeader>Check-in — {checkInTarget?.guest.fullName ?? 'huésped'}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={4}>
               <Text fontSize="sm" color="gray.600">
-                Revisá las instrucciones pendientes antes de confirmar. El check-in no inicia
-                preautorizaciones, no cobra pagos y no modifica tarifas.
+                Solo se muestran instrucciones relevantes para la llegada y el check-in. Revisá y
+                confirmá su lectura antes de continuar. El check-in no inicia preautorizaciones, no
+                cobra pagos y no modifica tarifas.
               </Text>
               <QueryFeedback
                 loading={checkInInstructions.loading}
                 error={checkInInstructions.error}
                 onRetry={checkInInstructions.reload}
-                isEmpty={
-                  (checkInInstructions.data?.items ?? []).filter(
-                    (instruction) =>
-                      instruction.status !== 'COMPLETED' && instruction.status !== 'DISMISSED',
-                  ).length === 0
-                }
-                emptyText="Sin instrucciones pendientes para esta llegada."
+                isEmpty={relevantCheckInInstructions.length === 0}
+                emptyText="Sin instrucciones relevantes para esta llegada."
               >
                 <Stack spacing={2}>
-                  {(checkInInstructions.data?.items ?? [])
-                    .filter(
-                      (instruction) =>
-                        instruction.status !== 'COMPLETED' && instruction.status !== 'DISMISSED',
-                    )
-                    .map((instruction) => (
-                      <Box
-                        key={instruction.id}
-                        borderWidth="1px"
-                        borderColor="gray.200"
-                        borderRadius="md"
-                        p={3}
-                      >
-                        <HStack spacing={2} wrap="wrap">
-                          <StatusBadge
-                            color={INSTRUCTION_PRIORITY_COLORS[instruction.priority]}
-                            label={INSTRUCTION_PRIORITY_LABELS[instruction.priority]}
-                          />
-                          <Badge colorScheme="gray">
-                            {INSTRUCTION_CATEGORY_LABELS[instruction.category]}
+                  {relevantCheckInInstructions.map((instruction) => (
+                    <Box
+                      key={instruction.id}
+                      borderWidth="1px"
+                      borderColor="gray.200"
+                      borderRadius="md"
+                      p={3}
+                    >
+                      <HStack spacing={2} wrap="wrap">
+                        <StatusBadge
+                          color={INSTRUCTION_PRIORITY_COLORS[instruction.priority]}
+                          label={INSTRUCTION_PRIORITY_LABELS[instruction.priority]}
+                        />
+                        <Badge colorScheme="gray">
+                          {INSTRUCTION_CATEGORY_LABELS[instruction.category]}
+                        </Badge>
+                        {instruction.executionMoment !== null && (
+                          <Badge colorScheme="brand" textTransform="none">
+                            {INSTRUCTION_MOMENT_LABELS[instruction.executionMoment]}
                           </Badge>
-                          {instruction.executionMoment !== null && (
-                            <Badge colorScheme="brand" textTransform="none">
-                              {INSTRUCTION_MOMENT_LABELS[instruction.executionMoment]}
-                            </Badge>
-                          )}
-                        </HStack>
-                        <Text fontWeight="semibold" mt={1}>
-                          {instruction.title}
-                        </Text>
-                        <Text fontSize="sm" mt={1}>
-                          {instruction.body}
-                        </Text>
-                        {instruction.actionType === 'PAYMENT_PREAUTHORIZATION' && (
-                          <Text fontSize="xs" color="warning.600" mt={1}>
-                            {INSTRUCTION_ACTION_LABELS[instruction.actionType]}: pendiente, no es
-                            un pago realizado.
-                          </Text>
                         )}
-                      </Box>
-                    ))}
+                        {instruction.status !== 'NEW' && (
+                          <Badge colorScheme="gray" textTransform="none">
+                            {instruction.status === 'ACKNOWLEDGED'
+                              ? 'Leída'
+                              : INSTRUCTION_STATUS_LABELS[instruction.status]}
+                          </Badge>
+                        )}
+                      </HStack>
+                      <Text fontWeight="semibold" mt={1}>
+                        {instruction.title}
+                      </Text>
+                      <Text fontSize="sm" mt={1}>
+                        {instruction.body}
+                      </Text>
+                      {instruction.actionType === 'PAYMENT_PREAUTHORIZATION' && (
+                        <Text fontSize="xs" color="warning.600" mt={1}>
+                          {INSTRUCTION_ACTION_LABELS[instruction.actionType]}: pendiente de
+                          ejecución en el módulo de pagos. No es un pago realizado ni una
+                          autorización aprobada.
+                        </Text>
+                      )}
+                      {instruction.status === 'NEW' && (
+                        <Button
+                          mt={2}
+                          size="xs"
+                          variant="outline"
+                          colorScheme="brand"
+                          isLoading={instructionBusyId === instruction.id}
+                          onClick={() => void acknowledgeInstruction(instruction)}
+                        >
+                          Confirmar lectura
+                        </Button>
+                      )}
+                    </Box>
+                  ))}
                 </Stack>
               </QueryFeedback>
             </Stack>

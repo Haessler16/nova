@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   HStack,
+  Input,
   Select,
   Stack,
   Text,
@@ -20,11 +21,7 @@ import {
   INSTRUCTION_PRIORITY_LABELS,
   formatDateTime,
 } from '@/lib/format';
-import type {
-  GuestNote,
-  InstructionCategory,
-  InstructionPriority,
-} from '@/lib/types';
+import type { GuestNote, InstructionCategory, InstructionPriority } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 import { Field, QueryFeedback, SectionCard, StatusBadge } from './ui';
 
@@ -44,6 +41,14 @@ const CATEGORY_OPTIONS: InstructionCategory[] = [
 
 const PRIORITY_OPTIONS: InstructionPriority[] = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'];
 
+const PURPOSE_OPTIONS = [
+  { value: 'PREFERENCE', label: 'Preferencia' },
+  { value: 'ALERT', label: 'Alerta operativa' },
+  { value: 'ACCESSIBILITY', label: 'Accesibilidad' },
+  { value: 'BILLING', label: 'Facturación' },
+  { value: 'OTHER', label: 'Otro' },
+];
+
 export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
   const { tenant } = useSession();
   const toast = useToast();
@@ -52,6 +57,8 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
   const [form, setForm] = useState({
     category: 'GENERAL' as InstructionCategory,
     priority: 'NORMAL' as InstructionPriority,
+    purpose: 'PREFERENCE',
+    expiresAt: '',
     body: '',
   });
   const [saving, setSaving] = useState(false);
@@ -80,10 +87,17 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
           category: form.category,
           priority: form.priority,
           body: form.body.trim(),
-          purpose: 'NOTE',
+          purpose: form.purpose,
+          ...(form.expiresAt !== '' ? { expiresAt: new Date(form.expiresAt).toISOString() } : {}),
         },
       });
-      setForm({ category: 'GENERAL', priority: 'NORMAL', body: '' });
+      setForm({
+        category: 'GENERAL',
+        priority: 'NORMAL',
+        purpose: 'PREFERENCE',
+        expiresAt: '',
+        body: '',
+      });
       notes.reload();
     } catch (cause) {
       toast({
@@ -127,11 +141,7 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
             No se copian automáticamente a las reservas.
           </Text>
         </Box>
-        <Button
-          size="xs"
-          variant="ghost"
-          onClick={() => setShowInactive((current) => !current)}
-        >
+        <Button size="xs" variant="ghost" onClick={() => setShowInactive((current) => !current)}>
           {showInactive ? 'Ocultar inactivas' : 'Ver inactivas'}
         </Button>
       </HStack>
@@ -181,6 +191,7 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
                 {note.body}
               </Text>
               <Text fontSize="xs" color="gray.500" mt={1}>
+                {note.purpose !== null ? `${note.purpose} · ` : ''}
                 {formatDateTime(note.createdAt)}
                 {note.expiresAt !== null ? ` · expira ${formatDateTime(note.expiresAt)}` : ''}
               </Text>
@@ -237,6 +248,32 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
             >
               Guardar
             </Button>
+          </HStack>
+          <HStack mt={2} spacing={2} align="end" wrap="wrap">
+            <Field label="Propósito">
+              <Select
+                size="sm"
+                value={form.purpose}
+                onChange={(event) => setForm({ ...form, purpose: event.target.value })}
+              >
+                {PURPOSE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="Expira"
+              helper="Opcional. Se guarda como instante; la interfaz usa la zona horaria del navegador."
+            >
+              <Input
+                size="sm"
+                type="datetime-local"
+                value={form.expiresAt}
+                onChange={(event) => setForm({ ...form, expiresAt: event.target.value })}
+              />
+            </Field>
           </HStack>
         </Box>
       )}

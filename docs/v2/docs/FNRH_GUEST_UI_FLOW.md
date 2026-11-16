@@ -8,6 +8,8 @@
 - Decisiones de producto: `FNRH_GUEST_MODEL_REVIEW.md` (P-01 a P-06).
 - Plan de integración: `FNRH_INTEGRATION_PLAN.md`.
 - Prototipo navegable: `prototypes/fnrh-party/index.html` (datos sintéticos, sin backend ni persistencia).
+- Tareas derivadas del prototipo y puertas de producto/legal: `FNRH_PARTY_IMPLEMENTATION_TASKS.md`.
+- Guía de validación con recepción y registro de hallazgos: `FNRH_PARTY_VALIDATION_SESSION.md`.
 
 ## 1. Objetivo y principios
 

@@ -63,8 +63,10 @@
 - [x] Desenho do modelo/migração de hóspedes, acompanhantes e menores em `FNRH_GUEST_MODEL.md`; não implementado.
 - [x] Revisão oficial e matriz de firmas de produto/legal em `FNRH_GUEST_MODEL_REVIEW.md`; aprovações pendentes.
 - [x] Decisões de produto P-01 a P-06 registradas para planejamento; ratificação humana e decisões legais pendentes.
-- [x] Fluxo de UI de acompanhantes/menores em `FNRH_GUEST_UI_FLOW.md`; não implementado.
+- [x] Fluxo de UI de acompanhantes/menores em `FNRH_GUEST_UI_FLOW.md`; primeira integração implementada em código, migração não aplicada.
 - [x] Protótipo navegável da festa da reserva em `prototypes/fnrh-party/index.html`; dados sintéticos, sem backend.
+- [x] Guia da sessão de validação com recepção e registro inicial de achados em `FNRH_PARTY_VALIDATION_SESSION.md`; sessão não executada.
+- [ ] Executar o plano de tarefas derivado do protótipo em `FNRH_PARTY_IMPLEMENTATION_TASKS.md`, após as portas de produto, legal/DPO, segurança e Serpro.
 - [ ] Resolver URL base, formato de credencial, paginação e `cpf_solicitante` com Serpro/legal.
 - [ ] Adapter + mocks somente após contrato confirmado.
 - [ ] Homologação com dados sintéticos; pilot por feature flag; produção após validação.

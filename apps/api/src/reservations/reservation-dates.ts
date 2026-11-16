@@ -43,7 +43,7 @@ export function assertStayWindow(
   checkInDate: Date,
   checkOutDate: Date,
   now = new Date(),
-  options: { allowPast?: boolean } = {},
+  options: { allowPast?: boolean; timezone?: string } = {},
 ): void {
   if (checkOutDate.getTime() <= checkInDate.getTime()) {
     throw new BadRequestException({
@@ -63,13 +63,29 @@ export function assertStayWindow(
     return;
   }
 
-  const today = new Date(`${formatCalendarDate(now)}T00:00:00.000Z`);
+  const todayCalendarDate =
+    options.timezone !== undefined
+      ? calendarDateInTimezone(now, options.timezone)
+      : formatCalendarDate(now);
+  const today = new Date(`${todayCalendarDate}T00:00:00.000Z`);
   if (checkInDate.getTime() < today.getTime()) {
     throw new BadRequestException({
       code: 'reservation_in_past',
       message: 'A reservation cannot start in the past.',
     });
   }
+}
+
+/** Calendar date (`YYYY-MM-DD`) at an instant in the property's timezone. */
+export function calendarDateInTimezone(instant: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(instant);
+  const value = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
 /** `RES-YYYYMMDD-XXXXXX`; unique per property via a database constraint. */

@@ -5,7 +5,8 @@
 - Fecha: 2026-11-13.
 - Alcance: revisar `FNRH_GUEST_MODEL.md` antes de implementar la migración o el adapter.
 - Este documento no sustituye la aprobación de producto, operaciones, DPO/legal ni seguridad. Las filas de firma están deliberadamente vacías.
-- Flujo de UI propuesto: `FNRH_GUEST_UI_FLOW.md`; no implementado.
+- Flujo de UI: `FNRH_GUEST_UI_FLOW.md`; primeira integração implementada em código, migração não aplicada.
+- Tareas derivadas del prototipo: `FNRH_PARTY_IMPLEMENTATION_TASKS.md`.
 - Evidencia oficial consultada: Portaria MTur 41/2025, FAQ oficial, Módulo Hóspede y manual API 2.4.2.
 
 ## 1. Resultado de la revisión

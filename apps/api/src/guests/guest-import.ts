@@ -8,7 +8,9 @@ const HEADERS = ['fullName', 'email', 'phone', 'documentType', 'documentNumber',
 type Header = (typeof HEADERS)[number];
 
 const DOCUMENT_TYPES: Record<string, GuestDocumentType> = {
+  CPF: GuestDocumentType.CPF,
   PASSPORT: GuestDocumentType.PASSPORT,
+  RG: GuestDocumentType.RG,
   NATIONAL_ID: GuestDocumentType.NATIONAL_ID,
   DRIVER_LICENSE: GuestDocumentType.DRIVER_LICENSE,
   OTHER: GuestDocumentType.OTHER,
@@ -150,7 +152,9 @@ export function parseGuestCsv(csv: string): GuestImportPreview {
     if (documentTypeRaw !== '') {
       const mapped = DOCUMENT_TYPES[documentTypeRaw];
       if (mapped === undefined) {
-        errors.push('documentType debe ser PASSPORT, NATIONAL_ID, DRIVER_LICENSE u OTHER.');
+        errors.push(
+          'documentType debe ser CPF, PASSPORT, RG, NATIONAL_ID, DRIVER_LICENSE u OTHER.',
+        );
       } else {
         documentType = mapped;
       }

@@ -52,14 +52,16 @@ describe('pt-BR instruction parser', () => {
     expect(rate?.actionType).toBeUndefined();
     expect(rate?.body).toMatch(/Não alterar preço oficial/);
     expect(parsed.warnings.join(' ')).toMatch(/valores monetários/i);
-    expect(parsed.suggestions.some((suggestion) => suggestion.actionType === 'PAYMENT_PREAUTHORIZATION')).toBe(
-      false,
-    );
+    expect(
+      parsed.suggestions.some((suggestion) => suggestion.actionType === 'PAYMENT_PREAUTHORIZATION'),
+    ).toBe(false);
   });
 
   it('requires ledger verification when the text claims a cash payment was posted', () => {
     const parsed = parseSourceNote('PGTO DAS DIARIAS OK LANÇADO NO CAIXA');
-    const verify = parsed.suggestions.find((suggestion) => suggestion.actionType === 'VERIFY_PAYMENT');
+    const verify = parsed.suggestions.find(
+      (suggestion) => suggestion.actionType === 'VERIFY_PAYMENT',
+    );
 
     expect(verify).toMatchObject({
       category: 'PAYMENT',
@@ -75,6 +77,52 @@ describe('pt-BR instruction parser', () => {
     expect(room.length).toBeGreaterThanOrEqual(2);
     expect(room.every((suggestion) => suggestion.actionType === undefined)).toBe(true);
     expect(room.map((suggestion) => suggestion.body).join(' ')).toMatch(/não atribui habitação/i);
+  });
+
+  it('recognizes the bare room category from the confirmed example without assigning a room', () => {
+    const parsed = parseSourceNote('LUXO CASAL');
+    const room = parsed.suggestions.filter((suggestion) => suggestion.category === 'ROOM');
+
+    expect(room).toHaveLength(1);
+    expect(room[0]?.sourcePhrase).toMatch(/LUXO CASAL/i);
+    expect(room[0]?.actionType).toBeUndefined();
+    expect(room[0]?.body).toMatch(/não atribui habitação/i);
+  });
+
+  it('covers the initial business dictionary without creating side effects', () => {
+    const cases: Array<{ text: string; category: string; actionType?: string }> = [
+      { text: 'RSV COM CAFE', category: 'MEAL' },
+      {
+        text: 'PGTO DAS DIARIAS OK LANÇADO NO CAIXA',
+        category: 'PAYMENT',
+        actionType: 'VERIFY_PAYMENT',
+      },
+      { text: 'EXTRAS DIRETO', category: 'EXTRA' },
+      { text: 'DEBITAR DIARIAS E EXTRAS', category: 'BILLING', actionType: 'BILLING_TASK' },
+      { text: 'FATURAR DIARIAS', category: 'BILLING', actionType: 'BILLING_TASK' },
+      { text: 'EMITIR NF NO CNPJ', category: 'BILLING', actionType: 'BILLING_TASK' },
+      { text: 'NÃO CANCELAR RSV', category: 'IMPORTANT' },
+      { text: 'PAX CHEGARÁ ÀS 7H', category: 'ARRIVAL', actionType: 'ARRIVAL_REMINDER' },
+      { text: 'AVISAR NO CHECK IN', category: 'IMPORTANT', actionType: 'ARRIVAL_REMINDER' },
+      { text: 'UP POR DISPO', category: 'ROOM' },
+      { text: 'APTO LUXO CASAL', category: 'ROOM' },
+      { text: 'TRF DBL R$ 606 + 15%', category: 'BILLING' },
+    ];
+
+    for (const testCase of cases) {
+      const parsed = parseSourceNote(testCase.text);
+      const suggestion = parsed.suggestions.find((item) => item.category === testCase.category);
+      expect(suggestion).toBeDefined();
+      if (testCase.actionType !== undefined) {
+        expect(suggestion?.actionType).toBe(testCase.actionType);
+      }
+      expect(parsed.suggestions.every((item) => item.requiresHumanConfirmation)).toBe(true);
+    }
+  });
+
+  it('does not report a fake room category for unrelated words', () => {
+    const parsed = parseSourceNote('Hóspede pediu um quarto silencioso.');
+    expect(parsed.suggestions.some((suggestion) => suggestion.category === 'ROOM')).toBe(false);
   });
 
   it('flags do-not-cancel as critical without cancelling anything', () => {
@@ -110,6 +158,8 @@ describe('pt-BR instruction parser', () => {
   it('marks every suggestion as requiring human confirmation', () => {
     const parsed = parseSourceNote(EXAMPLE);
     expect(parsed.suggestions.length).toBeGreaterThan(0);
-    expect(parsed.suggestions.every((suggestion) => suggestion.requiresHumanConfirmation)).toBe(true);
+    expect(parsed.suggestions.every((suggestion) => suggestion.requiresHumanConfirmation)).toBe(
+      true,
+    );
   });
 });

@@ -57,15 +57,17 @@ export interface ParsedSourceNote {
 interface ParserRule {
   id: string;
   pattern: RegExp;
-  build: (
-    phrase: string,
-  ) => Omit<ParsedInstructionSuggestion, 'sourcePhrase' | 'confidence' | 'requiresHumanConfirmation'> & {
+  build: (phrase: string) => Omit<
+    ParsedInstructionSuggestion,
+    'sourcePhrase' | 'confidence' | 'requiresHumanConfirmation'
+  > & {
     confidence?: number;
   };
 }
 
 const PAYMENT_PREAUTH = /\b(?:pgto|pagamento|pgt?o?)\s+direto\s+no\s+hotel\b/i;
-const PAYMENT_IN_CASH = /\b(?:pgto|pagamento)\b[^\n]{0,80}\b(?:lan[cç]ado|registrado)\s+no\s+caixa\b/i;
+const PAYMENT_IN_CASH =
+  /\b(?:pgto|pagamento)\b[^\n]{0,80}\b(?:lan[cç]ado|registrado)\s+no\s+caixa\b/i;
 const BREAKFAST = /\b(?:rsv|reserva)?\s*(?:com|inclui)\s+caf[eé]\b|\bcaf[eé]\s+inclu[ií]do\b/i;
 const EXTRAS_DIRECT = /\bextras?\s+direto\b/i;
 const DEBIT_EXTRAS = /\bdebitar\s+(?:di[aá]rias?\s+e\s+)?extras?\b/i;
@@ -75,7 +77,10 @@ const DO_NOT_CANCEL = /\bn[aã]o\s+cancelar\s+(?:rsv|reserva)\b/i;
 const ARRIVAL_TIME = /\b(?:pax|h[oó]spede)\s+chegar[aá]\s+(?:[aà]s?\s*)?\d{1,2}(?::\d{2})?\s*h?\b/i;
 const WARN_AT_CHECKIN = /\bavisar\s+(?:no|na)\s+check[\s-]?in\b/i;
 const UPGRADE_SUBJECT = /\b(?:up|upgrade)\s+por\s+dispo(?:nibilidade)?\b/i;
-const ROOM_CATEGORY = /\b(?:apto|apartamento|quarto)\s+(?:luxo|deluxe|standard|superior|casal|solteiro|triplo)\b/i;
+// The confirmed example uses a bare category ("LUXO CASAL"), while channel
+// messages also prefix it with "APTO". Both forms are informational only.
+const ROOM_CATEGORY =
+  /\b(?:(?:apto|apartamento|quarto)\s+)?(?:luxo|deluxe|standard|superior|executivo)\s+(?:casal|solteiro|triplo|duplo)\b|\b(?:apto|apartamento|quarto)\s+(?:luxo|deluxe|standard|superior|executivo|casal|solteiro|triplo|duplo)\b/i;
 const RATE_TEXT = /\b(?:trf|tarifa|di[aá]ria)\b[^\n]{0,60}\bR\$\s*[\d.,]+/i;
 const NF_CNPJ_TEXT = /\bcnpj\b/i;
 const CONFIDENTIAL_TEXT = /\b(?:confidencial|sigiloso|n[aã]o\s+divulgar)\b/i;

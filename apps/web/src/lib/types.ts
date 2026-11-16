@@ -742,6 +742,7 @@ export interface ReservationInstruction {
   category: InstructionCategory;
   title: string;
   body: string;
+  tags: string[];
   priority: InstructionPriority;
   status: InstructionStatus;
   source: InstructionSource;

@@ -1247,6 +1247,8 @@ model ReservationInstruction {
   category           InstructionCategory       @default(GENERAL)
   title              String                    @db.VarChar(160)
   body               String                    @db.Text
+  /// Free-form pastel tags for filtering and grouping (e.g. VIP, PREAUTH).
+  tags               String[]                  @default([])
   priority           InstructionPriority       @default(NORMAL)
   status             InstructionStatus         @default(NEW)
   source             InstructionSource         @default(RESERVATIONS)
@@ -1282,6 +1284,7 @@ model ReservationInstruction {
   @@index([organizationId, propertyId, reservationId, executionMoment], map: "ReservationInstruction_reservation_moment_idx")
   @@index([organizationId, propertyId, actionDueAt], map: "ReservationInstruction_action_due_idx")
   @@index([organizationId, propertyId, assignedDepartment, status], map: "ReservationInstruction_assigned_department_idx")
+  @@index([tags], type: Gin, map: "ReservationInstruction_tags_gin_idx")
 }
 
 /// Immutable original text imported from a channel or pasted by staff. Card

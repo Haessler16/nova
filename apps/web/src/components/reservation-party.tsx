@@ -9,7 +9,6 @@ import {
   Button,
   Divider,
   FormControl,
-  FormErrorMessage,
   FormHelperText,
   FormLabel,
   HStack,
@@ -140,7 +139,7 @@ export function ReservationParty({
   const incomplete = data !== null && data.readiness.fnrh !== 'READY';
 
   return (
-    <Box borderTopWidth="1px" borderColor="line" pt={4}>
+    <Box borderTopWidth="1px" borderColor="line" pt={4} data-testid="reservation-party">
       <HStack justify="space-between" align="flex-start" mb={3}>
         <Box>
           <Text fontWeight="semibold">Huéspedes de la reserva</Text>
@@ -150,6 +149,7 @@ export function ReservationParty({
         </Box>
         {data !== null && (
           <Badge
+            data-testid="party-readiness"
             colorScheme={
               data.readiness.checkIn === 'BLOCKED'
                 ? 'danger'
@@ -250,6 +250,7 @@ export function ReservationParty({
             {editable && (
               <HStack spacing={2} wrap="wrap" pt={1}>
                 <Button
+                  data-testid="add-adult"
                   size="sm"
                   variant="outline"
                   onClick={() => setEditor({ kind: 'adult', member: null })}
@@ -257,6 +258,7 @@ export function ReservationParty({
                   + Agregar adulto
                 </Button>
                 <Button
+                  data-testid="add-minor"
                   size="sm"
                   colorScheme="brand"
                   onClick={() => setEditor({ kind: 'minor', member: null })}
@@ -314,6 +316,7 @@ function PartyMemberRow({
     : 'Sin documento';
   return (
     <Box
+      data-testid="party-member"
       borderWidth="1px"
       borderColor={primary ? 'brand.200' : legal ? 'danger.200' : 'line'}
       borderLeftWidth={minor ? '4px' : '1px'}
@@ -550,7 +553,7 @@ function PartyEditorModal({
   return (
     <Modal isOpen onClose={onClose} size="2xl" scrollBehavior="inside">
       <ModalOverlay />
-      <ModalContent as="form" onSubmit={(event) => void submit(event)}>
+      <ModalContent as="form" data-testid="party-editor" onSubmit={(event) => void submit(event)}>
         <ModalHeader>
           {editing
             ? editor.kind === 'minor'
@@ -569,11 +572,12 @@ function PartyEditorModal({
         <ModalBody>
           <Stack spacing={4}>
             {editor.kind === 'adult' && !editing && (
-              <Box>
+              <FormControl>
                 <FormLabel fontSize="sm" fontWeight="semibold">
                   Vincular huésped existente (opcional)
                 </FormLabel>
                 <Input
+                  data-testid="party-guest-search"
                   size="sm"
                   placeholder="Buscar por nombre, email o documento…"
                   value={guestSearch}
@@ -636,13 +640,14 @@ function PartyEditorModal({
                 <FormHelperText>
                   Si no encontrás a la persona, completá los datos para crear una ficha nueva.
                 </FormHelperText>
-              </Box>
+              </FormControl>
             )}
 
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
               <FormControl isRequired>
                 <FormLabel fontSize="sm">Nombre completo</FormLabel>
                 <Input
+                  data-testid="party-full-name"
                   value={form.fullName}
                   onChange={(event) => patch({ fullName: event.target.value })}
                   isReadOnly={form.guestId !== null && !editing}
@@ -651,6 +656,7 @@ function PartyEditorModal({
               <FormControl isRequired>
                 <FormLabel fontSize="sm">Fecha de nacimiento</FormLabel>
                 <Input
+                  data-testid="party-birth-date"
                   type="date"
                   value={form.birthDate}
                   onChange={(event) => patch({ birthDate: event.target.value })}
@@ -677,6 +683,7 @@ function PartyEditorModal({
               <FormControl>
                 <FormLabel fontSize="sm">Tipo de documento</FormLabel>
                 <Select
+                  data-testid="party-document-type"
                   value={form.documentType}
                   onChange={(event) =>
                     patch({ documentType: event.target.value as '' | GuestDocumentType })
@@ -693,6 +700,7 @@ function PartyEditorModal({
               <FormControl>
                 <FormLabel fontSize="sm">Número de documento</FormLabel>
                 <Input
+                  data-testid="party-document-number"
                   value={form.documentNumber}
                   onChange={(event) => patch({ documentNumber: event.target.value })}
                 />
@@ -704,6 +712,7 @@ function PartyEditorModal({
                 <FormControl isRequired>
                   <FormLabel fontSize="sm">Responsable</FormLabel>
                   <Select
+                    data-testid="party-responsible"
                     value={form.responsibleReservationGuestId}
                     onChange={(event) =>
                       patch({ responsibleReservationGuestId: event.target.value })
@@ -723,6 +732,7 @@ function PartyEditorModal({
                 <FormControl isRequired>
                   <FormLabel fontSize="sm">Supervisión</FormLabel>
                   <Select
+                    data-testid="party-supervision"
                     value={form.minorSupervision}
                     onChange={(event) =>
                       patch({ minorSupervision: event.target.value as MinorSupervision })
@@ -741,6 +751,7 @@ function PartyEditorModal({
                   <FormControl isRequired>
                     <FormLabel fontSize="sm">Referencia de autorización</FormLabel>
                     <Input
+                      data-testid="party-authorization-reference"
                       value={form.authorizationReference}
                       onChange={(event) => patch({ authorizationReference: event.target.value })}
                       placeholder="Identificador interno; no adjuntes el documento"
@@ -750,14 +761,18 @@ function PartyEditorModal({
               </>
             )}
 
-            {formError !== '' && <FormErrorMessage fontSize="sm">{formError}</FormErrorMessage>}
+            {formError !== '' && (
+              <Text role="alert" color="danger.500" fontSize="sm">
+                {formError}
+              </Text>
+            )}
           </Stack>
         </ModalBody>
         <ModalFooter>
           <Button variant="ghost" mr={3} onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" colorScheme="brand" isLoading={saving}>
+          <Button type="submit" colorScheme="brand" isLoading={saving} data-testid="party-submit">
             {editing ? 'Guardar cambios' : 'Agregar a la reserva'}
           </Button>
         </ModalFooter>

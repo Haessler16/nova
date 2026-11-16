@@ -14,6 +14,7 @@ import {
   IsBoolean,
   IsEnum,
   IsISO8601,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -80,6 +81,13 @@ export class CreateInstructionDto {
   body!: string;
 
   @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(32, { each: true })
+  tags?: string[];
+
+  @IsOptional()
   @IsEnum(InstructionPriority)
   priority?: InstructionPriority;
 
@@ -138,6 +146,13 @@ export class UpdateInstructionDto {
   @MinLength(2)
   @MaxLength(4000)
   body?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(32, { each: true })
+  tags?: string[];
 
   @IsOptional()
   @IsEnum(InstructionPriority)
@@ -217,7 +232,7 @@ export class ConfirmSuggestionDto {
   priority?: InstructionPriority;
 
   @IsOptional()
-  @IsEnum(InstructionStatus)
+  @IsIn([InstructionStatus.NEW, InstructionStatus.NEEDS_CLARIFICATION])
   status?: InstructionStatus;
 
   @IsOptional()
