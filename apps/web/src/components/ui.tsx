@@ -10,6 +10,7 @@ import {
   Center,
   Flex,
   FormControl,
+  FormErrorMessage,
   FormHelperText,
   FormLabel,
   Heading,
@@ -106,19 +107,26 @@ export function Field({
   children,
   isRequired = false,
   helper,
+  error,
 }: {
   label: string;
   children: ReactNode;
   isRequired?: boolean;
   helper?: string;
+  error?: string | null;
 }) {
+  const hasError = error !== undefined && error !== null && error !== '';
   return (
-    <FormControl isRequired={isRequired}>
+    <FormControl isRequired={isRequired} isInvalid={hasError}>
       <FormLabel fontSize="sm" fontWeight="semibold" mb={1}>
         {label}
       </FormLabel>
       {children}
-      {helper !== undefined && <FormHelperText mt={1}>{helper}</FormHelperText>}
+      {hasError ? (
+        <FormErrorMessage mt={1}>{error}</FormErrorMessage>
+      ) : (
+        helper !== undefined && <FormHelperText mt={1}>{helper}</FormHelperText>
+      )}
     </FormControl>
   );
 }

@@ -189,17 +189,17 @@ Notas:
 
 ### Guests
 
-| Método | Ruta                            | Guard         | Permiso         | Status |
-| ------ | ------------------------------- | ------------- | --------------- | ------ |
-| GET    | `/api/v1/guests`                | auth + tenant | `guests.read`   | 200    |
-| POST   | `/api/v1/guests`                | auth + tenant | `guests.manage` | 201    |
-| GET    | `/api/v1/guests/:id`            | auth + tenant | `guests.read`   | 200    |
-| PATCH  | `/api/v1/guests/:id`            | auth + tenant | `guests.manage` | 200    |
-| POST   | `/api/v1/guests/import/preview` | auth + tenant | `guests.manage` | 201    |
-| POST   | `/api/v1/guests/import`         | auth + tenant | `guests.manage` | 201    |
-| GET    | `/api/v1/guests/:id/notes`      | auth + tenant | `guests.read`   | 200    |
-| POST   | `/api/v1/guests/:id/notes`      | auth + tenant | `guests.manage` | 201    |
-| PATCH  | `/api/v1/guests/:id/notes/:noteId` | auth + tenant | `guests.manage` | 200  |
+| Método | Ruta                               | Guard         | Permiso         | Status |
+| ------ | ---------------------------------- | ------------- | --------------- | ------ |
+| GET    | `/api/v1/guests`                   | auth + tenant | `guests.read`   | 200    |
+| POST   | `/api/v1/guests`                   | auth + tenant | `guests.manage` | 201    |
+| GET    | `/api/v1/guests/:id`               | auth + tenant | `guests.read`   | 200    |
+| PATCH  | `/api/v1/guests/:id`               | auth + tenant | `guests.manage` | 200    |
+| POST   | `/api/v1/guests/import/preview`    | auth + tenant | `guests.manage` | 201    |
+| POST   | `/api/v1/guests/import`            | auth + tenant | `guests.manage` | 201    |
+| GET    | `/api/v1/guests/:id/notes`         | auth + tenant | `guests.read`   | 200    |
+| POST   | `/api/v1/guests/:id/notes`         | auth + tenant | `guests.manage` | 201    |
+| PATCH  | `/api/v1/guests/:id/notes/:noteId` | auth + tenant | `guests.manage` | 200    |
 
 - Campos: `fullName` (2–160), `email` (normalizado a minúsculas), `phone`, `documentType` + `documentNumber` (solo juntos) y `notes` (≤ 2000).
 - `GET /guests` acepta `search` (nombre/email/teléfono/documento), `status`, `cursor`, `limit`. La búsqueda es asistida: no fusiona perfiles automáticamente.
@@ -220,20 +220,20 @@ Notas persistentes del huésped:
 
 ### Reservations
 
-| Método | Ruta                                       | Guard         | Permiso               | Status |
-| ------ | ------------------------------------------ | ------------- | --------------------- | ------ |
-| GET    | `/api/v1/reservations/availability`        | auth + tenant | `reservations.read`   | 200    |
-| GET    | `/api/v1/reservations`                     | auth + tenant | `reservations.read`   | 200    |
-| POST   | `/api/v1/reservations`                     | auth + tenant | `reservations.manage` | 201    |
-| GET    | `/api/v1/reservations/:id`                 | auth + tenant | `reservations.read`   | 200    |
-| PATCH  | `/api/v1/reservations/:id`                 | auth + tenant | `reservations.manage` | 200    |
-| POST   | `/api/v1/reservations/:id/room-assignment` | auth + tenant | `reservations.manage` | 201    |
-| POST   | `/api/v1/reservations/:id/cancel`          | auth + tenant | `reservations.manage` | 201    |
-| GET    | `/api/v1/reservations/:id/history`         | auth + tenant | `reservations.read`   | 200    |
-| GET    | `/api/v1/reservations/:id/party`           | auth + tenant | `reservations.read` + `guests.read` | 200 |
-| POST   | `/api/v1/reservations/:id/party`           | auth + tenant | `reservations.manage` + `guests.manage` | 201 |
-| PATCH  | `/api/v1/reservations/:id/party/:reservationGuestId` | auth + tenant | `reservations.manage` + `guests.manage` | 200 |
-| DELETE | `/api/v1/reservations/:id/party/:reservationGuestId` | auth + tenant | `reservations.manage` + `guests.manage` | 200 |
+| Método | Ruta                                                 | Guard         | Permiso                                 | Status |
+| ------ | ---------------------------------------------------- | ------------- | --------------------------------------- | ------ |
+| GET    | `/api/v1/reservations/availability`                  | auth + tenant | `reservations.read`                     | 200    |
+| GET    | `/api/v1/reservations`                               | auth + tenant | `reservations.read`                     | 200    |
+| POST   | `/api/v1/reservations`                               | auth + tenant | `reservations.manage`                   | 201    |
+| GET    | `/api/v1/reservations/:id`                           | auth + tenant | `reservations.read`                     | 200    |
+| PATCH  | `/api/v1/reservations/:id`                           | auth + tenant | `reservations.manage`                   | 200    |
+| POST   | `/api/v1/reservations/:id/room-assignment`           | auth + tenant | `reservations.manage`                   | 201    |
+| POST   | `/api/v1/reservations/:id/cancel`                    | auth + tenant | `reservations.manage`                   | 201    |
+| GET    | `/api/v1/reservations/:id/history`                   | auth + tenant | `reservations.read`                     | 200    |
+| GET    | `/api/v1/reservations/:id/party`                     | auth + tenant | `reservations.read` + `guests.read`     | 200    |
+| POST   | `/api/v1/reservations/:id/party`                     | auth + tenant | `reservations.manage` + `guests.manage` | 201    |
+| PATCH  | `/api/v1/reservations/:id/party/:reservationGuestId` | auth + tenant | `reservations.manage` + `guests.manage` | 200    |
+| DELETE | `/api/v1/reservations/:id/party/:reservationGuestId` | auth + tenant | `reservations.manage` + `guests.manage` | 200    |
 
 Fechas y ocupación:
 
@@ -260,21 +260,21 @@ Errores específicos: `reservation_not_found`, `reservation_party_not_editable`,
 
 ### Notas e instrucciones de reserva
 
-| Método | Ruta                                                                  | Guard         | Permiso               | Status |
-| ------ | --------------------------------------------------------------------- | ------------- | --------------------- | ------ |
-| GET    | `/api/v1/reservations/:reservationId/instructions`                    | auth + tenant | `reservations.read`   | 200    |
-| POST   | `/api/v1/reservations/:reservationId/instructions`                    | auth + tenant | `reservations.manage` | 201    |
-| GET    | `/api/v1/reservations/:reservationId/instructions/:instructionId`     | auth + tenant | `reservations.read`   | 200    |
-| PATCH  | `/api/v1/reservations/:reservationId/instructions/:instructionId`     | auth + tenant | `reservations.manage` | 200    |
-| GET    | `/api/v1/reservations/:reservationId/instructions/:instructionId/events` | auth + tenant | `reservations.read` | 200 |
-| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/acknowledge` | auth + tenant | `reservations.manage` | 201 |
-| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/start` | auth + tenant | `reservations.manage` | 201 |
-| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/complete` | auth + tenant | `reservations.manage` | 201 |
-| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/dismiss` | auth + tenant | `reservations.manage` | 201 |
-| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/needs-clarification` | auth + tenant | `reservations.manage` | 201 |
-| POST   | `/api/v1/reservations/:reservationId/source-notes/parse`              | auth + tenant | `reservations.manage` | 201    |
-| GET    | `/api/v1/reservations/:reservationId/source-notes`                    | auth + tenant | `reservations.manage` | 200    |
-| POST   | `/api/v1/reservations/:reservationId/source-notes/:sourceNoteId/confirm` | auth + tenant | `reservations.manage` | 201 |
+| Método | Ruta                                                                                  | Guard         | Permiso               | Status |
+| ------ | ------------------------------------------------------------------------------------- | ------------- | --------------------- | ------ |
+| GET    | `/api/v1/reservations/:reservationId/instructions`                                    | auth + tenant | `reservations.read`   | 200    |
+| POST   | `/api/v1/reservations/:reservationId/instructions`                                    | auth + tenant | `reservations.manage` | 201    |
+| GET    | `/api/v1/reservations/:reservationId/instructions/:instructionId`                     | auth + tenant | `reservations.read`   | 200    |
+| PATCH  | `/api/v1/reservations/:reservationId/instructions/:instructionId`                     | auth + tenant | `reservations.manage` | 200    |
+| GET    | `/api/v1/reservations/:reservationId/instructions/:instructionId/events`              | auth + tenant | `reservations.read`   | 200    |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/acknowledge`         | auth + tenant | `reservations.manage` | 201    |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/start`               | auth + tenant | `reservations.manage` | 201    |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/complete`            | auth + tenant | `reservations.manage` | 201    |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/dismiss`             | auth + tenant | `reservations.manage` | 201    |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/needs-clarification` | auth + tenant | `reservations.manage` | 201    |
+| POST   | `/api/v1/reservations/:reservationId/source-notes/parse`                              | auth + tenant | `reservations.manage` | 201    |
+| GET    | `/api/v1/reservations/:reservationId/source-notes`                                    | auth + tenant | `reservations.manage` | 200    |
+| POST   | `/api/v1/reservations/:reservationId/source-notes/:sourceNoteId/confirm`              | auth + tenant | `reservations.manage` | 201    |
 
 - Categorías: `PAYMENT`, `MEAL`, `BILLING`, `ROOM`, `ARRIVAL`, `IMPORTANT`, `EXTRA`, `CONFIDENTIAL`, `GENERAL`. Prioridad: `LOW`, `NORMAL`, `HIGH`, `CRITICAL`. Estados: `NEW`, `ACKNOWLEDGED`, `IN_PROGRESS`, `COMPLETED`, `DISMISSED`, `NEEDS_CLARIFICATION`.
 - `POST` acepta `title` (2–160), `body` (2–4000), hasta 10 `tags` (≤ 32 cada uno), categoría, prioridad, visibilidad, departamento, usuario asignado, `actionType`, `executionMoment`, `paymentMethod`, `actionDueAt`, `validFrom` y `validUntil` ISO-8601. `validFrom` debe ser anterior a `validUntil` (`400 instruction_invalid_validity`).
@@ -525,6 +525,15 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 | 400  | `report_filter_invalid`                     | Período de reporte invertido o mayor a 62 días            |
 | 400  | `report_execution_limit_exceeded`           | Reporte supera 5000 filas; acotar filtros                 |
 | 404  | `report_not_found`                          | Clave de reporte fuera del catálogo fijo                  |
+| 404  | `document_not_found`                        | Documento inexistente en la propiedad                     |
+| 404  | `document_template_not_found`               | Plantilla inexistente para tipo/locale/versión            |
+| 400  | `document_guest_mismatch`                   | Huésped seleccionado ajeno a la reserva                   |
+| 409  | `document_reservation_state_invalid`        | Documento sobre reserva cancelada o no-show               |
+| 409  | `document_checkin_required`                 | `CHECKIN_SUMMARY` sin estancia existente                  |
+| 409  | `document_voided`                           | Firma física sobre un documento anulado                   |
+| 400  | `invalid_received_at`                       | `receivedAt` no es un instante ISO 8601 válido            |
+| 400  | `received_at_in_future`                     | Firma física con fecha futura                             |
+| 400  | `received_at_before_generation`             | Firma física anterior a la generación                     |
 | 400  | `invalid_property_timezone`                 | La propiedad tiene una timezone IANA inválida             |
 | 404  | `pilot_feedback_not_found`                  | Feedback inexistente en la propiedad                      |
 | 429  | `rate_limited`                              | Demasiados intentos de login; `details.retryAfterSeconds` |

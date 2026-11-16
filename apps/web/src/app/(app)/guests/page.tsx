@@ -42,6 +42,7 @@ import {
 } from '@/lib/format';
 import type { Guest, GuestDocumentType } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
+import { hasErrors, validateGuest, type FieldErrors } from '@/lib/validation';
 
 interface GuestForm {
   fullName: string;
@@ -71,6 +72,7 @@ function GuestsContent() {
   const [editing, setEditing] = useState<Guest | null>(null);
   const [form, setForm] = useState<GuestForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({ search: '', status: '' });
   const [exporting, setExporting] = useState(false);
@@ -88,6 +90,7 @@ function GuestsContent() {
   function openCreate(): void {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setErrors({});
     modal.onOpen();
   }
 
@@ -101,11 +104,17 @@ function GuestsContent() {
       documentNumber: guest.documentNumber ?? '',
       notes: guest.notes ?? '',
     });
+    setErrors({});
     modal.onOpen();
   }
 
   async function handleSubmit(event: FormEvent): Promise<void> {
     event.preventDefault();
+    const nextErrors = validateGuest(form);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setSaving(true);
     try {
       const documentPayload =
@@ -378,25 +387,28 @@ function GuestsContent() {
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={4}>
-              <Field label="Nombre completo" isRequired>
+              <Field label="Nombre completo" isRequired error={errors.fullName}>
                 <Input
                   value={form.fullName}
                   onChange={(event) => setForm({ ...form, fullName: event.target.value })}
                   required
                   minLength={2}
+                  maxLength={160}
                 />
               </Field>
               <HStack spacing={4} align="flex-start">
-                <Field label="Email">
+                <Field label="Email" error={errors.email}>
                   <Input
                     type="email"
                     value={form.email}
+                    maxLength={254}
                     onChange={(event) => setForm({ ...form, email: event.target.value })}
                   />
                 </Field>
-                <Field label="Teléfono">
+                <Field label="Teléfono" error={errors.phone}>
                   <Input
                     value={form.phone}
+                    maxLength={32}
                     onChange={(event) => setForm({ ...form, phone: event.target.value })}
                   />
                 </Field>
@@ -419,22 +431,26 @@ function GuestsContent() {
                     <option value="OTHER">Otro</option>
                   </Select>
                 </Field>
-                <Field label="Número de documento">
+                <Field label="Número de documento" error={errors.documentNumber}>
                   <Input
                     value={form.documentNumber}
                     onChange={(event) => setForm({ ...form, documentNumber: event.target.value })}
                     isDisabled={form.documentType === ''}
                     required={form.documentType !== ''}
+                    minLength={3}
+                    maxLength={64}
                   />
                 </Field>
               </HStack>
               <Field
                 label="Notas"
+                error={errors.notes}
                 helper="Máximo 2000 caracteres. Evitá datos sensibles innecesarios."
               >
                 <Textarea
                   value={form.notes}
                   onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                  maxLength={2000}
                   rows={3}
                 />
               </Field>

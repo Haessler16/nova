@@ -59,7 +59,14 @@ export default function LoginPage() {
         return;
       }
 
-      const result = await login(email.trim(), password);
+      const normalizedEmail = email.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        throw new Error('Ingresá un email válido.');
+      }
+      if (password === '') {
+        throw new Error('Ingresá tu contraseña.');
+      }
+      const result = await login(normalizedEmail, password);
       if (result.kind === 'mfa' && result.challengeToken !== undefined) {
         setChallengeToken(result.challengeToken);
         setMfaCode('');

@@ -54,25 +54,25 @@ pnpm db:reset   # drop + migrate + seed (destructivo solo en local)
 
 La web es una app operativa client-side contra la API real. No guarda el tenant en el cliente como autoridad: envía `X-Organization-Id`/`X-Property-Id` y el backend valida membresías y permisos en cada request.
 
-| Ruta                    | Contenido                                                                           |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| `/login`                | Login local (email/contraseña + MFA) o selector de usuario en `dev-header`          |
-| `/dashboard`            | KPIs operativos, llegadas, alertas, día operativo, readiness y accesos rápidos      |
-| `/front-office`         | Llegadas, en casa, salidas, room rack, check-in/out, room move e incidencias        |
-| `/calendar`             | Calendario gráfico habitación × noche (7/14/21 días)                                |
+| Ruta                    | Contenido                                                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `/login`                | Login local (email/contraseña + MFA) o selector de usuario en `dev-header`                                                  |
+| `/dashboard`            | KPIs operativos, llegadas, alertas, día operativo, readiness y accesos rápidos                                              |
+| `/front-office`         | Llegadas, en casa, salidas, room rack, check-in/out, room move e incidencias                                                |
+| `/calendar`             | Calendario gráfico habitación × noche (7/14/21 días)                                                                        |
 | `/reservations`         | Listado/filtros, disponibilidad, alta, edición, asignación, cancelación, historial, fiesta de reserva y notas/instrucciones |
-| `/guests`               | Búsqueda, alta/edición, activación/desactivación, notas persistentes y documentos   |
-| `/folios`               | Folios, cargos, pagos registrados, cierre y documentos                              |
-| `/cashier`              | Caja, movimientos, cierre y night audit                                             |
-| `/reports`              | Catálogo de reportes operativos/financieros, preview, PDF y CSV                     |
-| `/imports`              | Importación CSV de huéspedes con preview y confirmación                             |
-| `/pilot`                | Onboarding y feedback de piloto                                                     |
-| `/inventory/rooms`      | Habitaciones, housekeeping, bloqueos, liberación e historial                        |
-| `/inventory/room-types` | Tipologías, capacidad y estado                                                      |
-| `/settings`             | Nombre, timezone, moneda y hora de corte del día operativo                          |
-| `/audit`                | Eventos de auditoría append-only con metadatos                                      |
-| `/admin`                | Membresías, roles/permisos y eventos de seguridad (contexto de organización)        |
-| `/account`              | Sesiones activas, cambio de contraseña y enrolamiento/desenrolamiento MFA           |
+| `/guests`               | Búsqueda, alta/edición, activación/desactivación, notas persistentes y documentos                                           |
+| `/folios`               | Folios, cargos, pagos registrados, cierre y documentos                                                                      |
+| `/cashier`              | Caja, movimientos, cierre y night audit                                                                                     |
+| `/reports`              | Catálogo de reportes operativos/financieros, preview, PDF y CSV                                                             |
+| `/imports`              | Importación CSV de huéspedes con preview y confirmación                                                                     |
+| `/pilot`                | Onboarding y feedback de piloto                                                                                             |
+| `/inventory/rooms`      | Habitaciones, housekeeping, bloqueos, liberación e historial                                                                |
+| `/inventory/room-types` | Tipologías, capacidad y estado                                                                                              |
+| `/settings`             | Nombre, timezone, moneda y hora de corte del día operativo                                                                  |
+| `/audit`                | Eventos de auditoría append-only con metadatos                                                                              |
+| `/admin`                | Membresías, roles/permisos y eventos de seguridad (contexto de organización)                                                |
+| `/account`              | Sesiones activas, cambio de contraseña y enrolamiento/desenrolamiento MFA                                                   |
 
 Notas de uso:
 
@@ -156,57 +156,116 @@ Todos usan la contraseña `NovaDemo!2026`.
 
 ## Endpoints implementados
 
-| Método | Ruta                                                   | Guard         | Permiso                          |
-| ------ | ------------------------------------------------------ | ------------- | -------------------------------- |
-| GET    | `/health/live`                                         | —             | —                                |
-| GET    | `/health/ready`                                        | —             | PostgreSQL + Redis               |
-| GET    | `/api/v1/auth/csrf`                                    | —             | —                                |
-| POST   | `/api/v1/auth/login`                                   | CSRF          | —                                |
-| POST   | `/api/v1/auth/logout`                                  | auth + CSRF   | —                                |
-| GET    | `/api/v1/auth/session`                                 | auth          | —                                |
-| GET    | `/api/v1/me`                                           | auth          | —                                |
-| GET    | `/api/v1/organizations`                                | auth          | —                                |
-| GET    | `/api/v1/properties`                                   | auth + tenant | — (membresías/rol org)           |
-| GET    | `/api/v1/properties/current`                           | auth + tenant | —                                |
-| GET    | `/api/v1/properties/current/operational-day`           | auth + tenant | —                                |
-| PATCH  | `/api/v1/properties/current`                           | auth + tenant | `property.manage`                |
-| POST   | `/api/v1/properties`                                   | auth + tenant | `organization.properties.manage` |
-| GET    | `/api/v1/audit-events`                                 | auth + tenant | `audit.read`                     |
-| GET    | `/api/v1/inventory/room-types`                         | auth + tenant | `inventory.read`                 |
-| POST   | `/api/v1/inventory/room-types`                         | auth + tenant | `inventory.manage`               |
-| GET    | `/api/v1/inventory/room-types/:id`                     | auth + tenant | `inventory.read`                 |
-| PATCH  | `/api/v1/inventory/room-types/:id`                     | auth + tenant | `inventory.manage`               |
-| GET    | `/api/v1/inventory/rooms`                              | auth + tenant | `inventory.read`                 |
-| POST   | `/api/v1/inventory/rooms`                              | auth + tenant | `inventory.manage`               |
-| GET    | `/api/v1/inventory/rooms/:id`                          | auth + tenant | `inventory.read`                 |
-| PATCH  | `/api/v1/inventory/rooms/:id`                          | auth + tenant | `inventory.manage`               |
-| POST   | `/api/v1/inventory/rooms/:id/housekeeping-transitions` | auth + tenant | `housekeeping.manage`            |
-| GET    | `/api/v1/inventory/rooms/:id/blocks`                   | auth + tenant | `inventory.read`                 |
-| POST   | `/api/v1/inventory/rooms/:id/blocks`                   | auth + tenant | `inventory.manage`               |
-| POST   | `/api/v1/inventory/rooms/:id/blocks/:blockId/release`  | auth + tenant | `inventory.manage`               |
-| GET    | `/api/v1/inventory/rooms/:id/history`                  | auth + tenant | `inventory.read`                 |
-| GET    | `/api/v1/guests`                                       | auth + tenant | `guests.read`                    |
-| POST   | `/api/v1/guests`                                       | auth + tenant | `guests.manage`                  |
-| GET    | `/api/v1/guests/:id`                                   | auth + tenant | `guests.read`                    |
-| PATCH  | `/api/v1/guests/:id`                                   | auth + tenant | `guests.manage`                  |
-| GET    | `/api/v1/reservations/availability`                    | auth + tenant | `reservations.read`              |
-| GET    | `/api/v1/reservations`                                 | auth + tenant | `reservations.read`              |
-| POST   | `/api/v1/reservations`                                 | auth + tenant | `reservations.manage`            |
-| GET    | `/api/v1/reservations/:id`                             | auth + tenant | `reservations.read`              |
-| PATCH  | `/api/v1/reservations/:id`                             | auth + tenant | `reservations.manage`            |
-| POST   | `/api/v1/reservations/:id/room-assignment`             | auth + tenant | `reservations.manage`            |
-| POST   | `/api/v1/reservations/:id/cancel`                      | auth + tenant | `reservations.manage`            |
-| GET    | `/api/v1/reservations/:id/history`                     | auth + tenant | `reservations.read`              |
-| GET    | `/api/v1/front-office/overview`                        | auth + tenant | `front_office.read`              |
-| POST   | `/api/v1/front-office/reservations/:id/check-in`       | auth + tenant | `front_office.manage`            |
-| POST   | `/api/v1/front-office/reservations/:id/no-show`        | auth + tenant | `front_office.manage`            |
-| POST   | `/api/v1/front-office/stays/:id/check-out`             | auth + tenant | `front_office.manage`            |
-| POST   | `/api/v1/front-office/stays/:id/room-move`             | auth + tenant | `front_office.manage`            |
-| GET    | `/api/v1/front-office/incidents`                       | auth + tenant | `incidents.read`                 |
-| POST   | `/api/v1/front-office/incidents`                       | auth + tenant | `incidents.manage`               |
-| POST   | `/api/v1/front-office/incidents/:id/resolve`           | auth + tenant | `incidents.manage`               |
+| Método | Ruta                                                                                  | Guard         | Permiso                                 |
+| ------ | ------------------------------------------------------------------------------------- | ------------- | --------------------------------------- |
+| GET    | `/health/live`                                                                        | —             | —                                       |
+| GET    | `/health/ready`                                                                       | —             | PostgreSQL + Redis                      |
+| GET    | `/api/v1/auth/csrf`                                                                   | —             | —                                       |
+| POST   | `/api/v1/auth/login`                                                                  | CSRF          | —                                       |
+| POST   | `/api/v1/auth/logout`                                                                 | auth + CSRF   | —                                       |
+| GET    | `/api/v1/auth/session`                                                                | auth          | —                                       |
+| GET    | `/api/v1/me`                                                                          | auth          | —                                       |
+| GET    | `/api/v1/organizations`                                                               | auth          | —                                       |
+| GET    | `/api/v1/properties`                                                                  | auth + tenant | — (membresías/rol org)                  |
+| GET    | `/api/v1/properties/current`                                                          | auth + tenant | —                                       |
+| GET    | `/api/v1/properties/current/operational-day`                                          | auth + tenant | —                                       |
+| PATCH  | `/api/v1/properties/current`                                                          | auth + tenant | `property.manage`                       |
+| POST   | `/api/v1/properties`                                                                  | auth + tenant | `organization.properties.manage`        |
+| GET    | `/api/v1/audit-events`                                                                | auth + tenant | `audit.read`                            |
+| GET    | `/api/v1/inventory/room-types`                                                        | auth + tenant | `inventory.read`                        |
+| POST   | `/api/v1/inventory/room-types`                                                        | auth + tenant | `inventory.manage`                      |
+| GET    | `/api/v1/inventory/room-types/:id`                                                    | auth + tenant | `inventory.read`                        |
+| PATCH  | `/api/v1/inventory/room-types/:id`                                                    | auth + tenant | `inventory.manage`                      |
+| GET    | `/api/v1/inventory/rooms`                                                             | auth + tenant | `inventory.read`                        |
+| POST   | `/api/v1/inventory/rooms`                                                             | auth + tenant | `inventory.manage`                      |
+| GET    | `/api/v1/inventory/rooms/:id`                                                         | auth + tenant | `inventory.read`                        |
+| PATCH  | `/api/v1/inventory/rooms/:id`                                                         | auth + tenant | `inventory.manage`                      |
+| POST   | `/api/v1/inventory/rooms/:id/housekeeping-transitions`                                | auth + tenant | `housekeeping.manage`                   |
+| GET    | `/api/v1/inventory/rooms/:id/blocks`                                                  | auth + tenant | `inventory.read`                        |
+| POST   | `/api/v1/inventory/rooms/:id/blocks`                                                  | auth + tenant | `inventory.manage`                      |
+| POST   | `/api/v1/inventory/rooms/:id/blocks/:blockId/release`                                 | auth + tenant | `inventory.manage`                      |
+| GET    | `/api/v1/inventory/rooms/:id/history`                                                 | auth + tenant | `inventory.read`                        |
+| GET    | `/api/v1/guests`                                                                      | auth + tenant | `guests.read`                           |
+| POST   | `/api/v1/guests`                                                                      | auth + tenant | `guests.manage`                         |
+| GET    | `/api/v1/guests/:id`                                                                  | auth + tenant | `guests.read`                           |
+| PATCH  | `/api/v1/guests/:id`                                                                  | auth + tenant | `guests.manage`                         |
+| POST   | `/api/v1/guests/import/preview`                                                       | auth + tenant | `guests.manage`                         |
+| POST   | `/api/v1/guests/import`                                                               | auth + tenant | `guests.manage`                         |
+| GET    | `/api/v1/guests/:id/notes`                                                            | auth + tenant | `guests.read`                           |
+| POST   | `/api/v1/guests/:id/notes`                                                            | auth + tenant | `guests.manage`                         |
+| PATCH  | `/api/v1/guests/:id/notes/:noteId`                                                    | auth + tenant | `guests.manage`                         |
+| GET    | `/api/v1/reservations/availability`                                                   | auth + tenant | `reservations.read`                     |
+| GET    | `/api/v1/reservations`                                                                | auth + tenant | `reservations.read`                     |
+| POST   | `/api/v1/reservations`                                                                | auth + tenant | `reservations.manage`                   |
+| GET    | `/api/v1/reservations/:id`                                                            | auth + tenant | `reservations.read`                     |
+| PATCH  | `/api/v1/reservations/:id`                                                            | auth + tenant | `reservations.manage`                   |
+| POST   | `/api/v1/reservations/:id/room-assignment`                                            | auth + tenant | `reservations.manage`                   |
+| POST   | `/api/v1/reservations/:id/cancel`                                                     | auth + tenant | `reservations.manage`                   |
+| GET    | `/api/v1/reservations/:id/history`                                                    | auth + tenant | `reservations.read`                     |
+| GET    | `/api/v1/reservations/:id/party`                                                      | auth + tenant | `reservations.read` + `guests.read`     |
+| POST   | `/api/v1/reservations/:id/party`                                                      | auth + tenant | `reservations.manage` + `guests.manage` |
+| PATCH  | `/api/v1/reservations/:id/party/:reservationGuestId`                                  | auth + tenant | `reservations.manage` + `guests.manage` |
+| DELETE | `/api/v1/reservations/:id/party/:reservationGuestId`                                  | auth + tenant | `reservations.manage` + `guests.manage` |
+| GET    | `/api/v1/reservations/:reservationId/instructions`                                    | auth + tenant | `reservations.read`                     |
+| POST   | `/api/v1/reservations/:reservationId/instructions`                                    | auth + tenant | `reservations.manage`                   |
+| GET    | `/api/v1/reservations/:reservationId/instructions/:instructionId`                     | auth + tenant | `reservations.read`                     |
+| PATCH  | `/api/v1/reservations/:reservationId/instructions/:instructionId`                     | auth + tenant | `reservations.manage`                   |
+| GET    | `/api/v1/reservations/:reservationId/instructions/:instructionId/events`              | auth + tenant | `reservations.read`                     |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/acknowledge`         | auth + tenant | `reservations.manage`                   |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/start`               | auth + tenant | `reservations.manage`                   |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/complete`            | auth + tenant | `reservations.manage`                   |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/dismiss`             | auth + tenant | `reservations.manage`                   |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/needs-clarification` | auth + tenant | `reservations.manage`                   |
+| POST   | `/api/v1/reservations/:reservationId/source-notes/parse`                              | auth + tenant | `reservations.manage`                   |
+| GET    | `/api/v1/reservations/:reservationId/source-notes`                                    | auth + tenant | `reservations.manage`                   |
+| POST   | `/api/v1/reservations/:reservationId/source-notes/:sourceNoteId/confirm`              | auth + tenant | `reservations.manage`                   |
+| GET    | `/api/v1/front-office/overview`                                                       | auth + tenant | `front_office.read`                     |
+| POST   | `/api/v1/front-office/reservations/:id/check-in`                                      | auth + tenant | `front_office.manage`                   |
+| POST   | `/api/v1/front-office/reservations/:id/no-show`                                       | auth + tenant | `front_office.manage`                   |
+| POST   | `/api/v1/front-office/stays/:id/check-out`                                            | auth + tenant | `front_office.manage`                   |
+| POST   | `/api/v1/front-office/stays/:id/room-move`                                            | auth + tenant | `front_office.manage`                   |
+| GET    | `/api/v1/front-office/incidents`                                                      | auth + tenant | `incidents.read`                        |
+| POST   | `/api/v1/front-office/incidents`                                                      | auth + tenant | `incidents.manage`                      |
+| POST   | `/api/v1/front-office/incidents/:id/resolve`                                          | auth + tenant | `incidents.manage`                      |
+| GET    | `/api/v1/folios`                                                                      | auth + tenant | `folio.read`                            |
+| POST   | `/api/v1/folios`                                                                      | auth + tenant | `folio.manage`                          |
+| GET    | `/api/v1/folios/:id`                                                                  | auth + tenant | `folio.read`                            |
+| POST   | `/api/v1/folios/:id/charges`                                                          | auth + tenant | `folio.manage`                          |
+| POST   | `/api/v1/folios/:id/charges/:lineId/void`                                             | auth + tenant | `folio.manage`                          |
+| POST   | `/api/v1/folios/:id/payments`                                                         | auth + tenant | `payment.manage`                        |
+| POST   | `/api/v1/folios/:id/cancel`                                                           | auth + tenant | `folio.manage`                          |
+| GET    | `/api/v1/cash-sessions`                                                               | auth + tenant | `cash.read`                             |
+| POST   | `/api/v1/cash-sessions`                                                               | auth + tenant | `cash.manage`                           |
+| GET    | `/api/v1/cash-sessions/:id`                                                           | auth + tenant | `cash.read`                             |
+| POST   | `/api/v1/cash-sessions/:id/movements`                                                 | auth + tenant | `cash.manage`                           |
+| POST   | `/api/v1/cash-sessions/:id/close`                                                     | auth + tenant | `cash.manage`                           |
+| GET    | `/api/v1/operational-days`                                                            | auth + tenant | `night_audit.read`                      |
+| POST   | `/api/v1/operational-days/close`                                                      | auth + tenant | `night_audit.manage`                    |
+| GET    | `/api/v1/operational-days/:id`                                                        | auth + tenant | `night_audit.read`                      |
+| POST   | `/api/v1/operational-days/:id/reopen`                                                 | auth + tenant | `night_audit.manage`                    |
+| GET    | `/api/v1/documents/templates`                                                         | auth + tenant | `documents.read`                        |
+| POST   | `/api/v1/documents/preview`                                                           | auth + tenant | `documents.generate`                    |
+| POST   | `/api/v1/documents`                                                                   | auth + tenant | `documents.generate`                    |
+| GET    | `/api/v1/documents`                                                                   | auth + tenant | `documents.read`                        |
+| GET    | `/api/v1/documents/:id`                                                               | auth + tenant | `documents.read`                        |
+| GET    | `/api/v1/documents/:id/download`                                                      | auth + tenant | `documents.read`                        |
+| POST   | `/api/v1/documents/:id/physical-signature-received`                                   | auth + tenant | `documents.manage`                      |
+| POST   | `/api/v1/documents/:id/print-events`                                                  | auth + tenant | `documents.manage`                      |
+| GET    | `/api/v1/reports`                                                                     | auth + tenant | `reports.read`                          |
+| GET    | `/api/v1/reports/executions`                                                          | auth + tenant | `reports.read`                          |
+| POST   | `/api/v1/reports/:reportKey/run`                                                      | auth + tenant | `reports.read`                          |
+| POST   | `/api/v1/reports/:reportKey/exports`                                                  | auth + tenant | `reports.read`                          |
+| GET    | `/api/v1/exports/guests`                                                              | auth + tenant | `guests.read`                           |
+| GET    | `/api/v1/exports/reservations`                                                        | auth + tenant | `reservations.read`                     |
+| GET    | `/api/v1/exports/folios`                                                              | auth + tenant | `folio.read`                            |
+| GET    | `/api/v1/pilot/feedback`                                                              | auth + tenant | `pilot.feedback.read`                   |
+| POST   | `/api/v1/pilot/feedback`                                                              | auth + tenant | `pilot.feedback.submit`                 |
+| GET    | `/api/v1/pilot/feedback/:id`                                                          | auth + tenant | `pilot.feedback.read`                   |
+| PATCH  | `/api/v1/pilot/feedback/:id/review`                                                   | auth + tenant | `pilot.feedback.manage`                 |
 
-Todas las mutaciones de propiedades, inventario, huéspedes, reservas y Front Office escriben `AuditEvent` en la misma transacción. No existe ruta HTTP para modificar o borrar auditoría, historial de estado ni historial de reservas.
+Esta tabla es un subconjunto operativo; el contrato completo, filtros, payloads y códigos de error está en [`docs/API.md`](docs/API.md).
+
+Todas las mutaciones de propiedades, inventario, huéspedes, reservas, Front Office, folios/caja, documentos, fiesta de reserva y notas/instrucciones escriben `AuditEvent` en la misma transacción. No existe ruta HTTP para modificar o borrar auditoría, historial de estado ni historial de reservas.
 
 ## Huéspedes y reservas
 
@@ -271,7 +330,7 @@ Esto cierra la limitación de que una migración futura pueda borrar silenciosam
 | `pnpm lint`                    | ESLint API + Next                              |
 | `pnpm typecheck`               | `tsc --noEmit` en API y web                    |
 | `pnpm test`                    | tests unitarios de API                         |
-| `pnpm test:e2e`                | E2E tenant/inventory/reservas con `dev-header` |
+| `pnpm test:e2e`                | E2E API con `dev-header`                       |
 | `pnpm test:e2e:auth`           | E2E de sesiones/CSRF/rate limit                |
 | `pnpm test:e2e:all:isolated`   | Todos los E2E en schemas PostgreSQL aislados   |
 | `pnpm format` / `format:check` | Prettier                                       |
@@ -299,11 +358,11 @@ pnpm test:e2e:auth
 ```text
 .
 ├── apps/
-│   ├── api/                  # NestJS: auth, tenancy, permissions, audit, inventory, health
+│   ├── api/                  # NestJS: auth, tenancy, permissions, audit, inventario, reservas, Front Office, folios, caja, documentos, reportes, notas/instrucciones
 │   └── web/                  # Next.js + Chakra UI
 ├── docs/                     # producto, arquitectura, API, seguridad, decisiones
 ├── prisma/
-│   ├── schema.prisma         # foundation + inventory
+│   ├── schema.prisma         # fundación, inventario, reservas, Front Office, folios, documentos, notas/instrucciones
 │   ├── migrations/           # SQL + constraints/triggers manuales
 │   └── seed.ts
 ├── scripts/
@@ -321,7 +380,7 @@ pnpm test:e2e:auth
 - Los tokens de reset/verificación solo se registran/devuelven fuera de producción según `AUTH_TOKEN_DELIVERY`; en producción se requiere proveedor de correo.
 - La administración tiene UI (`/admin`) pero aplica reglas conservadoras en API (subset de permisos del actor y protección del último administrador); no incluye aprobaciones de cambios sensibles.
 - El estado operativo se reconcilia en lecturas y mediante un scheduler in-process con advisory lock PostgreSQL; no sustituye observabilidad/alertas operativas.
-- La UI cubre listas, calendario, Front Office, folios, caja, night audit, onboarding/feedback de piloto, importación CSV de huéspedes y shell offline de solo lectura; no reportes avanzados, OCR, outbox offline ni Edge.
+- La UI cubre listas, calendario, Front Office, folios, caja, night audit, onboarding/feedback de piloto, importación CSV de huéspedes, documentos/reportes, fiesta de reserva, notas/instrucciones y shell offline de solo lectura; no incluye XLSX, OCR, outbox offline ni Edge.
 - Una reserva admite una sola habitación y las estancias usan granularidad de fecha calendario. El check-in se habilita por fecha local; las horas exactas de llegada/salida y los conflictos con bloqueos a nivel de instante siguen pendientes de validación con el hotel piloto.
 - El room rack y las acciones de Front Office se validan en backend, pero la UI no oculta acciones según permisos: un rol de solo lectura recibe el `403` de la API.
 - El conflicto reserva↔bloqueo se serializa por el lock de la fila `Room`, pero no existe una constraint única que relacione ambas tablas.
@@ -331,7 +390,7 @@ pnpm test:e2e:auth
 
 ## Siguiente paso recomendado
 
-Fase 6 quedó implementada localmente: checklist de onboarding y feedback en `/pilot`, sandbox demo aislado por schema, runbook y checklist de piloto, drill de restore exitoso y pruebas de concurrencia. Fase 7 tiene su primer corte: importación CSV de huéspedes con preview, confirmación todo-o-nada e idempotencia, más shell offline que bloquea escrituras en lugar de encolarlas. Sobre Fase 8 se agregó solo groundwork reversible: diagnóstico `/health/version`, exportaciones CSV auditadas de huéspedes/reservas/folios y filtros de actor/fecha con cursor en auditoría. La lógica de instantes usa Day.js (`utc`/`timezone`) y el estado cliente de auditoría/importación vive en stores de Zustand aislados por propiedad. No hay coordinador Edge, sync ni integraciones de proveedor; eso sigue sujeto a discovery. El siguiente paso es validar con el hotel piloto y, con esa evidencia, evaluar outbox offline, XLSX/OCR, reportes agregados e integraciones.
+Las fases 1–11 tienen implementación local verificada. Fase 6: checklist de onboarding y feedback en `/pilot`, sandbox demo aislado por schema, runbook y checklist de piloto, drill de restore y pruebas de concurrencia. Fase 7: importación CSV de huéspedes con preview, confirmación todo-o-nada e idempotencia, más shell offline que bloquea escrituras en lugar de encolarlas. Fase 8: diagnóstico `/health/version`, exportaciones CSV auditadas y filtros de actor/fecha con cursor en auditoría. Fase 9: plantillas versionadas, PDF A4 con snapshot/hash y descarga autenticada, reportes síncronos y exportaciones PDF/CSV. Fase 10: fiesta de reserva local (principal, acompañantes y menores), perfil FNRH separado y bloqueo legal de check-in; **no** hay adapter ni envío real a FNRH. Fase 11: notas/instrucciones estructuradas, parser pt-BR de sugerencias con redacción de tarjetas, transiciones auditadas y notas persistentes de huésped. La lógica de instantes usa Day.js y la timezone IANA de la propiedad (ADR-049). No hay coordinador Edge, sync ni integraciones de proveedor; eso sigue sujeto a discovery. El siguiente paso es validar con el hotel piloto y, con esa evidencia, evaluar outbox offline, XLSX/OCR, logo por propiedad y la integración FNRH.
 
 Pendiente inmediato de producto: validar con el piloto las horas de check-in/out, no-show y la política de overbooking antes de refinar la granularidad de fechas.
 
@@ -353,6 +412,8 @@ Pendiente inmediato de producto: validar con el piloto las horas de check-in/out
 - `docs/PHASE_6_REPORT.md`
 - `docs/PHASE_7_REPORT.md`
 - `docs/PHASE_8_GROUNDWORK.md`
+- `docs/PHASE_11_NOTES_INSTRUCTIONS_REPORT.md`
+- `docs/DATE_TIMEZONE_HARDENING_REPORT.md`
 - `docs/FRONTEND_STATE.md`
 - `docs/PILOT_RUNBOOK.md`
 - `docs/PILOT_CHECKLIST.md`

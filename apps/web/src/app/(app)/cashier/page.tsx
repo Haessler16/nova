@@ -61,6 +61,16 @@ import type {
   OperationalDay,
 } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
+import {
+  buildErrors,
+  calendarDateField,
+  hasErrors,
+  moneyField,
+  optionalText,
+  reasonField,
+  requiredText,
+  type FieldErrors,
+} from '@/lib/validation';
 
 const MOVEMENT_TYPES: CashMovementType[] = ['CASH_IN', 'CASH_OUT', 'REFUND', 'ADJUSTMENT'];
 
@@ -78,6 +88,7 @@ function CashierContent() {
   const reopenModal = useDisclosure();
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [blockers, setBlockers] = useState<NightAuditBlocker[]>([]);
   const [reopenTarget, setReopenTarget] = useState<OperationalClose | null>(null);
   const [reopenReason, setReopenReason] = useState('');
@@ -152,6 +163,15 @@ function CashierContent() {
 
   async function submitOpen(event: FormEvent): Promise<void> {
     event.preventDefault();
+    const nextErrors = buildErrors([
+      ['open.name', requiredText(openForm.name, 'El nombre de la sesión', { max: 120 })],
+      ['open.operationalDate', calendarDateField(openForm.operationalDate, 'El día operativo')],
+      ['open.openingAmount', moneyField(openForm.openingAmount, 'El fondo inicial')],
+    ]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setBusy('open');
     try {
       await api('/api/v1/cash-sessions', {
@@ -180,6 +200,14 @@ function CashierContent() {
   async function submitMovement(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (openSession === null) {
+      return;
+    }
+    const nextErrors = buildErrors([
+      ['movement.amount', moneyField(movementForm.amount, 'El importe', { allowZero: false })],
+      ['movement.description', optionalText(movementForm.description, 'El detalle', { max: 4000 })],
+    ]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
       return;
     }
     setBusy('movement');
@@ -215,6 +243,18 @@ function CashierContent() {
     if (openSession === null) {
       return;
     }
+    const nextErrors = buildErrors([
+      ['close.closingAmount', moneyField(closeForm.closingAmount, 'El efectivo contado')],
+      [
+        'close.varianceReason',
+        optionalText(closeForm.varianceReason, 'El motivo de diferencia', { max: 500 }),
+      ],
+      ['close.notes', optionalText(closeForm.notes, 'Las notas', { max: 4000 })],
+    ]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setBusy('close');
     try {
       await api(`/api/v1/cash-sessions/${openSession.id}/close`, {
@@ -244,6 +284,20 @@ function CashierContent() {
 
   async function submitAudit(event: FormEvent): Promise<void> {
     event.preventDefault();
+    const nextErrors = buildErrors([
+      ['audit.operationalDate', calendarDateField(auditForm.operationalDate, 'El día operativo')],
+      [
+        'audit.forceReason',
+        auditForm.force
+          ? reasonField(auditForm.forceReason, 'El motivo del cierre forzado')
+          : optionalText(auditForm.forceReason, 'El motivo', { max: 500 }),
+      ],
+      ['audit.notes', optionalText(auditForm.notes, 'Las notas', { max: 4000 })],
+    ]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setBusy('audit');
     setBlockers([]);
     try {
@@ -299,6 +353,11 @@ function CashierContent() {
   async function submitReopen(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (reopenTarget === null) {
+      return;
+    }
+    const nextErrors = buildErrors([['reopen.reason', reasonField(reopenReason)]]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
       return;
     }
     setBusy('reopen');
@@ -420,7 +479,7 @@ function CashierContent() {
             {openSession === null ? (
               <Box as="form" onSubmit={submitOpen}>
                 <Stack spacing={3}>
-                  <Field label="Nombre de la sesión" isRequired>
+                  <Field label="Nombre de la sesión" isRequired error={errors['open.name']}>
                     <Input
                       size="sm"
                       value={openForm.name}
@@ -434,6 +493,7 @@ function CashierContent() {
                   <Field
                     label="Día operativo"
                     isRequired
+                    error={errors['open.operationalDate']}
                     helper="No puede ser posterior al día operativo actual."
                   >
                     <DateField
@@ -445,7 +505,12 @@ function CashierContent() {
                       }
                     />
                   </Field>
-                  <Field label={`Fondo inicial (${cup})`} isRequired helper="Hasta dos decimales.">
+                  <Field
+                    label={`Fondo inicial (${cup})`}
+                    isRequired
+                    error={errors['open.openingAmount']}
+                    helper="Hasta dos decimales."
+                  >
                     <Input
                       size="sm"
                       inputMode="decimal"
@@ -566,7 +631,12 @@ function CashierContent() {
                           ))}
                         </Select>
                       </Field>
-                      <Field label={`Importe (${cup})`} isRequired helper="Hasta dos decimales.">
+                      <Field
+                        label={`Importe (${cup})`}
+                        isRequired
+                        error={errors['movement.amount']}
+                        helper="Hasta dos decimales."
+                      >
                         <Input
                           size="sm"
                           inputMode="decimal"
@@ -580,7 +650,7 @@ function CashierContent() {
                           required
                         />
                       </Field>
-                      <Field label="Detalle">
+                      <Field label="Detalle" error={errors['movement.description']}>
                         <Input
                           size="sm"
                           value={movementForm.description}
@@ -613,6 +683,7 @@ function CashierContent() {
                       <Field
                         label={`Efectivo contado (${cup})`}
                         isRequired
+                        error={errors['close.closingAmount']}
                         helper={`Esperado: ${formatMoney(openSession.expectedCashAmount, cup)}`}
                       >
                         <Input
@@ -630,6 +701,7 @@ function CashierContent() {
                       </Field>
                       <Field
                         label="Motivo de diferencia"
+                        error={errors['close.varianceReason']}
                         helper="Obligatorio si el contado difiere del esperado."
                       >
                         <Input
@@ -745,7 +817,7 @@ function CashierContent() {
 
           <Box as="form" onSubmit={submitAudit}>
             <Stack spacing={3}>
-              <Field label="Día operativo" isRequired>
+              <Field label="Día operativo" isRequired error={errors['audit.operationalDate']}>
                 <DateField
                   value={auditForm.operationalDate}
                   placeholder="dd/mm/aaaa"
@@ -765,7 +837,11 @@ function CashierContent() {
                 Forzar cierre aunque existan bloqueos
               </Checkbox>
               {auditForm.force && (
-                <Field label="Motivo del cierre forzado" isRequired>
+                <Field
+                  label="Motivo del cierre forzado"
+                  isRequired
+                  error={errors['audit.forceReason']}
+                >
                   <Textarea
                     size="sm"
                     rows={2}
@@ -932,7 +1008,7 @@ function CashierContent() {
                 {reopenTarget === null ? '—' : formatCalendarDate(reopenTarget.operationalDate)}. La
                 acción queda auditada con el motivo.
               </Text>
-              <Field label="Motivo" isRequired>
+              <Field label="Motivo" isRequired error={errors['reopen.reason']}>
                 <Textarea
                   value={reopenReason}
                   onChange={(event) => setReopenReason(event.target.value)}

@@ -12,9 +12,10 @@
 - [x] Modelar DocumentTemplate e versões imutáveis.
 - [x] Contexto tipado por tipo documental.
 - [x] Ficha interna pt-BR e termos do hotel.
-- [ ] Cabeçalho e rodapé por propriedade implementados; logo por propriedade sigue pendiente (no hay storage/asset de logo en Property).
+- [x] Cabeçalho e rodapé por propriedade implementados.
+- [ ] Logo por propriedade (no hay storage/asset de logo en Property).
 - [x] Preview seguro e testes de sanitização/campos ausentes.
-- [x] Preparar es-ES/en: locale y contratos listos; sólo hay plantillas pt-BR publicadas.
+- [ ] es-ES/en: el campo `locale` existe, pero v1 restringe `DOCUMENT_LOCALES` a `pt-BR` y sólo hay plantillas pt-BR publicadas.
 
 ## EPIC C — PDF e impressão (P0/P1)
 

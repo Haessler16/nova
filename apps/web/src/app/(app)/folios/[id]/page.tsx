@@ -55,6 +55,15 @@ import {
 } from '@/lib/format';
 import type { Folio, FolioLine, PaymentStatus } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
+import {
+  buildErrors,
+  hasErrors,
+  moneyField,
+  optionalText,
+  reasonField,
+  requiredText,
+  type FieldErrors,
+} from '@/lib/validation';
 
 const PAYMENT_METHODS = [
   { value: 'CASH', label: 'Efectivo' },
@@ -79,6 +88,7 @@ function FolioDetailContent() {
   const cancelModal = useDisclosure();
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [charge, setCharge] = useState({ description: '', amount: '' });
   const [payment, setPayment] = useState({ amount: '', method: 'CASH', referenceId: '' });
   const [voidTarget, setVoidTarget] = useState<FolioLine | null>(null);
@@ -110,6 +120,14 @@ function FolioDetailContent() {
 
   async function submitCharge(event: FormEvent): Promise<void> {
     event.preventDefault();
+    const nextErrors = buildErrors([
+      ['charge.description', requiredText(charge.description, 'El concepto', { max: 120 })],
+      ['charge.amount', moneyField(charge.amount, 'El importe', { allowZero: false })],
+    ]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     await run(
       'charge',
       () =>
@@ -129,6 +147,14 @@ function FolioDetailContent() {
 
   async function submitPayment(event: FormEvent): Promise<void> {
     event.preventDefault();
+    const nextErrors = buildErrors([
+      ['payment.amount', moneyField(payment.amount, 'El importe', { allowZero: false })],
+      ['payment.referenceId', optionalText(payment.referenceId, 'La referencia', { max: 64 })],
+    ]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     await run(
       'payment',
       () =>
@@ -158,6 +184,11 @@ function FolioDetailContent() {
   async function submitVoid(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (voidTarget === null) return;
+    const nextErrors = buildErrors([['void.reason', reasonField(voidReason)]]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     await run(
       'void',
       () =>
@@ -176,6 +207,11 @@ function FolioDetailContent() {
 
   async function submitCancel(event: FormEvent): Promise<void> {
     event.preventDefault();
+    const nextErrors = buildErrors([['cancel.reason', reasonField(cancelReason)]]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     await run(
       'cancel',
       () =>
@@ -314,7 +350,7 @@ function FolioDetailContent() {
                     <Divider my={4} />
                     <Box as="form" onSubmit={submitCharge}>
                       <Stack spacing={3}>
-                        <Field label="Concepto" isRequired>
+                        <Field label="Concepto" isRequired error={errors['charge.description']}>
                           <Input
                             size="sm"
                             value={charge.description}
@@ -331,6 +367,7 @@ function FolioDetailContent() {
                         <Field
                           label={`Importe (${data.currencyCode})`}
                           isRequired
+                          error={errors['charge.amount']}
                           helper="Hasta dos decimales. Ejemplo: 150.00"
                         >
                           <Input
@@ -411,6 +448,7 @@ function FolioDetailContent() {
                         <Field
                           label={`Importe (${data.currencyCode})`}
                           isRequired
+                          error={errors['payment.amount']}
                           helper="No se aceptan importes superiores al saldo."
                         >
                           <Input
@@ -440,6 +478,7 @@ function FolioDetailContent() {
                         </Field>
                         <Field
                           label="Referencia externa"
+                          error={errors['payment.referenceId']}
                           helper="Opcional. Usá sólo un identificador tokenizado, sin PAN ni CVV."
                         >
                           <Input
@@ -489,7 +528,7 @@ function FolioDetailContent() {
               <Text fontSize="sm">
                 {voidTarget?.description} · {formatMoney(voidTarget?.amount, data?.currencyCode)}
               </Text>
-              <Field label="Motivo" isRequired>
+              <Field label="Motivo" isRequired error={errors['void.reason']}>
                 <Textarea
                   value={voidReason}
                   onChange={(event) => setVoidReason(event.target.value)}
@@ -521,7 +560,7 @@ function FolioDetailContent() {
               <Text fontSize="sm" color="textSecondary">
                 Sólo se puede cancelar un folio sin pagos registrados.
               </Text>
-              <Field label="Motivo" isRequired>
+              <Field label="Motivo" isRequired error={errors['cancel.reason']}>
                 <Textarea
                   value={cancelReason}
                   onChange={(event) => setCancelReason(event.target.value)}

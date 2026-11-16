@@ -1,5 +1,6 @@
 import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -137,6 +138,7 @@ export class EnvironmentVariables {
   AUTH_TOKEN_DELIVERY: 'log' | 'response' | 'none' = 'log';
 
   @Transform(toBoolean)
+  @IsBoolean()
   ROOM_BLOCK_EXPIRY_ENABLED = true;
 
   @Type(() => Number)
@@ -146,6 +148,7 @@ export class EnvironmentVariables {
   ROOM_BLOCK_EXPIRY_INTERVAL_SECONDS = 60;
 
   @Transform(toBoolean)
+  @IsBoolean()
   METRICS_ENABLED = true;
 
   @IsString()
@@ -187,6 +190,22 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
   if (validated.NODE_ENV === 'production' && validated.AUTH_TOKEN_DELIVERY !== 'none') {
     throw new Error(
       'AUTH_TOKEN_DELIVERY must be none in production until an email provider is configured. One-time tokens must never be logged or returned in production.',
+    );
+  }
+
+  if (validated.CORS_ORIGINS.split(',').some((origin) => origin.trim() === '*')) {
+    throw new Error(
+      'CORS_ORIGINS must list explicit origins. A wildcard origin is incompatible with credentialed sessions.',
+    );
+  }
+
+  if (
+    validated.NODE_ENV === 'production' &&
+    validated.METRICS_ENABLED &&
+    !validated.METRICS_TOKEN
+  ) {
+    throw new Error(
+      'METRICS_ENABLED requires METRICS_TOKEN in production, or disable metrics explicitly.',
     );
   }
 

@@ -69,6 +69,14 @@
 - Correlation ids accept only `^[A-Za-z0-9._:-]{8,128}$` or are regenerated.
 - Request logging does not include credentials, session tokens or CSRF tokens.
 
+### HTTP and browser hardening
+
+- The API applies `helmet` on every response: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, and strips `X-Powered-By`. In production it also sends a deny-all CSP (`default-src 'none'; frame-ancestors 'none'`) and HSTS. Outside production the CSP is disabled only because Swagger UI needs inline assets.
+- CORS accepts only explicit origins listed in `CORS_ORIGINS`; `*` is rejected at boot because credentialed sessions cannot be combined with a wildcard. Methods and request/response headers are allowlisted.
+- Production refuses to boot with `METRICS_ENABLED=true` and no `METRICS_TOKEN`; the metrics endpoint stays unauthenticated only when explicitly disabled.
+- The web app sends `Content-Security-Policy` (same-origin scripts/styles, API origin in `connect-src`, `object-src 'none'`, `frame-ancestors 'none'`), `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and, in production, HSTS. Next.js `X-Powered-By` is disabled.
+- Browser forms validate name, email, phone, guest document, money, calendar date, integer and reason fields before sending (`apps/web/src/lib/validation.ts`), mirroring the API DTO limits. These checks are UX-only; the API re-validates every request and remains the authority.
+
 ### Audit and history
 
 - `AuditEvent`, `RoomStatusHistory`, `SecurityEvent` and `ReservationHistory` are append-only; PostgreSQL triggers reject `UPDATE`, `DELETE` and `TRUNCATE`.
@@ -159,6 +167,8 @@ Registered E2E suites run on per-run isolated PostgreSQL schemas (`pnpm test:e2e
 - Sessions are not rotated periodically; self-service and admin revocation exist, but no device labeling or suspicious-session heuristics.
 - Membership and role administration are API-only (no UI) and rely on subset/last-admin guards.
 - Swagger is enabled whenever `NODE_ENV != production`; do not expose development instances publicly.
+- Security headers are defensive hardening, not a substitute for a WAF or an external penetration test.
+- The API trusts the direct client IP for login rate limiting; behind a reverse proxy, configure trusted proxies consistently or the limiter will key on the proxy address.
 - E2E suites require a local/CI PostgreSQL with schema creation privileges and must never target real environments.
 - No external penetration test, dependency scanning job or WAF has been observed yet.
 - Payment tokenization, financial data, LGPD data-subject workflows and guest-document retention automation are not implemented.
