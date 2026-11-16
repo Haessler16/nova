@@ -32,6 +32,7 @@ import { api, errorMessage } from '@/lib/api';
 import { RECORD_STATUS_COLORS, RECORD_STATUS_LABELS } from '@/lib/format';
 import type { RoomType } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
+import { hasErrors, validateRoomType, type FieldErrors } from '@/lib/validation';
 
 interface RoomTypeForm {
   name: string;
@@ -61,6 +62,7 @@ function RoomTypesContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<RoomTypeForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
 
   const { data, loading, error, reload } = useAsyncData<{ items: RoomType[] }>(
     () =>
@@ -74,6 +76,7 @@ function RoomTypesContent() {
   function openCreate(): void {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setErrors({});
     modal.onOpen();
   }
 
@@ -88,11 +91,20 @@ function RoomTypesContent() {
       bedType: roomType.bedType ?? '',
       status: roomType.status === 'DISABLED' ? 'DISABLED' : 'ACTIVE',
     });
+    setErrors({});
     modal.onOpen();
   }
 
   async function handleSubmit(event: FormEvent): Promise<void> {
     event.preventDefault();
+    const nextErrors = validateRoomType({
+      ...form,
+      codeLocked: editingId !== null,
+    });
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setSaving(true);
     try {
       const base = {
@@ -235,16 +247,18 @@ function RoomTypesContent() {
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={4}>
-              <Field label="Nombre" isRequired>
+              <Field label="Nombre" isRequired error={errors.name}>
                 <Input
                   value={form.name}
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
                   required
+                  maxLength={120}
                 />
               </Field>
               <Field
                 label="Código"
                 isRequired
+                error={errors.code}
                 helper="1–24 letras, números, guiones o guiones bajos"
               >
                 <Input
@@ -252,16 +266,18 @@ function RoomTypesContent() {
                   onChange={(event) => setForm({ ...form, code: event.target.value })}
                   isDisabled={editingId !== null}
                   required
+                  maxLength={24}
                 />
               </Field>
-              <Field label="Descripción">
+              <Field label="Descripción" error={errors.description}>
                 <Input
                   value={form.description}
                   onChange={(event) => setForm({ ...form, description: event.target.value })}
+                  maxLength={500}
                 />
               </Field>
               <HStack spacing={4} align="flex-start">
-                <Field label="Capacidad adultos" isRequired>
+                <Field label="Capacidad adultos" isRequired error={errors.capacityAdults}>
                   <Input
                     type="number"
                     min={1}
@@ -271,7 +287,7 @@ function RoomTypesContent() {
                     required
                   />
                 </Field>
-                <Field label="Capacidad menores" isRequired>
+                <Field label="Capacidad menores" isRequired error={errors.capacityChildren}>
                   <Input
                     type="number"
                     min={0}
@@ -282,10 +298,11 @@ function RoomTypesContent() {
                   />
                 </Field>
               </HStack>
-              <Field label="Tipo de cama">
+              <Field label="Tipo de cama" error={errors.bedType}>
                 <Input
                   value={form.bedType}
                   onChange={(event) => setForm({ ...form, bedType: event.target.value })}
+                  maxLength={64}
                 />
               </Field>
               {editingId !== null && (

@@ -12,6 +12,12 @@ export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const PHONE_PATTERN = /^\+?[0-9 ()-]{6,32}$/;
 export const MONEY_PATTERN = /^(0|[1-9]\d{0,7})(\.\d{1,2})?$/;
 export const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+export const DATE_TIME_LOCAL_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+export const ROOM_TYPE_CODE_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
+export const ROOM_NUMBER_PATTERN = /^[A-Za-z0-9._/-]{1,32}$/;
+export const RESERVATION_CODE_PATTERN = /^[A-Z0-9-]{4,32}$/;
+export const MAX_ROOM_ATTRIBUTES = 20;
+export const MAX_ATTRIBUTE_LENGTH = 64;
 
 export const LIMITS = {
   guestName: { min: 2, max: 160 },
@@ -176,6 +182,149 @@ export function validateGuest(input: GuestFieldInput): FieldErrors {
   if (input.notes !== undefined) {
     collect(errors, 'notes', optionalText(input.notes, 'Las notas', { max: LIMITS.guestNotes }));
   }
+  return errors;
+}
+
+/** Mirrors the reservation DTO's calendar-date range validation. */
+export function dateRangeField(
+  checkIn: string,
+  checkOut: string,
+  options: { maxNights?: number } = {},
+): string | null {
+  if (
+    checkIn === '' ||
+    checkOut === '' ||
+    !CALENDAR_DATE_PATTERN.test(checkIn) ||
+    !CALENDAR_DATE_PATTERN.test(checkOut)
+  ) {
+    return null;
+  }
+  if (checkOut <= checkIn) {
+    return 'El check-out debe ser posterior al check-in.';
+  }
+  const nights = Math.round(
+    (Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000,
+  );
+  const maxNights = options.maxNights ?? 366;
+  if (!Number.isFinite(nights) || nights < 1 || nights > maxNights) {
+    return `La estadía debe tener entre 1 y ${maxNights} noches.`;
+  }
+  return null;
+}
+
+/** Optional uppercase reservation code (4-32 letters, digits or hyphens). */
+export function reservationCodeField(value: string): string | null {
+  const code = value.trim().toUpperCase();
+  if (code === '') {
+    return null;
+  }
+  return RESERVATION_CODE_PATTERN.test(code)
+    ? null
+    : 'El código debe tener 4–32 mayúsculas, números o guiones.';
+}
+
+/** Comma-separated room attributes: at most 20 items of 64 characters. */
+export function attributesField(value: string): string | null {
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+  if (items.length > MAX_ROOM_ATTRIBUTES) {
+    return `Máximo ${MAX_ROOM_ATTRIBUTES} atributos.`;
+  }
+  if (items.some((item) => item.length > MAX_ATTRIBUTE_LENGTH)) {
+    return `Cada atributo admite hasta ${MAX_ATTRIBUTE_LENGTH} caracteres.`;
+  }
+  return null;
+}
+
+export function datetimeLocalField(value: string, label: string): string | null {
+  if (value.trim() === '') {
+    return `${label} es obligatorio.`;
+  }
+  if (!DATE_TIME_LOCAL_PATTERN.test(value) || Number.isNaN(Date.parse(value))) {
+    return `${label} debe ser una fecha y hora válidas.`;
+  }
+  return null;
+}
+
+/** Mirrors the room-block interval rules (end strictly after start). */
+export function blockRangeField(startsAt: string, endsAt: string): string | null {
+  if (
+    startsAt === '' ||
+    endsAt === '' ||
+    !DATE_TIME_LOCAL_PATTERN.test(startsAt) ||
+    !DATE_TIME_LOCAL_PATTERN.test(endsAt)
+  ) {
+    return null;
+  }
+  return endsAt > startsAt ? null : 'El fin del bloqueo debe ser posterior al inicio.';
+}
+
+/** Mirrors CreateRoomTypeDto / UpdateRoomTypeDto. */
+export function validateRoomType(input: {
+  name: string;
+  code: string;
+  description: string;
+  capacityAdults: string;
+  capacityChildren: string;
+  bedType: string;
+  codeLocked?: boolean;
+}): FieldErrors {
+  const errors: FieldErrors = {};
+  collect(errors, 'name', requiredText(input.name, 'El nombre', { min: 1, max: 120 }));
+  if (input.codeLocked !== true) {
+    const code = input.code.trim();
+    collect(
+      errors,
+      'code',
+      code === ''
+        ? 'El código es obligatorio.'
+        : ROOM_TYPE_CODE_PATTERN.test(code)
+          ? null
+          : 'El código debe tener 1–24 letras, números, guiones o guiones bajos.',
+    );
+  }
+  collect(errors, 'description', optionalText(input.description, 'La descripción', { max: 500 }));
+  collect(
+    errors,
+    'capacityAdults',
+    intField(input.capacityAdults, 'La capacidad de adultos', { min: 1, max: 50 }),
+  );
+  collect(
+    errors,
+    'capacityChildren',
+    intField(input.capacityChildren, 'La capacidad de menores', { min: 0, max: 50 }),
+  );
+  collect(errors, 'bedType', optionalText(input.bedType, 'El tipo de cama', { max: 64 }));
+  return errors;
+}
+
+/** Mirrors CreateRoomDto / UpdateRoomDto. */
+export function validateRoom(input: {
+  number: string;
+  roomTypeId: string;
+  floor: string;
+  building: string;
+  attributes: string;
+}): FieldErrors {
+  const errors: FieldErrors = {};
+  const number = input.number.trim();
+  collect(
+    errors,
+    'number',
+    number === ''
+      ? 'El número es obligatorio.'
+      : ROOM_NUMBER_PATTERN.test(number)
+        ? null
+        : 'Hasta 32 letras, números, puntos, guiones, guiones bajos o barras.',
+  );
+  if (input.roomTypeId.trim() === '') {
+    errors.roomTypeId = 'Elegí un tipo de habitación.';
+  }
+  collect(errors, 'floor', optionalText(input.floor, 'El piso', { max: 32 }));
+  collect(errors, 'building', optionalText(input.building, 'El edificio', { max: 64 }));
+  collect(errors, 'attributes', attributesField(input.attributes));
   return errors;
 }
 

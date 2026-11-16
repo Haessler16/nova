@@ -73,6 +73,18 @@ import type {
   RoomType,
 } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
+import {
+  buildErrors,
+  calendarDateField,
+  dateRangeField,
+  hasErrors,
+  intField,
+  optionalText,
+  reasonField,
+  reservationCodeField,
+  validateGuest,
+  type FieldErrors,
+} from '@/lib/validation';
 
 interface ListData {
   items: Reservation[];
@@ -132,24 +144,27 @@ function GuestFields({
   onChange,
   disabled = false,
   idPrefix,
+  errors,
 }: {
   value: GuestFormState;
   onChange: (patch: Partial<GuestFormState>) => void;
   disabled?: boolean;
   idPrefix: string;
+  errors?: FieldErrors;
 }) {
   return (
     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-      <Field label="Nombre completo" isRequired>
+      <Field label="Nombre completo" isRequired error={errors?.fullName}>
         <Input
           id={`${idPrefix}-full-name`}
           value={value.fullName}
           onChange={(event) => onChange({ fullName: event.target.value })}
           placeholder="Nombre y apellido"
           isDisabled={disabled}
+          maxLength={160}
         />
       </Field>
-      <Field label="Email">
+      <Field label="Email" error={errors?.email}>
         <Input
           id={`${idPrefix}-email`}
           type="email"
@@ -157,15 +172,17 @@ function GuestFields({
           onChange={(event) => onChange({ email: event.target.value })}
           placeholder="huesped@ejemplo.com"
           isDisabled={disabled}
+          maxLength={254}
         />
       </Field>
-      <Field label="Teléfono">
+      <Field label="Teléfono" error={errors?.phone}>
         <Input
           id={`${idPrefix}-phone`}
           value={value.phone}
           onChange={(event) => onChange({ phone: event.target.value })}
           placeholder="+55 11 90000-0000"
           isDisabled={disabled}
+          maxLength={32}
         />
       </Field>
       <Field label="Tipo de documento">
@@ -186,13 +203,15 @@ function GuestFields({
         </Select>
       </Field>
       {value.documentType !== '' && (
-        <Field label="Número de documento" isRequired>
+        <Field label="Número de documento" isRequired error={errors?.documentNumber}>
           <Input
             id={`${idPrefix}-document-number`}
             value={value.documentNumber}
             onChange={(event) => onChange({ documentNumber: event.target.value })}
             placeholder="Número o código"
             isDisabled={disabled}
+            minLength={3}
+            maxLength={64}
           />
         </Field>
       )}
@@ -297,6 +316,11 @@ function ReservationsContent() {
   const [detailVersion, bumpDetail] = useReducer((value: number) => value + 1, 0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [createErrors, setCreateErrors] = useState<FieldErrors>({});
+  const [editErrors, setEditErrors] = useState<FieldErrors>({});
+  const [cancelErrors, setCancelErrors] = useState<FieldErrors>({});
+  const [createGuestErrors, setCreateGuestErrors] = useState<FieldErrors>({});
+  const [editGuestErrors, setEditGuestErrors] = useState<FieldErrors>({});
 
   const [createForm, setCreateForm] = useState({
     checkInDate: todayISO(0, propertyTimezone),
@@ -458,6 +482,8 @@ function ReservationsContent() {
     setGuestPanel('none');
     setGuestForm(EMPTY_GUEST_FORM);
     setShowDetails(false);
+    setCreateErrors({});
+    setCreateGuestErrors({});
     createModal.onOpen();
   }
 
@@ -490,17 +516,26 @@ function ReservationsContent() {
       children: String(reservation.children),
       notes: reservation.notes ?? '',
     });
+    setEditErrors({});
     editModal.onOpen();
   }
 
   async function handleCreate(event: FormEvent): Promise<void> {
     event.preventDefault();
-    if (createForm.guestId === '' || createForm.roomTypeId === '') {
-      toast({ title: 'Elegí huésped y tipo de habitación', status: 'warning' });
-      return;
-    }
-    if (!createDatesValid) {
-      toast({ title: 'La estadía debe tener entre 1 y 366 noches', status: 'warning' });
+    const nextErrors = buildErrors([
+      ['checkInDate', calendarDateField(createForm.checkInDate, 'El check-in')],
+      ['checkOutDate', calendarDateField(createForm.checkOutDate, 'El check-out')],
+      ['dates', dateRangeField(createForm.checkInDate, createForm.checkOutDate)],
+      ['adults', intField(createForm.adults, 'Los adultos', { min: 1, max: 20 })],
+      ['children', intField(createForm.children, 'Los menores', { min: 0, max: 20 })],
+      ['guestId', createForm.guestId === '' ? 'Elegí o creá un huésped.' : null],
+      ['roomTypeId', createForm.roomTypeId === '' ? 'Elegí un tipo de habitación.' : null],
+      ['code', reservationCodeField(createForm.code)],
+      ['source', optionalText(createForm.source, 'El origen', { max: 32 })],
+      ['notes', optionalText(createForm.notes, 'La observación', { max: 2000 })],
+    ]);
+    setCreateErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
       return;
     }
     setSaving(true);
@@ -569,6 +604,18 @@ function ReservationsContent() {
     if (selectedId === null) {
       return;
     }
+    const nextErrors = buildErrors([
+      ['checkInDate', calendarDateField(editForm.checkInDate, 'El check-in')],
+      ['checkOutDate', calendarDateField(editForm.checkOutDate, 'El check-out')],
+      ['dates', dateRangeField(editForm.checkInDate, editForm.checkOutDate)],
+      ['adults', intField(editForm.adults, 'Los adultos', { min: 1, max: 20 })],
+      ['children', intField(editForm.children, 'Los menores', { min: 0, max: 20 })],
+      ['notes', optionalText(editForm.notes, 'Las notas', { max: 2000 })],
+    ]);
+    setEditErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setSaving(true);
     try {
       await api<Reservation>(`/api/v1/reservations/${selectedId}`, {
@@ -630,6 +677,12 @@ function ReservationsContent() {
     if (selectedId === null) {
       return;
     }
+    const reason = cancelReason.trim();
+    const nextErrors = buildErrors([['reason', reason === '' ? null : reasonField(reason)]]);
+    setCancelErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setSaving(true);
     try {
       await api<Reservation>(`/api/v1/reservations/${selectedId}/cancel`, {
@@ -662,13 +715,9 @@ function ReservationsContent() {
   }
 
   async function handleCreateGuest(): Promise<void> {
-    const fullName = guestForm.fullName.trim();
-    if (fullName.length < 2) {
-      toast({ title: 'El nombre debe tener al menos 2 caracteres', status: 'warning' });
-      return;
-    }
-    if (guestForm.documentType !== '' && guestForm.documentNumber.trim().length < 3) {
-      toast({ title: 'Completá el número de documento', status: 'warning' });
+    const nextErrors = validateGuest(guestForm);
+    setCreateGuestErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
       return;
     }
     setGuestSaving(true);
@@ -697,6 +746,7 @@ function ReservationsContent() {
     setGuestEditTarget(guest);
     setGuestEditSource(source);
     setGuestEditForm(guestFormFrom(guest));
+    setEditGuestErrors({});
     guestEditModal.onOpen();
   }
 
@@ -705,12 +755,9 @@ function ReservationsContent() {
     if (guestEditTarget === null) {
       return;
     }
-    if (guestEditForm.fullName.trim().length < 2) {
-      toast({ title: 'El nombre debe tener al menos 2 caracteres', status: 'warning' });
-      return;
-    }
-    if (guestEditForm.documentType !== '' && guestEditForm.documentNumber.trim().length < 3) {
-      toast({ title: 'Completá el número de documento', status: 'warning' });
+    const nextErrors = validateGuest(guestEditForm);
+    setEditGuestErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
       return;
     }
     setGuestSaving(true);
@@ -973,6 +1020,7 @@ function ReservationsContent() {
                               onClick={() => {
                                 setSelectedId(reservation.id);
                                 setCancelReason('');
+                                setCancelErrors({});
                                 cancelModal.onOpen();
                               }}
                             >
@@ -1026,6 +1074,12 @@ function ReservationsContent() {
                   )}
                 </HStack>
 
+                {createErrors.guestId !== undefined && (
+                  <Text fontSize="xs" color="danger.500" mb={2}>
+                    {createErrors.guestId}
+                  </Text>
+                )}
+
                 {selectedGuest !== null ? (
                   <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3} bg="gray.50">
                     <HStack justify="space-between" align="flex-start" wrap="wrap" spacing={3}>
@@ -1070,6 +1124,7 @@ function ReservationsContent() {
                       onChange={(patch) => setGuestForm((current) => ({ ...current, ...patch }))}
                       disabled={guestSaving}
                       idPrefix="new-reservation-guest"
+                      errors={createGuestErrors}
                     />
                     <HStack justify="flex-end" mt={3}>
                       <Button size="sm" variant="ghost" onClick={() => setGuestPanel('none')}>
@@ -1162,7 +1217,7 @@ function ReservationsContent() {
                   Estadía
                 </Text>
                 <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
-                  <Field label="Check-in" isRequired>
+                  <Field label="Check-in" isRequired error={createErrors.checkInDate}>
                     <DateField
                       value={createForm.checkInDate}
                       min={todayISO(0, propertyTimezone)}
@@ -1181,7 +1236,7 @@ function ReservationsContent() {
                       }
                     />
                   </Field>
-                  <Field label="Check-out" isRequired>
+                  <Field label="Check-out" isRequired error={createErrors.checkOutDate}>
                     <DateField
                       value={createForm.checkOutDate}
                       min={createForm.checkInDate}
@@ -1196,7 +1251,7 @@ function ReservationsContent() {
                       }
                     />
                   </Field>
-                  <Field label="Adultos" isRequired>
+                  <Field label="Adultos" isRequired error={createErrors.adults}>
                     <Input
                       type="number"
                       min={1}
@@ -1208,7 +1263,7 @@ function ReservationsContent() {
                       required
                     />
                   </Field>
-                  <Field label="Menores">
+                  <Field label="Menores" error={createErrors.children}>
                     <Input
                       type="number"
                       min={0}
@@ -1232,7 +1287,7 @@ function ReservationsContent() {
                   Habitación
                 </Text>
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                  <Field label="Tipo de habitación" isRequired>
+                  <Field label="Tipo de habitación" isRequired error={createErrors.roomTypeId}>
                     <Select
                       value={createForm.roomTypeId}
                       onChange={(event) =>
@@ -1305,18 +1360,25 @@ function ReservationsContent() {
                 <Collapse in={showDetails} animateOpacity>
                   <Box pt={3}>
                     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                      <Field label="Código" helper="Opcional: 4–32 mayúsculas, números o guiones.">
+                      <Field
+                        label="Código"
+                        error={createErrors.code}
+                        helper="Opcional: 4–32 mayúsculas, números o guiones."
+                      >
                         <Input
                           value={createForm.code}
+                          aria-label="Código de reserva"
+                          maxLength={32}
                           onChange={(event) =>
                             setCreateForm({ ...createForm, code: event.target.value })
                           }
                         />
                       </Field>
-                      <Field label="Origen">
+                      <Field label="Origen" error={createErrors.source}>
                         <Input
                           value={createForm.source}
                           placeholder="mostrador, web, teléfono…"
+                          maxLength={32}
                           onChange={(event) =>
                             setCreateForm({ ...createForm, source: event.target.value })
                           }
@@ -1325,11 +1387,13 @@ function ReservationsContent() {
                     </SimpleGrid>
                     <Field
                       label="Observación original"
+                      error={createErrors.notes}
                       helper="Opcional. Se intentará interpretar al crear la reserva; las sugerencias se confirman en el detalle y nunca modifican pagos, tarifas ni habitaciones."
                     >
                       <Textarea
                         mt={3}
                         rows={3}
+                        maxLength={2000}
                         value={createForm.notes}
                         placeholder="Ej.: RSV COM CAFE / PGTO DIRETO NO HOTEL (12-15/11) / LUXO CASAL"
                         onChange={(event) =>
@@ -1362,7 +1426,7 @@ function ReservationsContent() {
           <ModalBody>
             <Stack spacing={4}>
               <SimpleGrid columns={2} spacing={4}>
-                <Field label="Check-in" isRequired>
+                <Field label="Check-in" isRequired error={editErrors.checkInDate}>
                   <DateField
                     value={editForm.checkInDate}
                     placeholder="dd/mm/aaaa"
@@ -1370,7 +1434,7 @@ function ReservationsContent() {
                     onChange={(checkInDate) => setEditForm({ ...editForm, checkInDate })}
                   />
                 </Field>
-                <Field label="Check-out" isRequired>
+                <Field label="Check-out" isRequired error={editErrors.checkOutDate}>
                   <DateField
                     value={editForm.checkOutDate}
                     min={editForm.checkInDate !== '' ? editForm.checkInDate : undefined}
@@ -1380,8 +1444,13 @@ function ReservationsContent() {
                   />
                 </Field>
               </SimpleGrid>
+              {editErrors.dates !== undefined && (
+                <Text fontSize="xs" color="danger.500">
+                  {editErrors.dates}
+                </Text>
+              )}
               <SimpleGrid columns={2} spacing={4}>
-                <Field label="Adultos" isRequired>
+                <Field label="Adultos" isRequired error={editErrors.adults}>
                   <Input
                     type="number"
                     min={1}
@@ -1391,7 +1460,7 @@ function ReservationsContent() {
                     required
                   />
                 </Field>
-                <Field label="Menores">
+                <Field label="Menores" error={editErrors.children}>
                   <Input
                     type="number"
                     min={0}
@@ -1403,10 +1472,12 @@ function ReservationsContent() {
               </SimpleGrid>
               <Field
                 label="Notas de la reserva"
+                error={editErrors.notes}
                 helper="Las notas e instrucciones estructuradas se gestionan en el panel del detalle; este campo conserva el texto libre heredado."
               >
                 <Textarea
                   rows={3}
+                  maxLength={2000}
                   value={editForm.notes}
                   onChange={(event) => setEditForm({ ...editForm, notes: event.target.value })}
                 />
@@ -1440,9 +1511,14 @@ function ReservationsContent() {
                 La reserva queda cancelada y la habitación se libera. La operación es auditable y no
                 se elimina el registro.
               </Text>
-              <Field label="Motivo" helper="3–500 caracteres, opcional.">
+              <Field
+                label="Motivo"
+                helper="3–500 caracteres, opcional."
+                error={cancelErrors.reason}
+              >
                 <Textarea
                   rows={3}
+                  maxLength={500}
                   value={cancelReason}
                   onChange={(event) => setCancelReason(event.target.value)}
                 />
@@ -1477,6 +1553,7 @@ function ReservationsContent() {
                 onChange={(patch) => setGuestEditForm((current) => ({ ...current, ...patch }))}
                 disabled={guestSaving}
                 idPrefix="edit-reservation-guest"
+                errors={editGuestErrors}
               />
             </Stack>
           </ModalBody>

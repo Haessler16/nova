@@ -87,6 +87,26 @@ export class EnvironmentVariables {
   LOGIN_RATE_LIMIT_WINDOW_SECONDS = 900;
 
   /**
+   * Global mutation limiter (POST/PUT/PATCH/DELETE). Counters are kept in
+   * Redis per client IP and per organization/property selector.
+   */
+  @Transform(toBoolean)
+  @IsBoolean()
+  MUTATION_RATE_LIMIT_ENABLED = true;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  MUTATION_RATE_LIMIT_MAX = 600;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(86400)
+  MUTATION_RATE_LIMIT_WINDOW_SECONDS = 60;
+
+  /**
    * Key material for encrypting TOTP shared secrets at rest and signing the
    * short-lived MFA challenge token. Required to enroll/enable MFA.
    */

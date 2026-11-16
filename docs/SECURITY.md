@@ -48,6 +48,9 @@
 ### Rate limiting
 
 - Login attempts are counted in Redis in a fixed window keyed by `sha256(client_ip|normalized_email)` — raw IP/email are not stored in Redis.
+- Every `POST`/`PUT`/`PATCH`/`DELETE` passes a global `MutationRateLimitGuard` before reaching the controller. Two fixed windows are evaluated: `sha256(client_ip)` and `sha256(organization|property)` when the selectors are well-formed UUIDs. Exceeding either returns `429 rate_limited` with `Retry-After`. Safe methods (`GET`/`HEAD`/`OPTIONS`) are never counted, and only hashed keys are written to Redis.
+- Mutation limits are configured with `MUTATION_RATE_LIMIT_MAX` (default 600) and `MUTATION_RATE_LIMIT_WINDOW_SECONDS` (default 60). The tenant bucket prevents one property behind a shared NAT address from exhausting another property's budget.
+- Like the login limiter, the mutation limiter is Redis-backed and fails open with a warning if Redis is unavailable; it is an abuse control, not an authorization or integrity mechanism.
 - Configurable with `LOGIN_RATE_LIMIT_MAX` and `LOGIN_RATE_LIMIT_WINDOW_SECONDS`.
 - When Redis is unavailable the limiter fails open and logs a warning. PostgreSQL remains the authentication authority; a perimeter limiter/WAF is still required.
 - There is no per-user account lockout yet.
@@ -149,6 +152,7 @@ Current automated coverage:
 
 - `apps/api/test/tenant-isolation.e2e-spec.ts` (identity, properties, audit, cross-org denial);
 - `apps/api/test/inventory.e2e-spec.ts` (room types, rooms, housekeeping history immutability, blocks/overlap, property settings, cross-tenant denial);
+- `apps/api/src/rate-limit/*.spec.ts` (IP and tenant mutation buckets, hashed keys, malformed selectors, 429 + `Retry-After`, fail-open, disabled limiter);
 - `apps/api/test/auth-session.e2e-spec.ts` (CSRF, invalid credentials, session cookie flags, logout revocation, rate limiting, lockout, password reset/verification, MFA, session revocation);
 - `apps/api/test/admin.e2e-spec.ts` and `apps/api/test/resilience.e2e-spec.ts` (membership/role administration, security events, scheduler, metrics);
 - `apps/api/test/guests-reservations.e2e-spec.ts` (guest CRUD/audit minimization, availability, overlapping and concurrent reservations, block conflicts, idempotency, cancellation history, cross-tenant denial);

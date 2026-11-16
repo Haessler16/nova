@@ -20,6 +20,8 @@ import { NightAuditModule } from './night-audit/night-audit.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { PilotModule } from './pilot/pilot.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { MutationRateLimitGuard } from './rate-limit/mutation-rate-limit.guard';
+import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { PropertiesModule } from './properties/properties.module';
 import { ReportsModule } from './reports/reports.module';
 import { RedisModule } from './redis/redis.module';
@@ -44,6 +46,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     }),
     PrismaModule,
     RedisModule,
+    RateLimitModule,
     ObservabilityModule,
     SecurityEventsModule,
     HealthModule,
@@ -69,6 +72,10 @@ import { TenancyModule } from './tenancy/tenancy.module';
     {
       provide: APP_GUARD,
       useClass: CsrfGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: MutationRateLimitGuard,
     },
   ],
 })

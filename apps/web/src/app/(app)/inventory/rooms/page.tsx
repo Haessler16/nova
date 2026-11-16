@@ -68,6 +68,15 @@ import type {
   RoomType,
 } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
+import {
+  blockRangeField,
+  buildErrors,
+  datetimeLocalField,
+  hasErrors,
+  reasonField,
+  validateRoom,
+  type FieldErrors,
+} from '@/lib/validation';
 
 interface RoomsData {
   rooms: Room[];
@@ -130,6 +139,9 @@ function RoomsContent() {
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [blockSaving, setBlockSaving] = useState(false);
+  const [createErrors, setCreateErrors] = useState<FieldErrors>({});
+  const [editErrors, setEditErrors] = useState<FieldErrors>({});
+  const [blockErrors, setBlockErrors] = useState<FieldErrors>({});
 
   const [createForm, setCreateForm] = useState<RoomForm>({
     number: '',
@@ -188,6 +200,7 @@ function RoomsContent() {
       startsAt: localDateTimeInput(),
       endsAt: localDateTimeInput(24),
     });
+    setBlockErrors({});
     drawer.onOpen();
   }
 
@@ -201,11 +214,17 @@ function RoomsContent() {
       attributes: room.attributes.join(', '),
       status: room.status === 'DISABLED' ? 'DISABLED' : 'ACTIVE',
     });
+    setEditErrors({});
     editModal.onOpen();
   }
 
   async function handleCreate(event: FormEvent): Promise<void> {
     event.preventDefault();
+    const nextErrors = validateRoom(createForm);
+    setCreateErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setSaving(true);
     try {
       await api<Room>('/api/v1/inventory/rooms', {
@@ -247,6 +266,11 @@ function RoomsContent() {
     if (selectedRoomId === null) {
       return;
     }
+    const nextErrors = validateRoom(editForm);
+    setEditErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
     setSaving(true);
     try {
       await api<Room>(`/api/v1/inventory/rooms/${selectedRoomId}`, {
@@ -255,8 +279,10 @@ function RoomsContent() {
         body: {
           number: editForm.number.trim(),
           roomTypeId: editForm.roomTypeId,
-          floor: editForm.floor.trim(),
-          building: editForm.building.trim(),
+          // Empty optional fields are omitted, matching the create payload and
+          // avoiding a 400 from @Length(1,32) on an empty string.
+          ...(editForm.floor.trim() !== '' ? { floor: editForm.floor.trim() } : {}),
+          ...(editForm.building.trim() !== '' ? { building: editForm.building.trim() } : {}),
           attributes: splitAttributes(editForm.attributes),
           status: editForm.status,
         },
@@ -307,9 +333,30 @@ function RoomsContent() {
     }
   }
 
+  function blockFormErrors(form: {
+    reason: string;
+    startsAt: string;
+    endsAt: string;
+  }): FieldErrors {
+    return buildErrors([
+      ['reason', reasonField(form.reason)],
+      ['startsAt', datetimeLocalField(form.startsAt, 'El inicio del bloqueo')],
+      [
+        'endsAt',
+        datetimeLocalField(form.endsAt, 'El fin del bloqueo') ??
+          blockRangeField(form.startsAt, form.endsAt),
+      ],
+    ]);
+  }
+
   async function createBlock(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (selectedRoomId === null) {
+      return;
+    }
+    const nextErrors = blockFormErrors(blockForm);
+    setBlockErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
       return;
     }
     setBlockSaving(true);
@@ -371,7 +418,14 @@ function RoomsContent() {
         title="Habitaciones"
         description="Inventario físico, housekeeping, bloqueos e historial. Housekeeping y estado operativo son dimensiones separadas."
         actions={
-          <Button colorScheme="brand" size="sm" onClick={createModal.onOpen}>
+          <Button
+            colorScheme="brand"
+            size="sm"
+            onClick={() => {
+              setCreateErrors({});
+              createModal.onOpen();
+            }}
+          >
             Nueva habitación
           </Button>
         }
@@ -540,14 +594,20 @@ function RoomsContent() {
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={4}>
-              <Field label="Número" isRequired helper="Único por propiedad">
+              <Field
+                label="Número"
+                isRequired
+                helper="Único por propiedad"
+                error={createErrors.number}
+              >
                 <Input
                   value={createForm.number}
                   onChange={(event) => setCreateForm({ ...createForm, number: event.target.value })}
                   required
+                  maxLength={32}
                 />
               </Field>
-              <Field label="Tipo" isRequired>
+              <Field label="Tipo" isRequired error={createErrors.roomTypeId}>
                 <Select
                   value={createForm.roomTypeId}
                   onChange={(event) =>
@@ -564,24 +624,30 @@ function RoomsContent() {
                 </Select>
               </Field>
               <HStack spacing={4} align="flex-start">
-                <Field label="Piso">
+                <Field label="Piso" error={createErrors.floor}>
                   <Input
                     value={createForm.floor}
+                    maxLength={32}
                     onChange={(event) =>
                       setCreateForm({ ...createForm, floor: event.target.value })
                     }
                   />
                 </Field>
-                <Field label="Edificio">
+                <Field label="Edificio" error={createErrors.building}>
                   <Input
                     value={createForm.building}
+                    maxLength={64}
                     onChange={(event) =>
                       setCreateForm({ ...createForm, building: event.target.value })
                     }
                   />
                 </Field>
               </HStack>
-              <Field label="Atributos" helper="Separados por coma: balcón, accesible, silenciosa…">
+              <Field
+                label="Atributos"
+                error={createErrors.attributes}
+                helper="Separados por coma: balcón, accesible, silenciosa…"
+              >
                 <Input
                   value={createForm.attributes}
                   onChange={(event) =>
@@ -609,14 +675,15 @@ function RoomsContent() {
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={4}>
-              <Field label="Número" isRequired>
+              <Field label="Número" isRequired error={editErrors.number}>
                 <Input
                   value={editForm.number}
                   onChange={(event) => setEditForm({ ...editForm, number: event.target.value })}
                   required
+                  maxLength={32}
                 />
               </Field>
-              <Field label="Tipo" isRequired>
+              <Field label="Tipo" isRequired error={editErrors.roomTypeId}>
                 <Select
                   value={editForm.roomTypeId}
                   onChange={(event) => setEditForm({ ...editForm, roomTypeId: event.target.value })}
@@ -630,20 +697,22 @@ function RoomsContent() {
                 </Select>
               </Field>
               <HStack spacing={4} align="flex-start">
-                <Field label="Piso">
+                <Field label="Piso" error={editErrors.floor}>
                   <Input
                     value={editForm.floor}
+                    maxLength={32}
                     onChange={(event) => setEditForm({ ...editForm, floor: event.target.value })}
                   />
                 </Field>
-                <Field label="Edificio">
+                <Field label="Edificio" error={editErrors.building}>
                   <Input
                     value={editForm.building}
+                    maxLength={64}
                     onChange={(event) => setEditForm({ ...editForm, building: event.target.value })}
                   />
                 </Field>
               </HStack>
-              <Field label="Atributos" helper="Separados por coma">
+              <Field label="Atributos" error={editErrors.attributes} helper="Separados por coma">
                 <Input
                   value={editForm.attributes}
                   onChange={(event) => setEditForm({ ...editForm, attributes: event.target.value })}
@@ -820,9 +889,14 @@ function RoomsContent() {
                         onChange={(event) =>
                           setBlockForm({ ...blockForm, reason: event.target.value })
                         }
-                        required
-                        minLength={3}
+                        isInvalid={blockErrors.reason !== undefined}
+                        maxLength={500}
                       />
+                      {blockErrors.reason !== undefined && (
+                        <Text fontSize="xs" color="danger.500">
+                          {blockErrors.reason}
+                        </Text>
+                      )}
                       <HStack>
                         <Box flex="1">
                           <Text fontSize="xs" color="gray.500" mb={1}>
@@ -853,6 +927,11 @@ function RoomsContent() {
                           />
                         </Box>
                       </HStack>
+                      {(blockErrors.startsAt !== undefined || blockErrors.endsAt !== undefined) && (
+                        <Text fontSize="xs" color="danger.500">
+                          {blockErrors.startsAt ?? blockErrors.endsAt}
+                        </Text>
+                      )}
                       <Button type="submit" size="sm" colorScheme="brand" isLoading={blockSaving}>
                         Crear bloqueo
                       </Button>
