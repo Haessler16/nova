@@ -1,6 +1,9 @@
 'use client';
 
 import {
+  Alert,
+  AlertDescription,
+  AlertIcon,
   Badge,
   Box,
   Button,
@@ -21,6 +24,7 @@ import {
 import NextLink from 'next/link';
 import { useEffect, useReducer, useState } from 'react';
 import { QueryFeedback, StatusBadge } from '@/components/ui';
+import { useSession } from '@/context/session';
 import { api, errorMessage, type TenantSelection } from '@/lib/api';
 import {
   CHECK_IN_BLOCK_REASON_LABELS,
@@ -39,6 +43,8 @@ import {
 } from '@/lib/format';
 import type {
   CheckInReadiness,
+  CheckInRoomOption,
+  CheckInWindow,
   Reservation,
   ReservationInstruction,
   ReservationParty,
@@ -47,6 +53,21 @@ import type {
 import { useAsyncData } from '@/lib/use-async-data';
 
 const STEPS = ['Reserva', 'Habitación', 'Huéspedes', 'Confirmar'] as const;
+
+function blockedWindowMessage(window: CheckInWindow): string {
+  if (window.code === 'check_in_too_early') {
+    return `La ventana de check-in abre el ${formatCalendarDate(
+      window.checkInDate,
+    )}. Hoy es ${formatCalendarDate(
+      window.localDate,
+    )}; el backend rechazará la confirmación (check_in_too_early).`;
+  }
+  return `La ventana de check-in cerró al llegar la fecha de salida (${formatCalendarDate(
+    window.checkOutDate,
+  )}). Hoy es ${formatCalendarDate(
+    window.localDate,
+  )}; el backend rechazará la confirmación (check_in_window_elapsed).`;
+}
 
 /**
  * The check-in summary is intentionally narrower than the reservation panel:
@@ -102,10 +123,12 @@ export function CheckInWizard({
   onClose: () => void;
   onCompleted: () => void;
 }) {
+  const { actor } = useSession();
   const toast = useToast();
   const [step, setStep] = useState(0);
   const [roomId, setRoomId] = useState('');
-  const [assignedRoomId, setAssignedRoomId] = useState<string | null>(null);
+  const [lease, setLease] = useState<{ roomId: string; leaseId: string } | null>(null);
+  const [roomBusyId, setRoomBusyId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [instructionBusyId, setInstructionBusyId] = useState<string | null>(null);
   const [version, bumpVersion] = useReducer((value: number) => value + 1, 0);
@@ -118,7 +141,8 @@ export function CheckInWizard({
     }
     setStep(0);
     setRoomId(reservation?.roomId ?? '');
-    setAssignedRoomId(reservation?.roomId ?? null);
+    setLease(null);
+    setRoomBusyId(null);
     bumpVersion();
   }, [isOpen, reservation?.id, reservation?.roomId]);
 
@@ -154,7 +178,8 @@ export function CheckInWizard({
 
   const relevantInstructions = (instructions.data?.items ?? []).filter(isCheckInRelevant);
   const rooms = readiness.data?.rooms ?? [];
-  const selectedRoom = rooms.find((room) => room.id === roomId) ?? null;
+  const selectedRoomId = roomId !== '' ? roomId : (readiness.data?.currentRoomId ?? '');
+  const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
   const partyMembers =
     party.data === null
       ? []
@@ -162,9 +187,94 @@ export function CheckInWizard({
           (member): member is ReservationPartyMember => member !== null,
         );
   const partyBlocked = party.data?.readiness.checkIn === 'BLOCKED';
+  const checkInWindow = readiness.data?.checkInWindow ?? null;
+  const windowMessage =
+    checkInWindow !== null && !checkInWindow.allowed ? blockedWindowMessage(checkInWindow) : null;
+  const windowBlocked = windowMessage !== null;
   const unreadInstructions = relevantInstructions.filter(
     (instruction) => instruction.status === 'NEW',
   ).length;
+
+  async function releaseHeldLease(): Promise<void> {
+    if (lease === null) {
+      return;
+    }
+    const current = lease;
+    setLease(null);
+    try {
+      await api<void>(
+        `/api/v1/inventory/rooms/${current.roomId}/assignment-leases/${current.leaseId}`,
+        { method: 'DELETE', tenant },
+      );
+    } catch {
+      // The key expires by TTL even if the release request cannot reach Redis.
+    }
+  }
+
+  async function selectRoom(room: CheckInRoomOption): Promise<void> {
+    if (room.lease !== null && room.lease.ownerUserId !== actor?.id) {
+      toast({
+        title: 'Habitación en selección',
+        description: `${room.lease.ownerDisplayName} la está seleccionando en otra sesión.`,
+        status: 'warning',
+      });
+      readiness.reload();
+      return;
+    }
+    if (lease?.roomId === room.id) {
+      setRoomId(room.id);
+      return;
+    }
+
+    await releaseHeldLease();
+    if (room.lease !== null && room.lease.ownerUserId === actor?.id) {
+      setLease({ roomId: room.id, leaseId: room.lease.leaseId });
+      setRoomId(room.id);
+      return;
+    }
+
+    setRoomBusyId(room.id);
+    try {
+      const acquired = await api<{ leaseId: string }>(
+        `/api/v1/inventory/rooms/${room.id}/assignment-leases`,
+        {
+          method: 'POST',
+          tenant,
+          body: { reservationId: reservation?.id },
+        },
+      );
+      setLease({ roomId: room.id, leaseId: acquired.leaseId });
+      setRoomId(room.id);
+    } catch (cause) {
+      toast({
+        title: 'No se pudo seleccionar la habitación',
+        description: errorMessage(cause),
+        status: 'warning',
+        duration: 8000,
+      });
+      readiness.reload();
+    } finally {
+      setRoomBusyId(null);
+    }
+  }
+
+  async function handleClose(): Promise<void> {
+    await releaseHeldLease();
+    onClose();
+  }
+
+  useEffect(() => {
+    if (!isOpen || lease === null) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void api(
+        `/api/v1/inventory/rooms/${lease.roomId}/assignment-leases/${lease.leaseId}/renew`,
+        { method: 'POST', tenant },
+      ).catch(() => setLease(null));
+    }, 45_000);
+    return () => window.clearInterval(timer);
+  }, [isOpen, lease, tenant]);
 
   async function acknowledgeInstruction(instruction: ReservationInstruction): Promise<void> {
     if (reservationId === null) {
@@ -194,12 +304,20 @@ export function CheckInWizard({
     if (reservation === null) {
       return;
     }
+    if (windowBlocked) {
+      toast({
+        title: 'Check-in fuera de la ventana',
+        description: windowMessage ?? undefined,
+        status: 'warning',
+      });
+      return;
+    }
     if (step === 1) {
       if (selectedRoom === null || !selectedRoom.eligible) {
         toast({ title: 'Seleccioná una habitación elegible', status: 'warning' });
         return;
       }
-      if (assignedRoomId !== selectedRoom.id) {
+      if (readiness.data?.currentRoomId !== selectedRoom.id) {
         setBusy('assign-room');
         try {
           await api(`/api/v1/reservations/${reservation.id}/room-assignment`, {
@@ -207,12 +325,12 @@ export function CheckInWizard({
             tenant,
             body: { roomId: selectedRoom.id },
           });
-          setAssignedRoomId(selectedRoom.id);
           toast({
             title: `Habitación ${selectedRoom.number} asignada`,
             status: 'success',
           });
           bumpVersion();
+          await releaseHeldLease();
         } catch (cause) {
           toast({
             title: 'No se pudo asignar la habitación',
@@ -234,6 +352,14 @@ export function CheckInWizard({
     if (reservation === null) {
       return;
     }
+    if (windowBlocked) {
+      toast({
+        title: 'Check-in fuera de la ventana',
+        description: windowMessage ?? undefined,
+        status: 'warning',
+      });
+      return;
+    }
     setBusy('check-in');
     try {
       await api(`/api/v1/front-office/reservations/${reservation.id}/check-in`, {
@@ -244,6 +370,7 @@ export function CheckInWizard({
         title: `Check-in registrado para ${reservation.guest.fullName}`,
         status: 'success',
       });
+      await releaseHeldLease();
       onCompleted();
       onClose();
     } catch (cause) {
@@ -265,7 +392,7 @@ export function CheckInWizard({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => void handleClose()}
       size="xl"
       closeOnOverlayClick={false}
       closeOnEsc={busy === null}
@@ -290,6 +417,13 @@ export function CheckInWizard({
               ))}
             </HStack>
             <Divider />
+
+            {windowMessage !== null && (
+              <Alert status="warning" borderRadius="md" alignItems="flex-start">
+                <AlertIcon />
+                <AlertDescription fontSize="sm">{windowMessage}</AlertDescription>
+              </Alert>
+            )}
 
             {step === 0 && reservation !== null && (
               <Stack spacing={3}>
@@ -427,7 +561,7 @@ export function CheckInWizard({
                       )}
                       <Stack spacing={2}>
                         {rooms.map((room) => {
-                          const selected = roomId === room.id;
+                          const selected = selectedRoomId === room.id;
                           return (
                             <Box
                               key={room.id}
@@ -445,7 +579,7 @@ export function CheckInWizard({
                                       Hab. {room.number}
                                     </Text>
                                     <Text fontSize="xs" color="gray.500">
-                                      {room.roomType.name}
+                                      {reservation?.roomType.name}
                                       {room.floor !== null ? ` · piso ${room.floor}` : ''}
                                     </Text>
                                     <StatusBadge
@@ -476,13 +610,34 @@ export function CheckInWizard({
                                       Bloqueo hasta {formatDateTime(room.activeBlock.endsAt)}
                                     </Text>
                                   )}
+                                  {room.lease !== null && (
+                                    <Text
+                                      fontSize="xs"
+                                      color={
+                                        room.lease.ownerUserId === actor?.id
+                                          ? 'brand.600'
+                                          : 'warning.600'
+                                      }
+                                      mt={0.5}
+                                    >
+                                      {room.lease.ownerUserId === actor?.id
+                                        ? 'Selección temporal tuya'
+                                        : `En selección por ${room.lease.ownerDisplayName}`}
+                                      {' · '}vence {formatDateTime(room.lease.expiresAt)}
+                                    </Text>
+                                  )}
                                 </Box>
                                 <Button
                                   size="xs"
                                   variant={selected ? 'solid' : 'outline'}
                                   colorScheme={selected ? 'brand' : 'gray'}
-                                  isDisabled={!room.eligible}
-                                  onClick={() => setRoomId(room.id)}
+                                  isDisabled={
+                                    !room.eligible ||
+                                    roomBusyId !== null ||
+                                    (room.lease !== null && room.lease.ownerUserId !== actor?.id)
+                                  }
+                                  isLoading={roomBusyId === room.id}
+                                  onClick={() => void selectRoom(room)}
                                 >
                                   {selected ? 'Seleccionada' : 'Elegir'}
                                 </Button>
@@ -617,7 +772,12 @@ export function CheckInWizard({
           </Stack>
         </ModalBody>
         <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose} isDisabled={busy !== null}>
+          <Button
+            variant="ghost"
+            mr={3}
+            onClick={() => void handleClose()}
+            isDisabled={busy !== null}
+          >
             Cancelar
           </Button>
           <Button
@@ -633,7 +793,11 @@ export function CheckInWizard({
               colorScheme="brand"
               onClick={() => void handleContinue()}
               isLoading={busy === 'assign-room'}
-              isDisabled={step === 1 && (selectedRoom === null || !selectedRoom.eligible)}
+              isDisabled={
+                windowBlocked ||
+                roomBusyId !== null ||
+                (step === 1 && (selectedRoom === null || !selectedRoom.eligible))
+              }
             >
               Continuar
             </Button>
@@ -643,10 +807,7 @@ export function CheckInWizard({
               onClick={() => void handleConfirm()}
               isLoading={busy === 'check-in'}
               isDisabled={
-                partyBlocked ||
-                selectedRoom === null ||
-                !selectedRoom.eligible ||
-                assignedRoomId === null
+                windowBlocked || partyBlocked || selectedRoom === null || !selectedRoom.eligible
               }
             >
               Confirmar check-in

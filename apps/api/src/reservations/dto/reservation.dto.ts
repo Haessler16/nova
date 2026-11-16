@@ -155,11 +155,6 @@ export class ListReservationsQueryDto {
   search?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(16)
-  roomNumber?: string;
-
-  @IsOptional()
   @IsUUID()
   cursor?: string;
 

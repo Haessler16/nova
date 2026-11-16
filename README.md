@@ -67,7 +67,7 @@ La web es una app operativa client-side contra la API real. No guarda el tenant 
 | `/reports`              | Catálogo de reportes operativos/financieros, preview, PDF y CSV                                                             |
 | `/imports`              | Importación CSV de huéspedes con preview y confirmación                                                                     |
 | `/pilot`                | Onboarding y feedback de piloto                                                                                             |
-| `/inventory/rooms`      | Habitaciones, housekeeping, bloqueos, liberación e historial                                                                |
+| `/inventory/rooms`      | Room Rack con filtros/contadores, drawer contextual, housekeeping, bloqueos, incidencias y lease de selección                |
 | `/inventory/room-types` | Tipologías, capacidad y estado                                                                                              |
 | `/settings`             | Nombre, timezone, moneda y hora de corte del día operativo                                                                  |
 | `/audit`                | Eventos de auditoría append-only con metadatos                                                                              |

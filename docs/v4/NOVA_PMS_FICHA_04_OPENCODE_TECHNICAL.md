@@ -245,8 +245,8 @@ Reglas:
 - [x] Puede combinar fecha y estado. _(filtros combinables y conservados en query string)_
 - [x] Puede abrir la reserva correcta y continuar el check-in. _(acciones Abrir/Huésped/Check-in; wizard de 4 pasos)_
 - [x] La habitación destino se revalida en backend. _(`check-in-readiness` de solo lectura + revalidación transaccional en `POST /check-in`)_
-- [x] Pruebas de permisos, tenant, paginación, estados vacíos y errores. _(E2E aislado 15/15 suites, 130/130 tests)_
-- [x] Pruebas UI de interacción y navegación, sin mocks en producción. _(Playwright `front-office-checkin.spec.ts` 1/1 contra API y web reales)_
+- [x] Pruebas de permisos, tenant, paginación, estados vacíos y errores. _(E2E aislado 15/15 suites, 132/132 tests)_
+- [x] Pruebas UI de interacción y navegación, sin mocks en producción. _(Playwright `front-office-checkin.spec.ts` 2/2 contra API y web reales, incluida la ventana de check-in bloqueada)_
 
 ---
 

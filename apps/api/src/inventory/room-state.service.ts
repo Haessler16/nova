@@ -293,7 +293,10 @@ export class RoomStateService {
   ): Promise<void> {
     await transaction.room.update({
       where: { id: input.room.id },
-      data: { operationalState: input.desired },
+      data: {
+        operationalState: input.desired,
+        ...(input.actorUserId !== undefined ? { updatedByUserId: input.actorUserId } : {}),
+      },
       select: { id: true },
     });
 

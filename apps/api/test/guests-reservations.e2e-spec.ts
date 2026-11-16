@@ -203,9 +203,9 @@ describe('Guests and reservations (E2E)', () => {
         .query({ search: 'jose accion' })
         .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
         .expect(200);
-      expect(
-        withoutAccent.body.items.map((item: { id: string }) => item.id),
-      ).toContain(unassigned.body.id);
+      expect(withoutAccent.body.items.map((item: { id: string }) => item.id)).toContain(
+        unassigned.body.id,
+      );
 
       const withAccent = await request(app.getHttpServer())
         .get('/api/v1/reservations')
@@ -218,7 +218,7 @@ describe('Guests and reservations (E2E)', () => {
 
       const byRoomNumber = await request(app.getHttpServer())
         .get('/api/v1/reservations')
-        .query({ roomNumber: firstRoomNumber })
+        .query({ search: firstRoomNumber })
         .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
         .expect(200);
       expect(byRoomNumber.body.items.map((item: { id: string }) => item.id)).toContain(

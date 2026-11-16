@@ -190,8 +190,13 @@ describe('Front Office (E2E)', () => {
     expect(readiness.body.reservation.id).toBe(created.body.id);
     expect(readiness.body.currentRoomId).toBeNull();
     expect(readiness.body.currentRoomEligible).toBeNull();
-    expect(readiness.body.housekeepingPolicy.blockedStates).toEqual(['DIRTY', 'CLEANING']);
-    expect(readiness.body.housekeepingPolicy.inspectionPendingBlocksCheckIn).toBe(false);
+    expect(readiness.body.checkInWindow).toEqual({
+      localDate: today,
+      checkInDate: dayAfter,
+      checkOutDate: readinessOut,
+      allowed: false,
+      code: 'check_in_too_early',
+    });
 
     const byId = new Map(
       (readiness.body.rooms as Array<{ id: string; eligible: boolean; reasons: string[] }>).map(
@@ -206,6 +211,99 @@ describe('Front Office (E2E)', () => {
     expect(byId.get(blockedRoomId)?.reasons).toEqual(
       expect.arrayContaining(['ROOM_BLOCKED', 'ROOM_OUT_OF_SERVICE']),
     );
+  });
+
+  it('reports an open check-in window for a today arrival', async () => {
+    const readiness = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/reservations/${reservationId}/check-in-readiness`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+
+    expect(readiness.body.checkInWindow).toEqual({
+      localDate: today,
+      checkInDate: today,
+      checkOutDate: tomorrow,
+      allowed: true,
+      code: null,
+    });
+  });
+
+  it('shows the room selection lease to another session and releases it', async () => {
+    const acquired = await request(app.getHttpServer())
+      .post(`/api/v1/inventory/rooms/${roomAId}/assignment-leases`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .send({ reservationId })
+      .expect(201);
+
+    const readiness = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/reservations/${reservationId}/check-in-readiness`)
+      .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+    const room = readiness.body.rooms.find((item: { id: string }) => item.id === roomAId);
+    expect(room.lease.leaseId).toBe(acquired.body.leaseId);
+    expect(room.lease.ownerUserId).toBe(RECEPTION);
+    expect(room.lease.reservationId).toBe(reservationId);
+
+    const conflict = await request(app.getHttpServer())
+      .post(`/api/v1/inventory/rooms/${roomAId}/assignment-leases`)
+      .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+      .send({ reservationId })
+      .expect(409);
+    expect(conflict.body.code).toBe('room_lease_held');
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/inventory/rooms/${roomAId}/assignment-leases/${acquired.body.leaseId}`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(204);
+
+    const released = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/reservations/${reservationId}/check-in-readiness`)
+      .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+    const releasedRoom = released.body.rooms.find((item: { id: string }) => item.id === roomAId);
+    expect(releasedRoom.lease).toBeNull();
+  });
+
+  it('reports an elapsed window and keeps the transactional check-in rejection', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/reservations')
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .send({
+        checkInDate: today,
+        checkOutDate: tomorrow,
+        adults: 1,
+        guestId: GUEST_ANA,
+        roomTypeId: ROOM_TYPE_STD,
+        source: 'front-office-elapsed-window',
+      })
+      .expect(201);
+
+    await prisma.reservation.update({
+      where: { id: created.body.id },
+      data: {
+        checkInDate: new Date(instant(past)),
+        checkOutDate: new Date(instant(today)),
+      },
+    });
+
+    const readiness = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/reservations/${created.body.id}/check-in-readiness`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+
+    expect(readiness.body.checkInWindow).toEqual({
+      localDate: today,
+      checkInDate: past,
+      checkOutDate: today,
+      allowed: false,
+      code: 'check_in_window_elapsed',
+    });
+
+    const rejected = await request(app.getHttpServer())
+      .post(`/api/v1/front-office/reservations/${created.body.id}/check-in`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(409);
+    expect(rejected.body.code).toBe('check_in_window_elapsed');
   });
 
   it('rejects check-in into a room that is not clean', async () => {
@@ -252,7 +350,9 @@ describe('Front Office (E2E)', () => {
       .expect(403);
 
     const missing = await request(app.getHttpServer())
-      .get('/api/v1/front-office/reservations/00000000-0000-4000-8000-0000000000ff/check-in-readiness')
+      .get(
+        '/api/v1/front-office/reservations/00000000-0000-4000-8000-0000000000ff/check-in-readiness',
+      )
       .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
       .expect(404);
     expect(missing.body.code).toBe('reservation_not_found');

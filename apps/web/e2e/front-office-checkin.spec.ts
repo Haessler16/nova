@@ -69,6 +69,60 @@ function uniqueSuffix(): string {
  * conservado en query string) y check-in guiado con habitación revalidada por
  * el backend. Requiere API + web en ejecución y el seed sintético aplicado.
  */
+test('bloquea el avance del check-in fuera de la ventana', async ({ page }) => {
+  const authMode = await authenticate(page);
+  const headers = await requestHeaders(page, authMode);
+  const suffix = uniqueSuffix();
+
+  const overviewResponse = await page.request.get(`${API_URL}/api/v1/front-office/overview`, {
+    headers,
+  });
+  expect(overviewResponse.ok()).toBeTruthy();
+  const overview = (await overviewResponse.json()) as { localDate: string };
+  const checkInDate = nextDay(overview.localDate);
+  const checkOutDate = nextDay(checkInDate);
+
+  const guestResponse = await page.request.post(`${API_URL}/api/v1/guests`, {
+    headers,
+    data: { fullName: `Ventana E2E ${suffix}` },
+  });
+  expect(guestResponse.status(), await guestResponse.text()).toBe(201);
+  const guest = (await guestResponse.json()) as { id: string };
+
+  const reservationResponse = await page.request.post(`${API_URL}/api/v1/reservations`, {
+    headers,
+    data: {
+      checkInDate,
+      checkOutDate,
+      adults: 1,
+      children: 0,
+      guestId: guest.id,
+      roomTypeId: ROOM_TYPE_STD_ID,
+      source: 'playwright-front-office-window',
+    },
+  });
+  expect(reservationResponse.status(), await reservationResponse.text()).toBe(201);
+  const reservation = (await reservationResponse.json()) as ReservationResponse;
+
+  try {
+    const query = `ventana e2e ${suffix.toLowerCase()}`;
+    await page.goto(`/front-office?q=${encodeURIComponent(query)}`);
+
+    const row = page.locator('tr', { hasText: reservation.code });
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.getByRole('button', { name: 'Check-in' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText(/La ventana de check-in abre el/)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Continuar' })).toBeDisabled();
+  } finally {
+    await page.request.post(`${API_URL}/api/v1/reservations/${reservation.id}/cancel`, {
+      headers,
+      data: { reason: 'Playwright window cleanup' },
+    });
+  }
+});
+
 test('busca por nombre sin acentos y completa el check-in guiado', async ({ page }) => {
   const authMode = await authenticate(page);
   const headers = await requestHeaders(page, authMode);

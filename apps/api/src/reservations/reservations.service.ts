@@ -14,6 +14,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { requirePropertyContext, RoomStateService } from '../inventory/room-state.service';
+import { RoomAssignmentLeasesService } from '../inventory/room-assignment-leases.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AssignReservationRoomDto,
@@ -121,6 +122,7 @@ export class ReservationsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly roomState: RoomStateService,
+    private readonly leases: RoomAssignmentLeasesService,
   ) {}
 
   async list(
@@ -137,9 +139,6 @@ export class ReservationsService {
       ...(query.guestId !== undefined ? { guestId: query.guestId } : {}),
       ...(query.roomTypeId !== undefined ? { roomTypeId: query.roomTypeId } : {}),
       ...(query.roomId !== undefined ? { roomId: query.roomId } : {}),
-      ...(query.roomNumber !== undefined && query.roomNumber.trim().length > 0
-        ? { room: { is: { number: { contains: query.roomNumber.trim(), mode: 'insensitive' } } } }
-        : {}),
     };
 
     if (query.fromDate !== undefined || query.toDate !== undefined) {
@@ -533,6 +532,17 @@ export class ReservationsService {
     dto: AssignReservationRoomDto,
   ): Promise<ReservationResponse> {
     const propertyId = requirePropertyContext(context);
+    const lease = (await this.leases.getMany(context, [dto.roomId])).get(dto.roomId);
+    if (lease !== undefined && lease.ownerUserId !== context.actor.id) {
+      throw new ConflictException({
+        code: 'room_lease_held',
+        message: `The room is being selected by ${lease.ownerDisplayName}.`,
+        details: {
+          ownerDisplayName: lease.ownerDisplayName,
+          expiresAt: lease.expiresAt,
+        },
+      });
+    }
 
     try {
       return await this.prisma.$transaction(async (transaction) => {
@@ -757,22 +767,18 @@ export class ReservationsService {
     search: string,
   ): Promise<string[]> {
     // `!` is the LIKE escape character so user input cannot turn into a
-    // wildcard. The query returns ids only; the caller re-applies every other
-    // filter and the tenant scope through Prisma.
+    // wildcard. Only guest names need folding: reservation codes and room
+    // numbers are ASCII and stay in the Prisma `contains` OR. The query returns
+    // ids only; the caller re-applies every other filter and the tenant scope.
     const escaped = search.toLowerCase().replace(/[!%_]/g, (value) => `!${value}`);
     const pattern = `%${escaped}%`;
     const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
       SELECT r."id"
       FROM "Reservation" r
       JOIN "Guest" g ON g."id" = r."guestId"
-      LEFT JOIN "Room" rm ON rm."id" = r."roomId"
       WHERE r."organizationId" = ${organizationId}::uuid
         AND r."propertyId" = ${propertyId}::uuid
-        AND (
-          public.unaccent(lower(g."fullName")) LIKE public.unaccent(${pattern}::text) ESCAPE '!'
-          OR public.unaccent(lower(r."code")) LIKE public.unaccent(${pattern}::text) ESCAPE '!'
-          OR public.unaccent(lower(coalesce(rm."number", ''))) LIKE public.unaccent(${pattern}::text) ESCAPE '!'
-        )
+        AND public.unaccent(lower(g."fullName")) LIKE public.unaccent(${pattern}::text) ESCAPE '!'
       ORDER BY r."checkInDate" ASC, r."id" ASC
       LIMIT 200
     `;

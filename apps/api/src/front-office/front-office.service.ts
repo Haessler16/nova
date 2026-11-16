@@ -13,6 +13,10 @@ import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { addCalendarDays, propertyDayStart } from '../common/time/property-day';
 import { requirePropertyContext, RoomStateService } from '../inventory/room-state.service';
+import {
+  RoomAssignmentLease,
+  RoomAssignmentLeasesService,
+} from '../inventory/room-assignment-leases.service';
 import { computeOperationalDay } from '../operational-day/operational-day';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -39,7 +43,7 @@ type Transaction = Prisma.TransactionClient;
  * check-in is a property policy decision, so the default is reversible and
  * documented as an open question. DIRTY/CLEANING always block.
  */
-export const CHECK_IN_BLOCKED_HOUSEKEEPING_STATES: HousekeepingState[] = [
+const CHECK_IN_BLOCKED_HOUSEKEEPING_STATES: HousekeepingState[] = [
   HousekeepingState.DIRTY,
   HousekeepingState.CLEANING,
 ];
@@ -213,24 +217,56 @@ export interface CheckInRoomOption {
   number: string;
   floor: string | null;
   building: string | null;
-  roomType: { id: string; name: string; code: string };
   housekeepingState: HousekeepingState;
   operationalState: RoomOperationalState;
   occupancy: 'VACANT' | 'OCCUPIED';
   activeBlock: { id: string; type: string; endsAt: Date } | null;
+  lease: RoomAssignmentLease | null;
   eligible: boolean;
   reasons: string[];
 }
 
+export interface CheckInWindow {
+  localDate: string;
+  checkInDate: string;
+  checkOutDate: string;
+  allowed: boolean;
+  code: 'check_in_too_early' | 'check_in_window_elapsed' | null;
+}
+
 export interface CheckInReadiness {
   reservation: ReservationSummaryResponse;
-  housekeepingPolicy: {
-    blockedStates: HousekeepingState[];
-    inspectionPendingBlocksCheckIn: boolean;
-  };
+  checkInWindow: CheckInWindow;
   currentRoomId: string | null;
   currentRoomEligible: boolean | null;
   rooms: CheckInRoomOption[];
+}
+
+/**
+ * Single source of truth for the check-in window: the property local calendar
+ * date must be within `[checkInDate, checkOutDate)`. The operational day only
+ * drives lists and the room rack (ADR-027).
+ */
+function buildCheckInWindow(
+  localDate: string,
+  checkInDate: Date,
+  checkOutDate: Date,
+): CheckInWindow {
+  const checkIn = formatCalendarDate(checkInDate);
+  const checkOut = formatCalendarDate(checkOutDate);
+  const code =
+    localDate < checkIn
+      ? 'check_in_too_early'
+      : localDate >= checkOut
+        ? 'check_in_window_elapsed'
+        : null;
+  return {
+    localDate,
+    checkInDate: checkIn,
+    checkOutDate: checkOut,
+    allowed: code === null,
+    code,
+  };
 }
 
 export interface IncidentResponse {
@@ -257,6 +293,7 @@ export class FrontOfficeService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly roomState: RoomStateService,
+    private readonly leases: RoomAssignmentLeasesService,
   ) {}
 
   async overview(
@@ -520,11 +557,14 @@ export class FrontOfficeService {
    * backend rules used by `checkIn` so the operator sees why a room is not
    * selectable, but the confirmation transaction remains the authority.
    */
-  async checkInReadiness(
-    context: TenantContext,
-    reservationId: string,
-  ): Promise<CheckInReadiness> {
+  async checkInReadiness(context: TenantContext, reservationId: string): Promise<CheckInReadiness> {
     const propertyId = requirePropertyContext(context);
+    const property = await this.loadProperty(context.organizationId, propertyId);
+    const operationalDay = computeOperationalDay(
+      new Date(),
+      property.timezone,
+      property.operationalDayStart,
+    );
     await this.roomState.reconcileProperty({
       organizationId: context.organizationId,
       propertyId,
@@ -561,22 +601,14 @@ export class FrontOfficeService {
         building: true,
         housekeepingState: true,
         operationalState: true,
-        roomType: { select: { id: true, name: true, code: true } },
       },
     });
 
-    if (rooms.length === 0) {
-      return {
-        reservation: mapReservationSummary(reservation),
-        housekeepingPolicy: {
-          blockedStates: CHECK_IN_BLOCKED_HOUSEKEEPING_STATES,
-          inspectionPendingBlocksCheckIn: false,
-        },
-        currentRoomId: reservation.roomId,
-        currentRoomEligible: reservation.roomId === null ? null : false,
-        rooms: [],
-      };
-    }
+    const checkInWindow = buildCheckInWindow(
+      operationalDay.localDate,
+      reservation.checkInDate,
+      reservation.checkOutDate,
+    );
 
     const roomIds = rooms.map((room) => room.id);
     const [stays, blocks, overlapping] = await Promise.all([
@@ -626,6 +658,8 @@ export class FrontOfficeService {
       }
     }
 
+    const leases = await this.leases.getMany(context, roomIds);
+
     const options: CheckInRoomOption[] = rooms.map((room) => {
       const reasons: string[] = [];
       if (room.operationalState !== RoomOperationalState.AVAILABLE) {
@@ -649,12 +683,12 @@ export class FrontOfficeService {
         number: room.number,
         floor: room.floor,
         building: room.building,
-        roomType: room.roomType,
         housekeepingState: room.housekeepingState,
         operationalState: room.operationalState,
         occupancy: occupiedRooms.has(room.id) ? 'OCCUPIED' : 'VACANT',
         activeBlock:
           block === undefined ? null : { id: block.id, type: block.type, endsAt: block.endsAt },
+        lease: leases.get(room.id) ?? null,
         eligible: reasons.length === 0,
         reasons,
       };
@@ -664,10 +698,7 @@ export class FrontOfficeService {
 
     return {
       reservation: mapReservationSummary(reservation),
-      housekeepingPolicy: {
-        blockedStates: CHECK_IN_BLOCKED_HOUSEKEEPING_STATES,
-        inspectionPendingBlocksCheckIn: false,
-      },
+      checkInWindow,
       currentRoomId: reservation.roomId,
       currentRoomEligible: reservation.roomId === null ? null : current?.eligible === true,
       rooms: options,
@@ -717,22 +748,31 @@ export class FrontOfficeService {
           });
         }
 
-        const checkInDate = formatCalendarDate(reservation.checkInDate);
-        const checkOutDate = formatCalendarDate(reservation.checkOutDate);
         // Check-in follows the local calendar date, not the operational day:
         // an early-morning arrival is still arriving on that calendar date.
-        if (operationalDay.localDate < checkInDate) {
+        const checkInWindow = buildCheckInWindow(
+          operationalDay.localDate,
+          reservation.checkInDate,
+          reservation.checkOutDate,
+        );
+        if (checkInWindow.code === 'check_in_too_early') {
           throw new ConflictException({
-            code: 'check_in_too_early',
+            code: checkInWindow.code,
             message: 'The reservation cannot be checked in before its arrival date.',
-            details: { checkInDate, localDate: operationalDay.localDate },
+            details: {
+              checkInDate: checkInWindow.checkInDate,
+              localDate: checkInWindow.localDate,
+            },
           });
         }
-        if (operationalDay.localDate >= checkOutDate) {
+        if (checkInWindow.code === 'check_in_window_elapsed') {
           throw new ConflictException({
-            code: 'check_in_window_elapsed',
+            code: checkInWindow.code,
             message: 'The reservation check-in window has elapsed.',
-            details: { checkOutDate, localDate: operationalDay.localDate },
+            details: {
+              checkOutDate: checkInWindow.checkOutDate,
+              localDate: checkInWindow.localDate,
+            },
           });
         }
 

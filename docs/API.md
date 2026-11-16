@@ -178,10 +178,17 @@ Filtros: `action`, `entityType`, `entityId`, `actorUserId`, `fromDate`, `toDate`
 | POST   | `/api/v1/inventory/rooms/:id/blocks`                   | auth + tenant | `inventory.manage`    | 201    |
 | POST   | `/api/v1/inventory/rooms/:id/blocks/:blockId/release`  | auth + tenant | `inventory.manage`    | 200    |
 | GET    | `/api/v1/inventory/rooms/:id/history`                  | auth + tenant | `inventory.read`      | 200    |
+| POST   | `/api/v1/inventory/rooms/:id/assignment-leases`        | auth + tenant | `front_office.manage` | 201    |
+| POST   | `/api/v1/inventory/rooms/:id/assignment-leases/:leaseId/renew` | auth + tenant | `front_office.manage` | 200 |
+| DELETE | `/api/v1/inventory/rooms/:id/assignment-leases/:leaseId` | auth + tenant | `front_office.manage` | 204   |
 
 Notas:
 
-- `GET /inventory/rooms` acepta `roomTypeId`, `status`, `housekeepingState`, `operationalState`, `search`, `cursor`, `limit`.
+- `GET /inventory/rooms` acepta `roomTypeId`, `status`, `housekeepingState`, `operationalState`, `occupancy` (`VACANT`/`OCCUPIED`), `floor`, `building`, `minCapacity`, `search`, `cursor` y `limit`. Los filtros se combinan con AND y se aplican en el servidor antes de paginar.
+- La respuesta incluye `summary` (total, libres, ocupadas, contadores de housekeeping y fuera de orden/servicio) y `facets` (pisos y edificios presentes en la propiedad). Cada habitación agrega `occupancy` derivada de una estancia `IN_HOUSE`, `currentStay`, `nextArrival`, `activeBlock`, `updatedBy` y `lease`. La ocupación nunca se deriva de housekeeping.
+- El lease es efímero y solo coordina la selección en UI: `POST` responde `201` con `{ leaseId, roomId, ownerUserId, ownerDisplayName, reservationId, createdAt, expiresAt }`; `renew` y `DELETE` exigen ser el dueño y el `leaseId` vigente. TTL por defecto 120 s (`ROOM_ASSIGNMENT_LEASE_TTL_SECONDS`, 1–600). Un lease ausente o expirado no bloquea una operación confirmada; PostgreSQL sigue siendo la autoridad de la asignación.
+- `POST /reservations/:id/room-assignment` rechaza con `409 room_lease_held` si otro actor mantiene un lease vigente sobre la habitación. La misma validación es advisory: el lease puede expirar entre la lectura y el commit, y la constraint de solapamiento decide.
+- `GET /front-office/reservations/:id/check-in-readiness` incluye `lease` en cada habitación para que el wizard muestre quién la está seleccionando.
 - Crear/actualizar room type o room y crear/liberar blocks escribe `AuditEvent` en la misma transacción.
 - Los cambios de estado de habitación (operativo y housekeeping) escriben `RoomStatusHistory` (append-only) y auditoría.
 - Los bloqueos activos de una misma habitación no pueden solaparse: `409 room_block_overlap`; la garantía final es una exclusion constraint PostgreSQL.
@@ -238,8 +245,8 @@ Notas persistentes del huésped:
 Listado y búsqueda operativa:
 
 - `GET /reservations` devuelve `{ items, nextCursor }`. `limit` va de 1 a 100 (default 50) y `cursor` es el `id` de la última reserva de la página anterior; el orden es `checkInDate ASC, id ASC`.
-- Filtros: `search` (código de reserva, nombre del huésped principal o número de UH; insensible a mayúsculas y acentos), `roomNumber` (UH, coincidencia parcial insensible a mayúsculas), `status`, `guestId`, `roomTypeId`, `roomId`, `fromDate`/`toDate` (solapamiento con `[checkInDate, checkOutDate)`).
-- `search` resuelve acentos con la extensión PostgreSQL `unaccent` (por ejemplo `jose` encuentra `José`) y combina esos IDs con el mismo `OR` y el scoping de organización/propiedad; los demás filtros se aplican en la misma consulta.
+- Filtros: `search` (código de reserva, nombre del huésped principal o número de UH; insensible a mayúsculas, con nombres sin acentos), `status`, `guestId`, `roomTypeId`, `roomId`, `fromDate`/`toDate` (solapamiento con `[checkInDate, checkOutDate)`).
+- `search` resuelve acentos en el nombre del huésped con la extensión PostgreSQL `unaccent` (por ejemplo `jose` encuentra `José`) y combina esos IDs con el mismo `OR` y el scoping de organización/propiedad; códigos y UH se comparan por `contains` y los demás filtros se aplican en la misma consulta.
 
 Fechas y ocupación:
 
@@ -308,7 +315,8 @@ Errores específicos: `reservation_not_found`, `reservation_party_not_editable`,
 - Para el día operativo actual, las listas mantienen semántica de trabajo pendiente: llegadas `CONFIRMED`, estancias `IN_HOUSE` y salidas cuya fecha de check-out ya llegó.
 - Para una fecha anterior al día operativo, `isHistorical` es `true` y las listas reconstruyen lo ocurrido: llegadas con `checkInDate` ese día (todos los estados salvo `CANCELLED`), estancias activas en algún momento del día (según `checkedInAt`/`checkedOutAt` en la timezone de la propiedad) y check-outs registrados ese día. `roomRack` e incidencias siguen reflejando el estado actual; la UI histórica los oculta y no permite mutaciones.
 - La vista histórica no reconstruye la habitación ocupada en ese día si hubo cambios de habitación: muestra la última asignada.
-- `GET /reservations/:id/check-in-readiness` es de solo lectura y alimenta el flujo guiado. Devuelve `reservation`, `housekeepingPolicy` (`blockedStates`, `inspectionPendingBlocksCheckIn`), `currentRoomId`, `currentRoomEligible` y `rooms`: unidades `ACTIVE` del room type de la reserva con `housekeepingState`, `operationalState`, `occupancy`, `activeBlock`, `eligible` y `reasons`. Razones posibles: `ROOM_OUT_OF_SERVICE`, `ROOM_BLOCKED`, `ROOM_OCCUPIED`, `ROOM_NOT_AVAILABLE`, `HOUSEKEEPING_NOT_READY`. No reserva, no bloquea la habitación y no sustituye la validación transaccional del check-in.
+- `GET /reservations/:id/check-in-readiness` es de solo lectura y alimenta el flujo guiado. Devuelve `reservation`, `checkInWindow`, `currentRoomId`, `currentRoomEligible` y `rooms`: unidades `ACTIVE` del room type de la reserva con `housekeepingState`, `operationalState`, `occupancy`, `activeBlock`, `eligible` y `reasons`. Razones posibles: `ROOM_OUT_OF_SERVICE`, `ROOM_BLOCKED`, `ROOM_OCCUPIED`, `ROOM_NOT_AVAILABLE`, `HOUSEKEEPING_NOT_READY`. No reserva, no bloquea la habitación y no sustituye la validación transaccional del check-in.
+- `checkInWindow` expone la misma regla que aplica el check-in: `localDate` (fecha calendario de la propiedad), `checkInDate`, `checkOutDate`, `allowed` y `code` (`check_in_too_early`, `check_in_window_elapsed` o `null`). La ventana es `[checkInDate, checkOutDate)`; el día operativo no la altera. El wizard deshabilita el avance cuando `allowed` es `false`, pero el `POST /check-in` vuelve a validarla dentro de la transacción.
 - Política de housekeeping del check-in: `DIRTY` y `CLEANING` bloquean; `CLEAN` e `INSPECTED` permiten; `INSPECTION_PENDING` se admite por defecto hasta que el hotel piloto defina lo contrario (decisión reversible, ver `DECISIONS.md`).
 - Check-in: solo `CONFIRMED`, con habitación asignada, `ACTIVE`/`AVAILABLE`, sin bloqueo activo y sin otra estancia in-house. Se habilita desde la fecha local de llegada y hasta el check-out. Idempotente: si la reserva ya está `CHECKED_IN`, devuelve la misma estancia. Si la fiesta de la reserva tiene un bloqueo legal (principal menor/incapaz, menor sin responsable o supervisión, autorización faltante) responde `409 reservation_party_check_in_blocked`; una FNRH incompleta o un conteo distinto no bloquean el check-in hotelero.
 - Check-out: idempotente, marca `Stay.CHECKED_OUT`, la reserva `CHECKED_OUT` y libera la habitación. Acepta `notes` opcionales (≤ 2000).
@@ -468,6 +476,12 @@ Contexto requerido: `X-Organization-Id` (sin `X-Property-Id`).
 | 404  | `room_type_not_found`                       | Room type inexistente en la propiedad                     |
 | 404  | `room_not_found`                            | Habitación inexistente en la propiedad                    |
 | 404  | `room_block_not_found`                      | Bloqueo inexistente en la habitación                      |
+| 404  | `room_lease_not_found`                      | Lease expirado o inexistente                              |
+| 409  | `room_lease_held`                           | Otro actor mantiene el lease de la habitación             |
+| 409  | `room_lease_conflict`                       | Otro actor ganó la selección concurrente                  |
+| 409  | `room_lease_changed`                        | El lease cambió en otra sesión                            |
+| 403  | `room_lease_owner_required`                 | Renovar/liberar un lease de otra sesión                   |
+| 503  | `room_lease_unavailable`                    | Redis no disponible para coordinar la selección           |
 | 409  | `property_code_conflict`                    | Código de propiedad duplicado                             |
 | 409  | `room_type_code_conflict`                   | Código de room type duplicado                             |
 | 409  | `room_number_conflict`                      | Número de habitación duplicado                            |

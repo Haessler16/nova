@@ -122,9 +122,67 @@ export interface Room {
   housekeepingState: HousekeepingState;
   operationalState: RoomOperationalState;
   status: RecordStatus;
-  roomType: { id: string; name: string; code: string };
+  roomType: {
+    id: string;
+    name: string;
+    code: string;
+    capacityAdults: number;
+    capacityChildren: number;
+  };
+  updatedBy: { id: string; name: string } | null;
+  occupancy: 'VACANT' | 'OCCUPIED';
+  currentStay: {
+    id: string;
+    reservationId: string;
+    code: string;
+    guestName: string;
+    checkInDate: string;
+    checkOutDate: string;
+  } | null;
+  nextArrival: {
+    reservationId: string;
+    code: string;
+    guestName: string;
+    checkInDate: string;
+  } | null;
+  activeBlock: { id: string; type: RoomBlockType; endsAt: string } | null;
+  lease: RoomAssignmentLease | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RoomAssignmentLease {
+  leaseId: string;
+  roomId: string;
+  ownerUserId: string;
+  ownerDisplayName: string;
+  reservationId: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface RoomListSummary {
+  totalRooms: number;
+  vacant: number;
+  occupied: number;
+  dirty: number;
+  cleaning: number;
+  clean: number;
+  inspected: number;
+  outOfOrder: number;
+  outOfService: number;
+}
+
+export interface RoomListFacets {
+  floors: string[];
+  buildings: string[];
+}
+
+export interface RoomListResponse {
+  items: Room[];
+  nextCursor: string | null;
+  summary: RoomListSummary;
+  facets: RoomListFacets;
 }
 
 export interface RoomBlock {
@@ -149,6 +207,7 @@ export interface RoomHistoryEntry {
   toState: string;
   reason: string | null;
   actorUserId: string | null;
+  actorName: string | null;
   roomBlockId: string | null;
   correlationId: string | null;
   occurredAt: string;
@@ -348,13 +407,21 @@ export interface CheckInRoomOption {
   number: string;
   floor: string | null;
   building: string | null;
-  roomType: { id: string; name: string; code: string };
   housekeepingState: HousekeepingState;
   operationalState: RoomOperationalState;
   occupancy: 'VACANT' | 'OCCUPIED';
   activeBlock: { id: string; type: string; endsAt: string } | null;
+  lease: RoomAssignmentLease | null;
   eligible: boolean;
   reasons: CheckInRoomBlockReason[];
+}
+
+export interface CheckInWindow {
+  localDate: string;
+  checkInDate: string;
+  checkOutDate: string;
+  allowed: boolean;
+  code: 'check_in_too_early' | 'check_in_window_elapsed' | null;
 }
 
 export interface CheckInReadiness {
@@ -373,10 +440,7 @@ export interface CheckInReadiness {
     roomType: { id: string; name: string; code: string };
     room: { id: string; number: string; floor: string | null; building: string | null } | null;
   };
-  housekeepingPolicy: {
-    blockedStates: HousekeepingState[];
-    inspectionPendingBlocksCheckIn: boolean;
-  };
+  checkInWindow: CheckInWindow;
   currentRoomId: string | null;
   currentRoomEligible: boolean | null;
   rooms: CheckInRoomOption[];

@@ -95,7 +95,6 @@ const TAB_INDEX: Record<string, number> = {
 
 interface SearchFilters {
   q: string;
-  roomNumber: string;
   fromDate: string;
   toDate: string;
   status: ReservationStatus | '';
@@ -103,7 +102,6 @@ interface SearchFilters {
 
 const EMPTY_SEARCH_FILTERS: SearchFilters = {
   q: '',
-  roomNumber: '',
   fromDate: '',
   toDate: '',
   status: '',
@@ -306,7 +304,6 @@ function FrontOfficeContent() {
     try {
       const params = new URLSearchParams({ limit: '25' });
       if (filters.q.trim() !== '') params.set('search', filters.q.trim());
-      if (filters.roomNumber.trim() !== '') params.set('roomNumber', filters.roomNumber.trim());
       if (filters.fromDate !== '') params.set('fromDate', filters.fromDate);
       if (filters.toDate !== '') params.set('toDate', filters.toDate);
       if (filters.status !== '') params.set('status', filters.status);
@@ -330,7 +327,6 @@ function FrontOfficeContent() {
     const params = new URLSearchParams(window.location.search);
     const mapping: Array<[keyof SearchFilters, string]> = [
       ['q', 'q'],
-      ['roomNumber', 'roomNumber'],
       ['fromDate', 'fromDate'],
       ['toDate', 'toDate'],
       ['status', 'status'],
@@ -372,10 +368,7 @@ function FrontOfficeContent() {
     syncSearchQuery(EMPTY_SEARCH_FILTERS);
   }
 
-  function updateSearchInput<K extends keyof SearchFilters>(
-    key: K,
-    value: SearchFilters[K],
-  ): void {
+  function updateSearchInput<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]): void {
     setSearchInputs((current) => ({ ...current, [key]: value }));
   }
 
@@ -395,7 +388,6 @@ function FrontOfficeContent() {
     const status = params.get('status');
     const initial: SearchFilters = {
       q: params.get('q') ?? '',
-      roomNumber: params.get('roomNumber') ?? '',
       fromDate: params.get('fromDate') ?? '',
       toDate: params.get('toDate') ?? '',
       status:
@@ -640,19 +632,12 @@ function FrontOfficeContent() {
                 </Button>
               )}
             </HStack>
-            <SimpleGrid columns={{ base: 1, md: 2, xl: 5 }} spacing={3}>
+            <SimpleGrid columns={{ base: 1, md: 2, xl: 4 }} spacing={3}>
               <Field label="Huésped, reserva o UH">
                 <Input
                   value={searchInputs.q}
                   placeholder="Ej.: José, DEMO-1104, 201"
                   onChange={(event) => updateSearchInput('q', event.target.value)}
-                />
-              </Field>
-              <Field label="UH" helper="Opcional">
-                <Input
-                  value={searchInputs.roomNumber}
-                  placeholder="Ej.: 201"
-                  onChange={(event) => updateSearchInput('roomNumber', event.target.value)}
                 />
               </Field>
               <Field label="Desde">
@@ -718,7 +703,9 @@ function FrontOfficeContent() {
                       <Th>Salida</Th>
                       <Th>Estado</Th>
                       <Th>Tipo</Th>
-                      <Th />
+                      <Th position="sticky" right={0} bg="white" zIndex={1}>
+                        Acciones
+                      </Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -738,7 +725,14 @@ function FrontOfficeContent() {
                           />
                         </Td>
                         <Td>{reservation.roomType.name}</Td>
-                        <Td>
+                        <Td
+                          position="sticky"
+                          right={0}
+                          bg="white"
+                          zIndex={1}
+                          borderLeftWidth="1px"
+                          borderLeftColor="gray.100"
+                        >
                           <HStack spacing={1} justify="flex-end" wrap="wrap">
                             <Button
                               as={NextLink}

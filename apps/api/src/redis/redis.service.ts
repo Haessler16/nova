@@ -63,6 +63,50 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /** Read one ephemeral coordination value. Returns null when unavailable. */
+  async get(key: string): Promise<string | null> {
+    try {
+      await this.ensureConnected();
+      return await this.withTimeout(this.client.get(key));
+    } catch (error) {
+      this.logger.warn(
+        `Redis get failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+      return null;
+    }
+  }
+
+  /** Read several keys in one round trip; missing keys stay null. */
+  async getMany(keys: string[]): Promise<Array<string | null>> {
+    if (keys.length === 0) {
+      return [];
+    }
+    try {
+      await this.ensureConnected();
+      return await this.withTimeout(this.client.mget(...keys));
+    } catch (error) {
+      this.logger.warn(
+        `Redis mget failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+      return keys.map(() => null);
+    }
+  }
+
+  /** Atomic SET NX with a millisecond TTL, used for ephemeral leases. */
+  async setIfAbsent(key: string, value: string, ttlMs: number): Promise<boolean> {
+    await this.ensureConnected();
+    const result = await this.withTimeout(
+      this.client.set(key, value, 'PX', ttlMs, 'NX'),
+    );
+    return result === 'OK';
+  }
+
+  /** Atomic compare/refresh or compare/delete used by short-lived leases. */
+  async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    await this.ensureConnected();
+    return this.withTimeout(this.client.eval(script, keys.length, ...keys, ...args));
+  }
+
   async onModuleDestroy(): Promise<void> {
     try {
       if (this.client.status !== 'end') {
@@ -73,10 +117,14 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  private async ping(): Promise<string> {
+  private async ensureConnected(): Promise<void> {
     if (this.client.status === 'wait' || this.client.status === 'end') {
       await this.client.connect();
     }
+  }
+
+  private async ping(): Promise<string> {
+    await this.ensureConnected();
     return this.client.ping();
   }
 

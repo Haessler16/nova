@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -31,7 +32,9 @@ import {
   ReleaseRoomBlockDto,
 } from './dto/room-block.dto';
 import { CreateRoomDto, ListRoomsQueryDto, UpdateRoomDto } from './dto/room.dto';
+import { CreateRoomAssignmentLeaseDto } from './dto/room-assignment-lease.dto';
 import { CreateRoomTypeDto, ListRoomTypesQueryDto, UpdateRoomTypeDto } from './dto/room-type.dto';
+import { RoomAssignmentLeasesService } from './room-assignment-leases.service';
 import { RoomBlocksService } from './room-blocks.service';
 import { RoomTypesService } from './room-types.service';
 import { RoomsService } from './rooms.service';
@@ -47,6 +50,7 @@ export class InventoryController {
     private readonly roomTypes: RoomTypesService,
     private readonly rooms: RoomsService,
     private readonly blocks: RoomBlocksService,
+    private readonly leases: RoomAssignmentLeasesService,
   ) {}
 
   @Get('room-types')
@@ -113,6 +117,38 @@ export class InventoryController {
     @Body() dto: HousekeepingTransitionDto,
   ) {
     return this.rooms.transitionHousekeeping(tenant, id, dto);
+  }
+
+  @Post('rooms/:id/assignment-leases')
+  @RequirePermissions(PERMISSIONS.FRONT_OFFICE_MANAGE)
+  acquireAssignmentLease(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CreateRoomAssignmentLeaseDto,
+  ) {
+    return this.leases.acquire(tenant, id, dto.reservationId);
+  }
+
+  @Post('rooms/:id/assignment-leases/:leaseId/renew')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FRONT_OFFICE_MANAGE)
+  renewAssignmentLease(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('leaseId', new ParseUUIDPipe()) leaseId: string,
+  ) {
+    return this.leases.renew(tenant, id, leaseId);
+  }
+
+  @Delete('rooms/:id/assignment-leases/:leaseId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions(PERMISSIONS.FRONT_OFFICE_MANAGE)
+  releaseAssignmentLease(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('leaseId', new ParseUUIDPipe()) leaseId: string,
+  ) {
+    return this.leases.release(tenant, id, leaseId);
   }
 
   @Get('rooms/:id/blocks')

@@ -118,9 +118,12 @@
 - housekeepingState (`DIRTY`, `CLEANING`, `CLEAN`, `INSPECTED`)
 - operationalState (`AVAILABLE`, `OUT_OF_ORDER`, `OUT_OF_SERVICE`)
 - status
+- updatedByUserId nullable (último actor que modificó la habitación o su estado operativo)
 - createdAt / updatedAt
 
 `housekeepingState` y `operationalState` son dimensiones separadas: limpieza vs. disponibilidad operativa.
+
+`updatedByUserId` es una FK compuesta a `User (organizationId, id)` con índice `Room_updatedByUserId_idx`; se actualiza en creación, edición, transiciones de housekeeping y reconciliación operativa. Los leases de selección no se persisten en PostgreSQL: viven solo en Redis con TTL y nunca sustituyen las constraints de asignación.
 
 ### RoomBlock
 
@@ -550,9 +553,9 @@ Aplicado en `prisma/migrations/20261115130000_phase11_notes_instructions`, `2026
 
 Aplicado en `prisma/migrations/20261116120000_phase12_search_unaccent/migration.sql`.
 
-- `CREATE EXTENSION IF NOT EXISTS unaccent;` habilita la búsqueda de huéspedes, códigos y UH sin acentos. No crea tablas, columnas ni índices y es reversible con `DROP EXTENSION IF EXISTS unaccent;` si ningún otro objeto la usa.
+- `CREATE EXTENSION IF NOT EXISTS unaccent;` habilita la búsqueda de nombres de huéspedes sin acentos. No crea tablas, columnas ni índices y es reversible con `DROP EXTENSION IF EXISTS unaccent;` si ningún otro objeto la usa.
 - `ALTER EXTENSION unaccent SET SCHEMA public;` fija la extensión en `public`: Prisma limita `search_path` al esquema de la conexión (por ejemplo, un esquema E2E aislado), así que la consulta llama `public.unaccent(...)` de forma calificada.
-- La consulta usa `public.unaccent(lower(...)) LIKE public.unaccent(pattern) ESCAPE '!'`, con el patrón escapado, filtros de `organizationId`/`propertyId` y `LIMIT 200`. Sólo devuelve IDs; el resto de filtros y el scoping tenant se reaplican en la consulta Prisma que los consume.
+- La consulta usa `public.unaccent(lower(g."fullName")) LIKE public.unaccent(pattern) ESCAPE '!'`, con el patrón escapado, filtros de `organizationId`/`propertyId` y `LIMIT 200`. Códigos y UH son ASCII y quedan en el `OR` de Prisma. Sólo devuelve IDs; el resto de filtros y el scoping tenant se reaplican en la consulta Prisma que los consume.
 - Requiere permiso para crear extensiones en la base, o que un DBA la cree antes de migrar. Si el rol de despliegue no puede, la migración falla y debe resolverse en infraestructura, no en la aplicación.
 
 ## Prisma

@@ -5,6 +5,7 @@ export interface AsyncData<T> {
   loading: boolean;
   error: unknown;
   reload: () => void;
+  reloadSilent: () => void;
 }
 
 /**
@@ -21,10 +22,17 @@ export function useAsyncData<T>(loader: () => Promise<T>, key: string): AsyncDat
     error: null,
   });
   const [version, refresh] = useReducer((current: number) => current + 1, 0);
+  const silentRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    setState((current) => ({ data: current.data, loading: true, error: null }));
+    const silent = silentRef.current;
+    silentRef.current = false;
+    setState((current) => ({
+      data: current.data,
+      loading: silent ? false : true,
+      error: silent ? current.error : null,
+    }));
 
     loaderRef
       .current()
@@ -48,5 +56,10 @@ export function useAsyncData<T>(loader: () => Promise<T>, key: string): AsyncDat
     refresh();
   }, []);
 
-  return { ...state, reload };
+  const reloadSilent = useCallback(() => {
+    silentRef.current = true;
+    refresh();
+  }, []);
+
+  return { ...state, reload, reloadSilent };
 }

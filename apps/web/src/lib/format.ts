@@ -73,6 +73,16 @@ export const OPERATIONAL_COLORS: Record<RoomOperationalState, string> = {
   OUT_OF_SERVICE: 'warning',
 };
 
+export const OCCUPANCY_LABELS = {
+  VACANT: 'Libre',
+  OCCUPIED: 'Ocupada',
+} as const;
+
+export const OCCUPANCY_COLORS = {
+  VACANT: 'mint',
+  OCCUPIED: 'brand',
+} as const;
+
 export const BLOCK_TYPE_LABELS: Record<RoomBlockType, string> = {
   OUT_OF_ORDER: 'Fuera de orden',
   OUT_OF_SERVICE: 'Fuera de servicio',

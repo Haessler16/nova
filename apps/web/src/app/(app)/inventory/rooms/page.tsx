@@ -28,6 +28,7 @@ import {
   Tbody,
   Td,
   Text,
+  Textarea,
   Th,
   Thead,
   Tr,
@@ -52,18 +53,29 @@ import {
   HOUSEKEEPING_COLORS,
   HOUSEKEEPING_LABELS,
   HOUSEKEEPING_TRANSITIONS,
+  INCIDENT_SEVERITY_LABELS,
+  INCIDENT_TYPE_LABELS,
+  OCCUPANCY_COLORS,
+  OCCUPANCY_LABELS,
   OPERATIONAL_COLORS,
   OPERATIONAL_LABELS,
   RECORD_STATUS_COLORS,
   RECORD_STATUS_LABELS,
   formatDateTime,
+  formatCalendarDate,
   splitAttributes,
 } from '@/lib/format';
 import type {
   HousekeepingState,
+  IncidentSeverity,
+  IncidentType,
   Room,
+  RoomAssignmentLease,
   RoomBlock,
   RoomHistoryEntry,
+  RoomListFacets,
+  RoomListResponse,
+  RoomListSummary,
   RoomOperationalState,
   RoomType,
 } from '@/lib/types';
@@ -81,6 +93,8 @@ import {
 interface RoomsData {
   rooms: Room[];
   roomTypes: RoomType[];
+  summary: RoomListSummary;
+  facets: RoomListFacets;
 }
 
 interface RoomForm {
@@ -101,35 +115,53 @@ function localDateTimeInput(offsetHours = 0): string {
 }
 
 function RoomsContent() {
-  const { tenant } = useSession();
+  const { tenant, actor } = useSession();
   const toast = useToast();
 
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({
     search: '',
     roomTypeId: '',
+    floor: '',
+    building: '',
+    minCapacity: '',
+    occupancy: '',
     operationalState: '',
     housekeepingState: '',
   });
 
-  const { data, loading, error, reload } = useAsyncData<RoomsData>(
+  const { data, loading, error, reload, reloadSilent } = useAsyncData<RoomsData>(
     async () => {
       const params = new URLSearchParams();
       if (filters.search !== '') params.set('search', filters.search);
       if (filters.roomTypeId !== '') params.set('roomTypeId', filters.roomTypeId);
+      if (filters.floor !== '') params.set('floor', filters.floor);
+      if (filters.building !== '') params.set('building', filters.building);
+      if (filters.minCapacity !== '') params.set('minCapacity', filters.minCapacity);
+      if (filters.occupancy !== '') params.set('occupancy', filters.occupancy);
       if (filters.operationalState !== '') params.set('operationalState', filters.operationalState);
       if (filters.housekeepingState !== '')
         params.set('housekeepingState', filters.housekeepingState);
       params.set('limit', '100');
 
       const [rooms, roomTypes] = await Promise.all([
-        api<{ items: Room[] }>(`/api/v1/inventory/rooms?${params.toString()}`, { tenant }),
+        api<RoomListResponse>(`/api/v1/inventory/rooms?${params.toString()}`, { tenant }),
         api<{ items: RoomType[] }>('/api/v1/inventory/room-types?status=ACTIVE', { tenant }),
       ]);
-      return { rooms: rooms.items, roomTypes: roomTypes.items };
+      return {
+        rooms: rooms.items,
+        roomTypes: roomTypes.items,
+        summary: rooms.summary,
+        facets: rooms.facets,
+      };
     },
     `${tenant.organizationId}:${tenant.propertyId}:rooms:${JSON.stringify(filters)}`,
   );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => reloadSilent(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [reloadSilent]);
 
   const createModal = useDisclosure();
   const editModal = useDisclosure();
@@ -139,6 +171,8 @@ function RoomsContent() {
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [blockSaving, setBlockSaving] = useState(false);
+  const [leaseBusy, setLeaseBusy] = useState(false);
+  const [incidentSaving, setIncidentSaving] = useState(false);
   const [createErrors, setCreateErrors] = useState<FieldErrors>({});
   const [editErrors, setEditErrors] = useState<FieldErrors>({});
   const [blockErrors, setBlockErrors] = useState<FieldErrors>({});
@@ -166,6 +200,12 @@ function RoomsContent() {
     endsAt: localDateTimeInput(24),
   });
   const [transitionReason, setTransitionReason] = useState('');
+  const [incidentForm, setIncidentForm] = useState<{
+    type: IncidentType;
+    severity: IncidentSeverity;
+    title: string;
+    description: string;
+  }>({ type: 'NOTE', severity: 'MEDIUM', title: '', description: '' });
 
   const selectedRoom = data?.rooms.find((room) => room.id === selectedRoomId) ?? null;
 
@@ -194,6 +234,7 @@ function RoomsContent() {
   function openDetail(room: Room): void {
     setSelectedRoomId(room.id);
     setTransitionReason('');
+    setIncidentForm({ type: 'NOTE', severity: 'MEDIUM', title: '', description: '' });
     setBlockForm({
       type: 'OUT_OF_ORDER',
       reason: '',
@@ -409,8 +450,122 @@ function RoomsContent() {
     }
   }
 
+  async function createIncident(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (selectedRoomId === null) {
+      return;
+    }
+    if (incidentForm.title.trim().length < 3 || incidentForm.description.trim().length < 3) {
+      toast({ title: 'Completá título y descripción', status: 'warning' });
+      return;
+    }
+    setIncidentSaving(true);
+    try {
+      await api('/api/v1/front-office/incidents', {
+        method: 'POST',
+        tenant,
+        body: {
+          roomId: selectedRoomId,
+          type: incidentForm.type,
+          severity: incidentForm.severity,
+          title: incidentForm.title.trim(),
+          description: incidentForm.description.trim(),
+        },
+      });
+      toast({ title: 'Incidencia registrada', status: 'success' });
+      setIncidentForm({ type: 'NOTE', severity: 'MEDIUM', title: '', description: '' });
+    } catch (cause) {
+      toast({
+        title: 'No se pudo registrar la incidencia',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 7000,
+      });
+    } finally {
+      setIncidentSaving(false);
+    }
+  }
+
+  async function acquireLease(): Promise<void> {
+    if (selectedRoomId === null) {
+      return;
+    }
+    setLeaseBusy(true);
+    try {
+      await api<RoomAssignmentLease>(
+        `/api/v1/inventory/rooms/${selectedRoomId}/assignment-leases`,
+        { method: 'POST', tenant, body: {} },
+      );
+      toast({ title: 'Selección tomada', status: 'success' });
+      reloadSilent();
+      bumpDetail();
+    } catch (cause) {
+      toast({
+        title: 'No se pudo tomar la selección',
+        description: errorMessage(cause),
+        status: 'error',
+        duration: 7000,
+      });
+      reloadSilent();
+    } finally {
+      setLeaseBusy(false);
+    }
+  }
+
+  async function renewLease(): Promise<void> {
+    const lease = selectedRoom?.lease;
+    if (selectedRoomId === null || lease === null || lease === undefined) {
+      return;
+    }
+    setLeaseBusy(true);
+    try {
+      await api<RoomAssignmentLease>(
+        `/api/v1/inventory/rooms/${selectedRoomId}/assignment-leases/${lease.leaseId}/renew`,
+        { method: 'POST', tenant },
+      );
+      toast({ title: 'Selección renovada', status: 'success' });
+      reloadSilent();
+    } catch (cause) {
+      toast({ title: 'No se pudo renovar', description: errorMessage(cause), status: 'error' });
+      reloadSilent();
+    } finally {
+      setLeaseBusy(false);
+    }
+  }
+
+  async function releaseLease(): Promise<void> {
+    const lease = selectedRoom?.lease;
+    if (selectedRoomId === null || lease === null || lease === undefined) {
+      return;
+    }
+    setLeaseBusy(true);
+    try {
+      await api<void>(
+        `/api/v1/inventory/rooms/${selectedRoomId}/assignment-leases/${lease.leaseId}`,
+        { method: 'DELETE', tenant },
+      );
+      toast({ title: 'Selección liberada', status: 'success' });
+      reloadSilent();
+    } catch (cause) {
+      toast({ title: 'No se pudo liberar', description: errorMessage(cause), status: 'error' });
+      reloadSilent();
+    } finally {
+      setLeaseBusy(false);
+    }
+  }
+
   const nextHousekeeping =
     selectedRoom !== null ? HOUSEKEEPING_TRANSITIONS[selectedRoom.housekeepingState] : [];
+  const summaryCards = [
+    { label: 'Libres', value: data?.summary.vacant ?? 0, color: 'mint.600' },
+    { label: 'Ocupadas', value: data?.summary.occupied ?? 0, color: 'brand.600' },
+    { label: 'Limpias', value: data?.summary.clean ?? 0, color: 'sky.600' },
+    { label: 'Sucias', value: data?.summary.dirty ?? 0, color: 'danger.500' },
+    { label: 'En limpieza', value: data?.summary.cleaning ?? 0, color: 'warning.500' },
+    { label: 'Inspeccionadas', value: data?.summary.inspected ?? 0, color: 'mint.600' },
+    { label: 'Fuera de orden', value: data?.summary.outOfOrder ?? 0, color: 'danger.500' },
+    { label: 'Fuera de servicio', value: data?.summary.outOfService ?? 0, color: 'warning.500' },
+  ];
 
   return (
     <>
@@ -432,6 +587,22 @@ function RoomsContent() {
       />
 
       <SectionCard>
+        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3} mb={4}>
+          {summaryCards.map((card) => (
+            <Box key={card.label} borderWidth="1px" borderRadius="md" px={3} py={2}>
+              <Text fontSize="xs" color="gray.500">
+                {card.label}
+              </Text>
+              <Text fontSize="xl" fontWeight="semibold" color={card.color}>
+                {card.value}
+              </Text>
+            </Box>
+          ))}
+        </SimpleGrid>
+        <Text fontSize="xs" color="gray.500" mb={3}>
+          {data?.summary.totalRooms ?? 0} habitaciones activas en la propiedad. Los contadores no
+          dependen de los filtros.
+        </Text>
         <Stack spacing={3} mb={4}>
           <HStack wrap="wrap" spacing={2}>
             <form
@@ -464,6 +635,59 @@ function RoomsContent() {
               {data?.roomTypes.map((roomType) => (
                 <option key={roomType.id} value={roomType.id}>
                   {roomType.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              width="150px"
+              aria-label="Ocupación"
+              value={filters.occupancy}
+              onChange={(event) => setFilters({ ...filters, occupancy: event.target.value })}
+            >
+              <option value="">Ocupación</option>
+              <option value="VACANT">Libre</option>
+              <option value="OCCUPIED">Ocupada</option>
+            </Select>
+            <Select
+              size="sm"
+              width="140px"
+              aria-label="Piso"
+              value={filters.floor}
+              onChange={(event) => setFilters({ ...filters, floor: event.target.value })}
+            >
+              <option value="">Todos los pisos</option>
+              {data?.facets.floors.map((floor) => (
+                <option key={floor} value={floor}>
+                  Piso {floor}
+                </option>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              width="160px"
+              aria-label="Ala o edificio"
+              value={filters.building}
+              onChange={(event) => setFilters({ ...filters, building: event.target.value })}
+            >
+              <option value="">Todas las alas</option>
+              {data?.facets.buildings.map((building) => (
+                <option key={building} value={building}>
+                  {building}
+                </option>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              width="160px"
+              aria-label="Capacidad mínima"
+              value={filters.minCapacity}
+              onChange={(event) => setFilters({ ...filters, minCapacity: event.target.value })}
+            >
+              <option value="">Capacidad</option>
+              {[1, 2, 3, 4, 5, 6].map((capacity) => (
+                <option key={capacity} value={capacity}>
+                  {capacity}+ personas
                 </option>
               ))}
             </Select>
@@ -502,6 +726,10 @@ function RoomsContent() {
                 setFilters({
                   search: '',
                   roomTypeId: '',
+                  floor: '',
+                  building: '',
+                  minCapacity: '',
+                  occupancy: '',
                   operationalState: '',
                   housekeepingState: '',
                 });
@@ -522,17 +750,20 @@ function RoomsContent() {
           isEmpty={(data?.rooms.length ?? 0) === 0}
           emptyText="No hay habitaciones que coincidan con los filtros."
         >
-          <TableContainer>
-            <Table size="sm">
+          <TableContainer overflowX="auto">
+            <Table size="sm" minW="1065px" sx={{ tableLayout: 'fixed' }}>
               <Thead>
                 <Tr>
-                  <Th>Número</Th>
-                  <Th>Tipo</Th>
-                  <Th>Piso / edificio</Th>
-                  <Th>Housekeeping</Th>
-                  <Th>Operativo</Th>
-                  <Th>Estado</Th>
-                  <Th />
+                  <Th width="130px">UH</Th>
+                  <Th width="155px">Tipo / capacidad</Th>
+                  <Th width="95px">Piso / ala</Th>
+                  <Th width="225px">Ocupación</Th>
+                  <Th width="110px">Housekeeping</Th>
+                  <Th width="125px">Operativo</Th>
+                  <Th width="115px">Actualizada</Th>
+                  <Th width="110px" position="sticky" right={0} bg="white" zIndex={1}>
+                    Acciones
+                  </Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -540,16 +771,58 @@ function RoomsContent() {
                   <Tr key={room.id}>
                     <Td>
                       <Text fontWeight="semibold">{room.number}</Text>
+                      {room.status !== 'ACTIVE' && (
+                        <StatusBadge
+                          color={RECORD_STATUS_COLORS[room.status] ?? 'gray'}
+                          label={RECORD_STATUS_LABELS[room.status] ?? room.status}
+                        />
+                      )}
                       {room.attributes.length > 0 && (
-                        <Text fontSize="xs" color="gray.500" noOfLines={1} maxW="220px">
+                        <Text fontSize="xs" color="gray.500" noOfLines={1} maxW="180px">
                           {room.attributes.join(' · ')}
                         </Text>
                       )}
                     </Td>
-                    <Td>{room.roomType.name}</Td>
+                    <Td>
+                      <Text>{room.roomType.name}</Text>
+                      <Text fontSize="xs" color="gray.500">
+                        {room.roomType.capacityAdults} adulto(s)
+                        {room.roomType.capacityChildren > 0
+                          ? ` + ${room.roomType.capacityChildren} menor(es)`
+                          : ''}
+                      </Text>
+                    </Td>
                     <Td>
                       {[room.floor, room.building].filter((value) => value !== null).join(' / ') ||
                         '—'}
+                    </Td>
+                    <Td>
+                      <StatusBadge
+                        color={OCCUPANCY_COLORS[room.occupancy]}
+                        label={OCCUPANCY_LABELS[room.occupancy]}
+                      />
+                      {room.currentStay !== null && (
+                        <Box mt={1}>
+                          <Text fontSize="xs" fontWeight="medium" noOfLines={1}>
+                            {room.currentStay.guestName}
+                          </Text>
+                          <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                            {room.currentStay.code} · hasta{' '}
+                            {formatCalendarDate(room.currentStay.checkOutDate)}
+                          </Text>
+                        </Box>
+                      )}
+                      {room.currentStay === null && room.nextArrival !== null && (
+                        <Text fontSize="xs" color="gray.500" mt={1} noOfLines={1}>
+                          Próx. {room.nextArrival.code} ·{' '}
+                          {formatCalendarDate(room.nextArrival.checkInDate)}
+                        </Text>
+                      )}
+                      {room.lease !== null && (
+                        <Text fontSize="xs" color="warning.600" mt={1}>
+                          En selección: {room.lease.ownerDisplayName}
+                        </Text>
+                      )}
                     </Td>
                     <Td>
                       <StatusBadge
@@ -562,14 +835,26 @@ function RoomsContent() {
                         color={OPERATIONAL_COLORS[room.operationalState]}
                         label={OPERATIONAL_LABELS[room.operationalState]}
                       />
+                      {room.activeBlock !== null && (
+                        <Text fontSize="xs" color="gray.500" mt={1}>
+                          Bloqueo hasta {formatDateTime(room.activeBlock.endsAt)}
+                        </Text>
+                      )}
                     </Td>
                     <Td>
-                      <StatusBadge
-                        color={RECORD_STATUS_COLORS[room.status] ?? 'gray'}
-                        label={RECORD_STATUS_LABELS[room.status] ?? room.status}
-                      />
+                      <Text fontSize="xs">{formatDateTime(room.updatedAt)}</Text>
+                      <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                        {room.updatedBy?.name ?? 'Sistema'}
+                      </Text>
                     </Td>
-                    <Td>
+                    <Td
+                      position="sticky"
+                      right={0}
+                      bg="white"
+                      zIndex={1}
+                      borderLeftWidth="1px"
+                      borderLeftColor="gray.100"
+                    >
                       <HStack spacing={1} justify="flex-end">
                         <Button size="xs" variant="ghost" onClick={() => openDetail(room)}>
                           Detalle
@@ -770,9 +1055,192 @@ function RoomsContent() {
                     label="Operativo"
                     value={OPERATIONAL_LABELS[selectedRoom.operationalState]}
                   />
+                  <KeyValue label="Ocupación" value={OCCUPANCY_LABELS[selectedRoom.occupancy]} />
+                  <KeyValue
+                    label="Capacidad"
+                    value={`${selectedRoom.roomType.capacityAdults} adulto(s)${
+                      selectedRoom.roomType.capacityChildren > 0
+                        ? ` + ${selectedRoom.roomType.capacityChildren} menor(es)`
+                        : ''
+                    }`}
+                  />
                   <KeyValue label="Piso" value={selectedRoom.floor ?? '—'} />
-                  <KeyValue label="Edificio" value={selectedRoom.building ?? '—'} />
+                  <KeyValue label="Ala / edificio" value={selectedRoom.building ?? '—'} />
+                  <KeyValue
+                    label="Última modificación"
+                    value={formatDateTime(selectedRoom.updatedAt)}
+                  />
+                  <KeyValue
+                    label="Modificado por"
+                    value={selectedRoom.updatedBy?.name ?? 'Sistema'}
+                  />
                 </SimpleGrid>
+
+                <Box>
+                  <Text fontWeight="semibold" mb={2}>
+                    Estancia y reserva
+                  </Text>
+                  {selectedRoom.currentStay !== null ? (
+                    <Stack spacing={1}>
+                      <HStack justify="space-between">
+                        <Text fontSize="sm" fontWeight="medium">
+                          {selectedRoom.currentStay.guestName}
+                        </Text>
+                        <Badge colorScheme="brand">{selectedRoom.currentStay.code}</Badge>
+                      </HStack>
+                      <Text fontSize="sm">
+                        {formatCalendarDate(selectedRoom.currentStay.checkInDate)} →{' '}
+                        {formatCalendarDate(selectedRoom.currentStay.checkOutDate)}
+                      </Text>
+                    </Stack>
+                  ) : (
+                    <Text fontSize="sm" color="gray.500">
+                      Sin estancia en casa.
+                    </Text>
+                  )}
+                  {selectedRoom.nextArrival !== null && (
+                    <Text fontSize="sm" color="gray.600" mt={2}>
+                      Próxima llegada: {selectedRoom.nextArrival.guestName} ·{' '}
+                      {selectedRoom.nextArrival.code} ·{' '}
+                      {formatCalendarDate(selectedRoom.nextArrival.checkInDate)}
+                    </Text>
+                  )}
+                  {selectedRoom.activeBlock !== null && (
+                    <Text fontSize="sm" color="warning.600" mt={2}>
+                      Bloqueo activo ({BLOCK_TYPE_LABELS[selectedRoom.activeBlock.type]}) hasta{' '}
+                      {formatDateTime(selectedRoom.activeBlock.endsAt)}
+                    </Text>
+                  )}
+                </Box>
+
+                <Box>
+                  <Text fontWeight="semibold" mb={2}>
+                    Selección temporal
+                  </Text>
+                  {selectedRoom.lease !== null ? (
+                    <Stack spacing={2}>
+                      <Text fontSize="sm">
+                        En selección por <strong>{selectedRoom.lease.ownerDisplayName}</strong>{' '}
+                        hasta {formatDateTime(selectedRoom.lease.expiresAt)}.
+                      </Text>
+                      {selectedRoom.lease.ownerUserId === actor?.id && (
+                        <HStack>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            isLoading={leaseBusy}
+                            onClick={() => void renewLease()}
+                          >
+                            Renovar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            isLoading={leaseBusy}
+                            onClick={() => void releaseLease()}
+                          >
+                            Liberar
+                          </Button>
+                        </HStack>
+                      )}
+                    </Stack>
+                  ) : (
+                    <Stack spacing={2}>
+                      <Text fontSize="sm" color="gray.500">
+                        Nadie está seleccionando esta habitación. La selección expira sola y no
+                        reserva la habitación.
+                      </Text>
+                      <Button
+                        size="sm"
+                        alignSelf="flex-start"
+                        variant="outline"
+                        isLoading={leaseBusy}
+                        onClick={() => void acquireLease()}
+                      >
+                        Tomar selección
+                      </Button>
+                    </Stack>
+                  )}
+                </Box>
+
+                <Box
+                  as="form"
+                  onSubmit={(event) => void createIncident(event)}
+                  borderWidth="1px"
+                  borderRadius="md"
+                  p={3}
+                >
+                  <Text fontWeight="semibold" mb={2}>
+                    Registrar incidencia
+                  </Text>
+                  <Stack spacing={2}>
+                    <HStack>
+                      <Select
+                        size="sm"
+                        aria-label="Tipo de incidencia"
+                        value={incidentForm.type}
+                        onChange={(event) =>
+                          setIncidentForm({
+                            ...incidentForm,
+                            type: event.target.value as IncidentType,
+                          })
+                        }
+                      >
+                        {Object.entries(INCIDENT_TYPE_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </Select>
+                      <Select
+                        size="sm"
+                        aria-label="Severidad de la incidencia"
+                        value={incidentForm.severity}
+                        onChange={(event) =>
+                          setIncidentForm({
+                            ...incidentForm,
+                            severity: event.target.value as IncidentSeverity,
+                          })
+                        }
+                      >
+                        {Object.entries(INCIDENT_SEVERITY_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </Select>
+                    </HStack>
+                    <Input
+                      size="sm"
+                      placeholder="Título (3–120)"
+                      maxLength={120}
+                      value={incidentForm.title}
+                      onChange={(event) =>
+                        setIncidentForm({ ...incidentForm, title: event.target.value })
+                      }
+                      required
+                    />
+                    <Textarea
+                      rows={3}
+                      placeholder="Descripción (3–4000), sin datos sensibles"
+                      maxLength={4000}
+                      value={incidentForm.description}
+                      onChange={(event) =>
+                        setIncidentForm({ ...incidentForm, description: event.target.value })
+                      }
+                      required
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      alignSelf="flex-start"
+                      colorScheme="brand"
+                      isLoading={incidentSaving}
+                    >
+                      Registrar
+                    </Button>
+                  </Stack>
+                </Box>
 
                 <Box>
                   <Text fontWeight="semibold" mb={2}>
@@ -957,6 +1425,7 @@ function RoomsContent() {
                         <Box key={entry.id} borderLeftWidth="3px" borderColor="brand.200" pl={3}>
                           <Text fontSize="xs" color="gray.500">
                             {formatDateTime(entry.occurredAt)} · {entry.category}
+                            {entry.actorName !== null ? ` · ${entry.actorName}` : ''}
                           </Text>
                           <Text fontSize="sm">
                             {entry.fromState ?? '—'} → <strong>{entry.toState}</strong>

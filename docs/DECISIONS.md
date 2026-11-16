@@ -910,23 +910,52 @@ These choices should be confirmed against the existing repository and current st
 - Context: Fase 1 needs a reception search by guest, reservation code, UH, date range and status, plus a guided check-in that shows why a room cannot be used. Creating `/front-office/search` would duplicate `GET /reservations`, which already owns tenant scoping, pagination, status and overlap filters. PostgreSQL `contains` does not fold accents, so typing `jose` did not find `José`. The existing check-in modal assigned a room and confirmed in one step, surfacing backend conflicts only as a generic error.
 - Options:
   1. add a second Front Desk search endpoint with its own projection (rejected: duplicated filters, pagination and tenant rules);
-  2. extend `GET /reservations` with `roomNumber` and accent-insensitive matching (chosen);
+  2. extend `GET /reservations` with accent-insensitive matching (chosen);
   3. denormalize a lowercase/unaccented search column (rejected for now: another write path and backfill for a small dataset).
 - Decision:
-  - Reuse `GET /reservations` for the Front Desk search. Add `roomNumber` (partial, case-insensitive) and keep `search`, `status`, `fromDate`/`toDate`, `cursor` and `limit`.
-  - Resolve accents with the `unaccent` extension in a bounded raw query that returns only IDs, scoped by `organizationId` and `propertyId`, with the LIKE pattern escaped and `LIMIT 200`. Add those IDs to the existing Prisma `OR`; every other filter still applies. Prisma runs tenant connections with `search_path` limited to their schema, so the migration pins the extension to `public` and the query calls `public.unaccent(...)` explicitly; this also keeps isolated E2E schemas working.
+  - Reuse `GET /reservations` for the Front Desk search with `search`, `status`, `fromDate`/`toDate`, `cursor` and `limit`. The free-text search already covers reservation code, guest name and room number, so no separate room-number filter is added.
+  - Resolve accents only for guest names with the `unaccent` extension in a bounded raw query that returns IDs, scoped by `organizationId` and `propertyId`, with the LIKE pattern escaped and `LIMIT 200`. Reservation codes and room numbers stay in the Prisma `contains` OR; every other filter still applies. Prisma runs tenant connections with `search_path` limited to their schema, so the migration pins the extension to `public` and the query calls `public.unaccent(...)` explicitly; this also keeps isolated E2E schemas working.
   - Add read-only `GET /front-office/reservations/:id/check-in-readiness` (`front_office.read`) that mirrors the check-in rules: active room of the reservation's type, operational `AVAILABLE`, no active overlapping block, no in-house stay, no overlapping active reservation and housekeeping ready. Each room exposes `eligible` and machine-readable `reasons`.
-  - `checkIn` remains the only authority and revalidates inside its transaction. It now rejects `DIRTY`/`CLEANING` with `409 room_housekeeping_not_ready`; `CLEAN` and `INSPECTED` are accepted, and `INSPECTION_PENDING` is accepted by default until the pilot sets a policy. The readiness response publishes `blockedStates` and `inspectionPendingBlocksCheckIn` so the UI does not invent a parallel policy.
+  - Expose `checkInWindow` (`localDate`, `checkInDate`, `checkOutDate`, `allowed`, `code`) from the same helper used by `checkIn`; the wizard blocks its advance when the property-local date is outside `[checkInDate, checkOutDate)` and the backend still revalidates inside the transaction.
+  - `checkIn` remains the only authority and revalidates inside its transaction. It now rejects `DIRTY`/`CLEANING` with `409 room_housekeeping_not_ready`; `CLEAN` and `INSPECTED` are accepted, and `INSPECTION_PENDING` is accepted by default until the pilot sets a policy. Readiness expresses this through each room's `reasons`; the UI does not duplicate the housekeeping state list.
   - Extract the guided flow into `check-in-wizard.tsx` with four steps (reservation, room, party, confirmation). It assigns the chosen room through the existing room-assignment endpoint and only shows success after the check-in response.
-  - Keep filters in the query string (`q`, `roomNumber`, `fromDate`, `toDate`, `status`) with `history.replaceState`, so refresh and deep links preserve the search without adding history entries.
+  - Keep filters in the query string (`q`, `fromDate`, `toDate`, `status`) with `history.replaceState`, so refresh and deep links preserve the search without adding history entries.
 - Consequences:
   - Search results are reservations, not guests or folios; the guest profile is reachable by link and folio actions remain outside the list to avoid exposing balances without the folio contract.
   - Accent-insensitive matching is capped at 200 IDs. A very broad accented search can omit matches beyond that cap, while exact/case-insensitive `contains` still runs in the same `OR`.
   - Deployments must allow `CREATE EXTENSION unaccent` (or have a DBA create it in `public`); the migration fails otherwise.
   - Readiness can go stale between opening the wizard and confirming. The wizard refreshes on failure and the transactional check-in decides; the endpoint never reserves the room.
-  - The check-in window (`check_in_too_early`/`check_in_window_elapsed`) is not exposed by readiness yet, so those errors appear only at confirmation.
+  - `checkInWindow` is computed when readiness is requested and can go stale until confirmation; the transactional check remains the authority and still returns `check_in_too_early`/`check_in_window_elapsed`.
   - UI copy stays in Spanish to match the existing app even though the ficha prioritizes pt-BR; domain enums and API values are unchanged.
 - Validation required:
   - pilot policy for `INSPECTION_PENDING` and for balance/pre-authorization blocks at check-in;
   - whether readiness should include check-in window and occupancy pricing before room selection;
   - whether folio balance should be exposed in results with a dedicated permission-aware projection.
+
+### ADR-051 — Room Rack derives occupancy and coordinates selection with an ephemeral Redis lease
+
+- Status: accepted and implemented for Fase 2; pilot policy for lease override pending.
+- Date: 2026-11-16.
+- Context: the room list only exposed inventory fields, so Front Desk could not distinguish free/occupied rooms, see the in-house guest, anticipate the next arrival or filter by floor/capacity. Housekeeping and operational state were already separate from occupancy, but the UI had no projection that combined them. Two reception sessions could also open the same room and only discover the conflict at assignment. Reading/writing a lease in PostgreSQL would add a write path, TTL cleanup and contention to a purely ephemeral UX concern.
+- Options:
+  1. persist leases in PostgreSQL (rejected: extra writes, cleanup jobs and lock contention for non-authoritative state);
+  2. use Redis `SET NX PX` with Lua compare-and-delete/renew (chosen);
+  3. rely only on the final assignment conflict (rejected for UX: late, generic failure after all steps).
+- Decision:
+  - Keep `Room.housekeepingState` and `Room.operationalState` independent. Derive `occupancy` from an `IN_HOUSE` stay, `currentStay` from that stay, `nextArrival` from the next confirmed reservation and `activeBlock` from the active block. No occupancy flag is persisted or synchronized.
+  - Apply `roomTypeId`, `status`, `housekeepingState`, `operationalState`, `occupancy`, `floor`, `building`, `minCapacity` and `search` server-side before pagination. Return `summary` and `facets` from the same property-scoped query so counters do not drift from the visible filter universe.
+  - Add `Room.updatedByUserId` (additive migration, composite FK, index) and expose the last modifier. Update it on room create/update, housekeeping transitions and operational reconciliation.
+  - Store leases only in Redis (`nova:room-lease:v1:<propertyId>:<roomId>`) with a configurable TTL (default 120 s, bounds 1–600 s). Acquisition uses `SET NX PX`; renew/release use a Lua script that compares `leaseId`, so a stale session cannot renew or delete a newer lease.
+  - `POST /reservations/:id/room-assignment` checks the lease before assigning and rejects another owner with `409 room_lease_held`. This is advisory: the lease may expire between the check and the commit, and the PostgreSQL exclusion constraint remains the final authority. Same-owner assignment is allowed.
+  - The check-in wizard acquires a lease when a room is selected, renews it every 45 s and releases it on room change, close, assignment or confirmation. The room rack polls every 15 s without a loading spinner, so another session sees the lease and cannot select that room.
+  - The contextual drawer shows stay, next arrival, block, lease owner and history with actor names. It offers housekeeping transitions, block release and incident registration. Incident creation uses the existing Front Office endpoint with `roomId`, so it inherits tenant, permission and audit rules.
+- Consequences:
+  - Redis is not a source of truth and holds no hotel data beyond the display name needed to explain the lock. If Redis is unavailable, list/readiness degrade to `lease: null`; acquiring a lease returns `503 room_lease_unavailable`, and the operator can still assign through the authoritative path.
+  - A lost browser or closed tab leaves a lease until TTL expiry (at most 120 s by default). There is no manual override UI; a same-owner retry or waiting for expiry resolves it. A forced override would need an explicit permission and audit decision.
+  - The list uses polling, not WebSocket/SSE; two sessions can be up to 15 s stale. The assignment-time lease check and PostgreSQL constraints close the correctness gap.
+  - The drawer does not yet offer room move or a direct reservation/stay link; those remain Front Office actions. Room moves do not acquire a lease in this phase.
+  - `updatedBy` is null for seeded or system-reconciled rows created before the migration until the next explicit mutation.
+- Validation required:
+  - pilot TTL and whether an authorized supervisor may force-release a lease;
+  - whether room move should require the same lease and whether incidents need a lease at all;
+  - whether the room rack should move from 15 s polling to realtime events.

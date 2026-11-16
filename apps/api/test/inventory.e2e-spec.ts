@@ -32,6 +32,8 @@ describe('Property settings and inventory (E2E)', () => {
   let roomId: string;
 
   beforeAll(async () => {
+    // Keep the lease test fast and deterministic. The default is 120s.
+    process.env.ROOM_ASSIGNMENT_LEASE_TTL_SECONDS = '2';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
@@ -213,6 +215,189 @@ describe('Property settings and inventory (E2E)', () => {
         .expect(200);
 
       expect(audit.body.items).toHaveLength(1);
+    });
+
+    it('returns occupancy, stay context, summary and composable filters', async () => {
+      const occupied = await request(app.getHttpServer())
+        .get('/api/v1/inventory/rooms')
+        .query({ occupancy: 'OCCUPIED', limit: 100 })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+
+      expect(occupied.body.items.length).toBeGreaterThan(0);
+      expect(
+        occupied.body.items.every(
+          (room: { occupancy: string; currentStay: unknown }) =>
+            room.occupancy === 'OCCUPIED' && room.currentStay !== null,
+        ),
+      ).toBe(true);
+
+      const vacant = await request(app.getHttpServer())
+        .get('/api/v1/inventory/rooms')
+        .query({ occupancy: 'VACANT', limit: 100 })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+
+      expect(vacant.body.items.length).toBeGreaterThan(0);
+      expect(
+        vacant.body.items.every(
+          (room: { occupancy: string; currentStay: unknown }) =>
+            room.occupancy === 'VACANT' && room.currentStay === null,
+        ),
+      ).toBe(true);
+
+      expect(vacant.body.summary.occupied).toBeGreaterThan(0);
+      expect(vacant.body.summary.vacant + vacant.body.summary.occupied).toBe(
+        vacant.body.summary.totalRooms,
+      );
+      expect(Array.isArray(vacant.body.facets.floors)).toBe(true);
+      expect(Array.isArray(vacant.body.facets.buildings)).toBe(true);
+    });
+
+    it('filters by floor, building and total capacity and exposes the last modifier', async () => {
+      const filtered = await request(app.getHttpServer())
+        .get('/api/v1/inventory/rooms')
+        .query({ floor: '10', building: 'E2E', minCapacity: 3, limit: 100 })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+
+      const room = filtered.body.items.find((item: { id: string }) => item.id === roomId);
+      expect(room).toBeDefined();
+      expect(room.roomType.capacityAdults).toBe(3);
+      expect(room.updatedBy).toEqual({ id: ADMIN, name: expect.any(String) });
+      expect(room.occupancy).toBe('VACANT');
+      expect(room.currentStay).toBeNull();
+    });
+  });
+
+  describe('room assignment leases', () => {
+    it('coordinates two sessions, expires an orphan and releases explicitly', async () => {
+      const guest = await request(app.getHttpServer())
+        .post('/api/v1/guests')
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({ fullName: `Lease Guest ${suffix}` })
+        .expect(201);
+      const checkInDate = new Date().toISOString().slice(0, 10);
+      const checkOutDate = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+      const reservation = await request(app.getHttpServer())
+        .post('/api/v1/reservations')
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({
+          guestId: guest.body.id,
+          roomTypeId,
+          checkInDate,
+          checkOutDate,
+          adults: 1,
+          children: 0,
+        })
+        .expect(201);
+
+      const acquired = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases`)
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .send({})
+        .expect(201);
+
+      expect(acquired.body.ownerUserId).toBe(RECEPTION);
+      expect(acquired.body.ownerDisplayName).toEqual(expect.any(String));
+      expect(acquired.body.roomId).toBe(roomId);
+
+      const listed = await request(app.getHttpServer())
+        .get('/api/v1/inventory/rooms')
+        .query({ search: `E${suffix.slice(-8)}`, limit: 10 })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      const listedRoom = listed.body.items.find((item: { id: string }) => item.id === roomId);
+      expect(listedRoom.lease.ownerUserId).toBe(RECEPTION);
+
+      const conflict = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases`)
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({})
+        .expect(409);
+      expect(conflict.body.code).toBe('room_lease_held');
+
+      const assignmentConflict = await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservation.body.id}/room-assignment`)
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({ roomId })
+        .expect(409);
+      expect(assignmentConflict.body.code).toBe('room_lease_held');
+
+      const renewed = await request(app.getHttpServer())
+        .post(
+          `/api/v1/inventory/rooms/${roomId}/assignment-leases/${acquired.body.leaseId}/renew`,
+        )
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(new Date(renewed.body.expiresAt).getTime()).toBeGreaterThan(
+        new Date(acquired.body.expiresAt).getTime(),
+      );
+
+      const denied = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases`)
+        .set(headers(HOUSEKEEPER, ORG_A, PROPERTY_CENTRO))
+        .send({})
+        .expect(403);
+      expect(denied.body.code).toBe('permission_denied');
+
+      await new Promise((resolve) => setTimeout(resolve, 2200));
+
+      const expiredList = await request(app.getHttpServer())
+        .get('/api/v1/inventory/rooms')
+        .query({ search: `E${suffix.slice(-8)}`, limit: 10 })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      const expiredRoom = expiredList.body.items.find((item: { id: string }) => item.id === roomId);
+      expect(expiredRoom.lease).toBeNull();
+
+      await request(app.getHttpServer())
+        .post(
+          `/api/v1/inventory/rooms/${roomId}/assignment-leases/${acquired.body.leaseId}/renew`,
+        )
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(404);
+
+      const reacquired = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases`)
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .send({})
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(
+          `/api/v1/inventory/rooms/${roomId}/assignment-leases/${reacquired.body.leaseId}`,
+        )
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(204);
+
+      const releasedList = await request(app.getHttpServer())
+        .get('/api/v1/inventory/rooms')
+        .query({ search: `E${suffix.slice(-8)}`, limit: 10 })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      const releasedRoom = releasedList.body.items.find((item: { id: string }) => item.id === roomId);
+      expect(releasedRoom.lease).toBeNull();
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservation.body.id}/room-assignment`)
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({ roomId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/reservations/${reservation.body.id}/cancel`)
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({ reason: 'E2E lease cleanup' })
+        .expect(201);
+    });
+
+    it('rejects a lease for a room from another property', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases`)
+        .set(headers(ADMIN, ORG_A, PROPERTY_PRAIA))
+        .send({})
+        .expect(404);
+      expect(response.body.code).toBe('room_not_found');
     });
   });
 

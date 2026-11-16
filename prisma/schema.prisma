@@ -409,6 +409,7 @@ model User {
   securityActions          SecurityEvent[]          @relation("SecurityEventActor")
   roomBlocksCreated        RoomBlock[]              @relation("RoomBlockCreatedBy")
   roomStatusHistory        RoomStatusHistory[]      @relation("RoomStatusHistoryActor")
+  roomsUpdated             Room[]                   @relation("RoomUpdatedBy")
   reservationsCreated      Reservation[]            @relation("ReservationCreatedBy")
   reservationHistory       ReservationHistory[]     @relation("ReservationHistoryActor")
   staysCheckedIn           Stay[]                   @relation("StayCheckedInBy")
@@ -588,9 +589,11 @@ model Room {
   housekeepingState HousekeepingState    @default(DIRTY)
   operationalState  RoomOperationalState @default(AVAILABLE)
   status            RecordStatus         @default(ACTIVE)
+  updatedByUserId   String?              @db.Uuid
   organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property          Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   roomType          RoomType             @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  updatedBy         User?                @relation("RoomUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   blocks            RoomBlock[]
   statusHistory     RoomStatusHistory[]
   reservations      Reservation[]
@@ -605,6 +608,7 @@ model Room {
   @@index([propertyId, roomTypeId])
   @@index([propertyId, housekeepingState])
   @@index([propertyId, operationalState])
+  @@index([updatedByUserId])
 }
 
 model RoomBlock {

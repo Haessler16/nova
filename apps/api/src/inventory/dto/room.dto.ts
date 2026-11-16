@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -81,6 +82,27 @@ export class ListRoomsQueryDto {
   @IsOptional()
   @IsUUID()
   roomTypeId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 32)
+  floor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  building?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  minCapacity?: number;
+
+  @IsOptional()
+  @IsIn(['VACANT', 'OCCUPIED'])
+  occupancy?: 'VACANT' | 'OCCUPIED';
 
   @IsOptional()
   @IsEnum(RecordStatus)
