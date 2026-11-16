@@ -265,7 +265,8 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 function ReservationsContent() {
-  const { tenant } = useSession();
+  const { tenant, property } = useSession();
+  const propertyTimezone = property?.timezone;
   const toast = useToast();
 
   const [searchInput, setSearchInput] = useState('');
@@ -298,8 +299,8 @@ function ReservationsContent() {
   const [saving, setSaving] = useState(false);
 
   const [createForm, setCreateForm] = useState({
-    checkInDate: todayISO(),
-    checkOutDate: todayISO(1),
+    checkInDate: todayISO(0, propertyTimezone),
+    checkOutDate: todayISO(1, propertyTimezone),
     adults: '2',
     children: '0',
     guestId: '',
@@ -414,7 +415,7 @@ function ReservationsContent() {
 
   const selectedReservation = detail.data?.reservation ?? null;
   const detailGuest = detail.data?.guest ?? null;
-  const today = todayISO();
+  const today = todayISO(0, propertyTimezone);
   const checkInEligible =
     selectedReservation !== null &&
     selectedReservation.checkInDate <= today &&
@@ -439,8 +440,8 @@ function ReservationsContent() {
 
   function openCreate(): void {
     setCreateForm({
-      checkInDate: todayISO(),
-      checkOutDate: todayISO(1),
+      checkInDate: todayISO(0, propertyTimezone),
+      checkOutDate: todayISO(1, propertyTimezone),
       adults: '2',
       children: '0',
       guestId: '',
@@ -773,7 +774,7 @@ function ReservationsContent() {
       await downloadCsv(
         `/api/v1/exports/reservations?${params.toString()}`,
         tenant,
-        `reservas-${new Date().toISOString().slice(0, 10)}.csv`,
+        `reservas-${todayISO(0, propertyTimezone)}.csv`,
       );
       toast({ title: 'Exportación descargada', status: 'success' });
     } catch (cause) {
@@ -1164,7 +1165,7 @@ function ReservationsContent() {
                   <Field label="Check-in" isRequired>
                     <DateField
                       value={createForm.checkInDate}
-                      min={todayISO()}
+                      min={todayISO(0, propertyTimezone)}
                       placeholder="dd/mm/aaaa"
                       ariaLabel="Fecha de check-in"
                       onChange={(checkInDate) =>

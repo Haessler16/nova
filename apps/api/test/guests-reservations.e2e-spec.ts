@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { propertyCalendarDate as calendarDate } from './support/property-date';
 
 const ORG_A = '00000000-0000-4000-8000-000000000001';
 const PROPERTY_CENTRO = '00000000-0000-4000-8000-000000000002';
@@ -19,6 +20,7 @@ const ROOM_STD_101 = '00000000-0000-4000-8000-000000000051';
 const ROOM_STD_102 = '00000000-0000-4000-8000-000000000052';
 const ROOM_STD_103 = '00000000-0000-4000-8000-000000000053';
 const ROOM_DLX_201 = '00000000-0000-4000-8000-000000000054';
+const ROOM_DLX_202 = '00000000-0000-4000-8000-000000000059';
 
 const ROOM_TYPE_STD = '00000000-0000-4000-8000-000000000041';
 const ROOM_TYPE_DLX = '00000000-0000-4000-8000-000000000042';
@@ -32,12 +34,6 @@ function headers(userId: string, organizationId: string, propertyId: string) {
     'x-organization-id': organizationId,
     'x-property-id': propertyId,
   };
-}
-
-function calendarDate(offsetDays: number): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
 }
 
 function instant(date: string): string {
@@ -303,7 +299,11 @@ describe('Guests and reservations (E2E)', () => {
         .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
         .expect(200);
 
-      expect(availability.body.items).toEqual([]);
+      const availableRoomIds = availability.body.items.map(
+        (item: { roomId: string }) => item.roomId,
+      );
+      expect(availableRoomIds).not.toContain(ROOM_DLX_201);
+      expect(availableRoomIds).toContain(ROOM_DLX_202);
     });
 
     it('is idempotent for repeated creation keys', async () => {

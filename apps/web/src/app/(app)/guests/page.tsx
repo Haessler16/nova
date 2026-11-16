@@ -38,6 +38,7 @@ import {
   RECORD_STATUS_COLORS,
   RECORD_STATUS_LABELS,
   formatDateTime,
+  todayISO,
 } from '@/lib/format';
 import type { Guest, GuestDocumentType } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
@@ -61,7 +62,8 @@ const EMPTY_FORM: GuestForm = {
 };
 
 function GuestsContent() {
-  const { tenant } = useSession();
+  const { tenant, property } = useSession();
+  const propertyTimezone = property?.timezone;
   const toast = useToast();
   const modal = useDisclosure();
   const notesModal = useDisclosure();
@@ -183,7 +185,7 @@ function GuestsContent() {
       await downloadCsv(
         `/api/v1/exports/guests?${params.toString()}`,
         tenant,
-        `huespedes-${new Date().toISOString().slice(0, 10)}.csv`,
+        `huespedes-${todayISO(0, propertyTimezone)}.csv`,
       );
       toast({ title: 'Exportación descargada', status: 'success' });
     } catch (cause) {
@@ -364,9 +366,7 @@ function GuestsContent() {
           <ModalHeader>Notas de {notesTarget?.fullName ?? 'huésped'}</ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
-            {notesTarget !== null && (
-              <GuestNotesPanel guestId={notesTarget.id} canManage />
-            )}
+            {notesTarget !== null && <GuestNotesPanel guestId={notesTarget.id} canManage />}
           </ModalBody>
         </ModalContent>
       </Modal>

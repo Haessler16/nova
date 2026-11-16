@@ -58,6 +58,30 @@ export function addCalendarDays(calendarDate: string, days: number): string {
   return dayjs.utc(calendarDate).add(days, 'day').format('YYYY-MM-DD');
 }
 
+/**
+ * Calendar date (`YYYY-MM-DD`) at an instant in the property's timezone.
+ *
+ * Use this to derive "today" from `new Date()` or to group instants (audit,
+ * folio creation, payments) by hotel day. Do not apply it to values that are
+ * already calendar dates: `Reservation.checkInDate` or
+ * `OperationalDay.operationalDate` are date-only and timezone-independent.
+ */
+export function calendarDateInTimezone(instant: Date, timezone: string): string {
+  if (Number.isNaN(instant.getTime())) {
+    throw new Error('instant must be a valid Date');
+  }
+  assertTimezone(timezone);
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(instant);
+  const value = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
 function parseCalendarDate(calendarDate: string): void {
   const match = CALENDAR_DATE_PATTERN.exec(calendarDate);
   if (match === null) {

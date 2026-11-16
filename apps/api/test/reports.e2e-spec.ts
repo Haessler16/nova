@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { propertyCalendarDate as propertyToday } from './support/property-date';
 
 const ORG_A = '00000000-0000-4000-8000-000000000001';
 const ORG_B = '00000000-0000-4000-8000-000000000004';
@@ -21,15 +22,6 @@ function headers(userId: string, organizationId = ORG_A, propertyId = PROPERTY_C
     'x-organization-id': organizationId,
     'x-property-id': propertyId,
   };
-}
-
-function propertyToday(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
 }
 
 function addDays(value: string, days: number): string {

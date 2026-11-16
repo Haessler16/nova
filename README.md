@@ -1,6 +1,6 @@
 # NOVA PMS
 
-SaaS hotelero multi-tenant. Este repositorio contiene las **Phases 1–4** ejecutables de punta a punta —Foundation, configuración de propiedad e inventario, huéspedes y reservas, y **Front Office**—: monorepo, API NestJS, **UI web Next.js + Chakra UI para fases 1–4**, PostgreSQL/Redis, Prisma, autenticación local con sesiones/MFA/recuperación, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, huéspedes minimizados, reservas con disponibilidad y asignación transaccional, historial append-only de reservas, calendario gráfico, room rack, llegadas/salidas/in-house, check-in/check-out idempotentes, cambio de habitación, incidencias, seeds sintéticos y pruebas de aislamiento.
+SaaS hotelero multi-tenant. Este repositorio contiene las **Phases 1–11** ejecutables de punta a punta —Foundation, configuración de propiedad e inventario, huéspedes y reservas, **Front Office**, folios/caja/night audit, hardening de piloto e importación CSV, documentos/reportes, fiesta de reserva FNRH local y notas/instrucciones—: monorepo, API NestJS, **UI web Next.js + Chakra UI**, PostgreSQL/Redis, Prisma, autenticación local con sesiones/MFA/recuperación, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, huéspedes minimizados, reservas con disponibilidad y asignación transaccional, historial append-only de reservas, calendario gráfico, room rack, llegadas/salidas/in-house, check-in/check-out idempotentes, cambio de habitación, incidencias, folios y pagos registrados, caja y night audit, reportes/exportaciones, documentos PDF con snapshot y hash, fiesta de reserva con menores y bloqueo legal de check-in, notas/instrucciones estructuradas, seeds sintéticos y pruebas de aislamiento.
 
 > La autenticación local con usuario/contraseña es una transición controlada, no un proveedor de identidad definitivo. No es producción-ready sin revisión de seguridad, MFA/recuperación de cuenta y secretos gestionados. Ver [Limitaciones](#limitaciones).
 
@@ -50,7 +50,7 @@ Para un entorno limpio:
 pnpm db:reset   # drop + migrate + seed (destructivo solo en local)
 ```
 
-## Aplicación web (Phases 1–4)
+## Aplicación web (Phases 1–11)
 
 La web es una app operativa client-side contra la API real. No guarda el tenant en el cliente como autoridad: envía `X-Organization-Id`/`X-Property-Id` y el backend valida membresías y permisos en cada request.
 
@@ -60,8 +60,13 @@ La web es una app operativa client-side contra la API real. No guarda el tenant 
 | `/dashboard`            | KPIs operativos, llegadas, alertas, día operativo, readiness y accesos rápidos      |
 | `/front-office`         | Llegadas, en casa, salidas, room rack, check-in/out, room move e incidencias        |
 | `/calendar`             | Calendario gráfico habitación × noche (7/14/21 días)                                |
-| `/reservations`         | Listado/filtros, disponibilidad, alta, edición, asignación, cancelación e historial |
-| `/guests`               | Búsqueda, alta/edición y activación/desactivación de huéspedes                      |
+| `/reservations`         | Listado/filtros, disponibilidad, alta, edición, asignación, cancelación, historial, fiesta de reserva y notas/instrucciones |
+| `/guests`               | Búsqueda, alta/edición, activación/desactivación, notas persistentes y documentos   |
+| `/folios`               | Folios, cargos, pagos registrados, cierre y documentos                              |
+| `/cashier`              | Caja, movimientos, cierre y night audit                                             |
+| `/reports`              | Catálogo de reportes operativos/financieros, preview, PDF y CSV                     |
+| `/imports`              | Importación CSV de huéspedes con preview y confirmación                             |
+| `/pilot`                | Onboarding y feedback de piloto                                                     |
 | `/inventory/rooms`      | Habitaciones, housekeeping, bloqueos, liberación e historial                        |
 | `/inventory/room-types` | Tipologías, capacidad y estado                                                      |
 | `/settings`             | Nombre, timezone, moneda y hora de corte del día operativo                          |

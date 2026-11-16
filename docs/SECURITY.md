@@ -15,7 +15,7 @@
 - Structured logs must redact tokens, passwords, personal documents and payment payloads.
 - Dependency scanning and security updates in CI.
 
-## Implemented controls (Phase 1 + Phase 2)
+## Implemented controls (Phase 1 to Phase 11)
 
 ### Authentication
 
@@ -96,6 +96,31 @@
 - Incidents linked to a stay derive room/reservation from it; contradictory scope, cross-property rooms/reservations and missing rows are rejected. Incident descriptions are free text: operators must not paste card data, credentials or unnecessary guest PII.
 - Incidents and stays are never hard-deleted through the API; there is no route to modify audit or reservation history.
 
+### Documents and reports (Phase 9)
+
+- `documents.read`, `documents.generate` and `documents.manage` are separate permissions. Preview, generation, download, physical-signature receipt and print events are property-scoped and audited.
+- Templates are property-scoped, versioned and immutable in the emission flow. The template body is plain text and the fixed renderer escapes it; arbitrary HTML is never rendered.
+- `GeneratedDocument` stores the PDF bytes privately in PostgreSQL. There is no public or signed URL: download requires authentication and tenant context. Snapshot, content, hash and template version are immutable; a PostgreSQL trigger rejects `DELETE` and content mutations.
+- `DocumentPrintEvent` is append-only and records a print request/dialog, never a claim that paper was printed.
+- Reports use a fixed catalog; clients cannot supply SQL, table names or column definitions. `cash-daily` additionally requires `reports.financial`. Exports are capped at 5000 rows, neutralize spreadsheet formulas and are audited with counts only, never row content or PII.
+- Document/report errors expose typed codes and correlation ids, not Prisma internals.
+
+### Reservation party and FNRH data (Phase 10)
+
+- `ReservationGuest` and `GuestFnrhProfile` are property-scoped; composite tenant FKs prevent cross-organization/property links.
+- Party writes require both `reservations.manage` and `guests.manage`; reads require `reservations.read` and `guests.read`. Party edits are limited to `CONFIRMED` reservations and run under a row lock.
+- Exactly one `PRIMARY` per reservation is enforced by a partial unique index; the application also keeps it aligned with `Reservation.guestId`.
+- Minors and legally incapable guests must reference an adult responsible in the same party. A minor without authorization blocks hotel check-in with `reservation_party_check_in_blocked`; an incomplete FNRH does not.
+- The FNRH profile is separated from the operational guest profile and is not returned by the guest list. Capturing real minors' data remains gated on product/legal/DPO approval; no FNRH HTTP client, credentials or external payloads exist.
+
+### Notes and instructions (Phase 11)
+
+- `ReservationSourceNote`, `InstructionEvent` and their truncate guards are append-only. Card PAN/CVV are redacted before persistence; `sourceTextHash` preserves a digest of the exact received text.
+- The deterministic parser only produces suggestions (`requiresHumanConfirmation: true`). Confirmation is a separate human action; parsing or confirming never creates payments, folio charges, rates or room assignments.
+- Instruction visibility is enforced server-side by permission (`front_office.read/manage`, `reservations.manage`, `reports.financial`, `property.manage`/`audit.read`/`organization.properties.manage`). Confidential instructions are readable only by management/audit roles and reads are audited.
+- Guest notes are independent from reservation instructions and are never copied automatically. Expired/inactive notes are filtered by default; confidential categories follow the same role checks.
+- Audit metadata records field names, status transitions and counts, not free-text bodies, card data or unnecessary PII.
+
 ### Database integrity
 
 - `pnpm db:verify` asserts that manual constraints, triggers, functions and `btree_gist` are present after migrations.
@@ -119,7 +144,11 @@ Current automated coverage:
 - `apps/api/test/auth-session.e2e-spec.ts` (CSRF, invalid credentials, session cookie flags, logout revocation, rate limiting, lockout, password reset/verification, MFA, session revocation);
 - `apps/api/test/admin.e2e-spec.ts` and `apps/api/test/resilience.e2e-spec.ts` (membership/role administration, security events, scheduler, metrics);
 - `apps/api/test/guests-reservations.e2e-spec.ts` (guest CRUD/audit minimization, availability, overlapping and concurrent reservations, block conflicts, idempotency, cancellation history, cross-tenant denial);
-- `apps/api/test/front-office.e2e-spec.ts` (room rack, check-in/out idempotency, room move and room-type mismatch, no-show timing, incidents/resolution, permission split, tenant/property isolation).
+- `apps/api/test/front-office.e2e-spec.ts` (room rack, check-in/out idempotency, room move and room-type mismatch, no-show timing, incidents/resolution, permission split, tenant/property isolation);
+- `apps/api/test/documents.e2e-spec.ts` and `reports.e2e-spec.ts` (document generation/download/immutability, report permissions, tenant isolation);
+- `apps/api/test/exports.e2e-spec.ts` (CSV property scoping, formula neutralization and audit);
+- `apps/api/test/reservation-party.e2e-spec.ts` (party CRUD, single primary, minor supervision, legal check-in block, readiness, cross-tenant denial);
+- `apps/api/test/instructions.e2e-spec.ts` (parser suggestions, card redaction, visibility/confidential access, transitions, append-only events, guest-note separation, cross-tenant denial).
 
 Registered E2E suites run on per-run isolated PostgreSQL schemas (`pnpm test:e2e:all:isolated`); they never share the seeded development schema.
 
@@ -133,6 +162,10 @@ Registered E2E suites run on per-run isolated PostgreSQL schemas (`pnpm test:e2e
 - E2E suites require a local/CI PostgreSQL with schema creation privileges and must never target real environments.
 - No external penetration test, dependency scanning job or WAF has been observed yet.
 - Payment tokenization, financial data, LGPD data-subject workflows and guest-document retention automation are not implemented.
+- FNRH party data can be captured locally, but real minors' data, retention and authorization policy remain blocked on product/legal/DPO approval; there is no FNRH HTTP client, credential storage or homologation.
+- Generated PDFs are stored in PostgreSQL and downloaded through authenticated requests; object storage, signed URLs, logo assets, retention jobs and malware scanning for attachments are not implemented.
+- Report execution is synchronous (62-day window, 5000-row export cap) and does not persist artifacts; XLSX and scheduled delivery are not implemented.
+- Instruction `datetime-local` validity and room-block wall-clock inputs are still interpreted in the browser timezone; aligning them with the property timezone is a pending UI task.
 
 ## LGPD design checklist
 

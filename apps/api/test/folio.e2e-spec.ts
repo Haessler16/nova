@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { propertyCalendarDate as calendarDate } from './support/property-date';
 
 const ORG_A = '00000000-0000-4000-8000-000000000001';
 const ORG_B = '00000000-0000-4000-8000-000000000004';
@@ -25,12 +26,6 @@ function headers(userId: string, organizationId: string, propertyId: string) {
     'x-organization-id': organizationId,
     'x-property-id': propertyId,
   };
-}
-
-function calendarDate(offsetDays: number): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
 }
 
 describe('Folio, cash and night audit (E2E)', () => {
@@ -76,6 +71,45 @@ describe('Folio, cash and night audit (E2E)', () => {
     expect(created.body.status).toBe('CONFIRMED');
   });
 
+  it('interprets the folio list date in the property timezone', async () => {
+    const reservation = await request(app.getHttpServer())
+      .post('/api/v1/reservations')
+      .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+      .send({
+        checkInDate: today,
+        checkOutDate: tomorrow,
+        adults: 1,
+        guestId: GUEST_ANA,
+        roomTypeId: ROOM_TYPE_STD,
+        source: `folio-tz-list-${suffix}`,
+      })
+      .expect(201);
+
+    const number = `TZ${suffix}LIST`;
+    await prisma.folio.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        reservationId: reservation.body.id,
+        number,
+        idempotencyKey: `folio-tz-list-${suffix}`,
+        createdAt: new Date('2026-01-15T02:30:00.000Z'),
+      },
+    });
+
+    const localDay = await request(app.getHttpServer())
+      .get(`/api/v1/folios?date=2026-01-14&search=${number}`)
+      .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+    expect(localDay.body.items.map((item: { number: string }) => item.number)).toContain(number);
+
+    const nextDay = await request(app.getHttpServer())
+      .get(`/api/v1/folios?date=2026-01-15&search=${number}`)
+      .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+    expect(nextDay.body.items.map((item: { number: string }) => item.number)).not.toContain(number);
+  });
+
   it('opens a folio idempotently and rejects cross-property links', async () => {
     const first = await request(app.getHttpServer())
       .post('/api/v1/folios')
@@ -90,6 +124,7 @@ describe('Folio, cash and night audit (E2E)', () => {
     folioId = first.body.id;
     expect(first.body.status).toBe('OPEN');
     expect(first.body.currencyCode).toBe('BRL');
+    expect(first.body.number).toContain(`F-${today.replaceAll('-', '')}-`);
     expect(first.body.totals).toEqual({ charges: '0.00', payments: '0.00', balance: '0.00' });
 
     const replay = await request(app.getHttpServer())

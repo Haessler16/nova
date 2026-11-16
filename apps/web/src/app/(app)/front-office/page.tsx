@@ -181,7 +181,8 @@ function StayCard({
 }
 
 function FrontOfficeContent() {
-  const { tenant } = useSession();
+  const { tenant, property } = useSession();
+  const propertyTimezone = property?.timezone;
   const toast = useToast();
 
   const [incidentFilter, setIncidentFilter] = useState<IncidentStatus | ''>('OPEN');
@@ -515,7 +516,8 @@ function FrontOfficeContent() {
 
   const data = overview.data;
   const operationalDate = data?.operationalDate ?? '';
-  const referenceDate = selectedDate !== '' ? selectedDate : (data?.selectedDate ?? todayISO());
+  const referenceDate =
+    selectedDate !== '' ? selectedDate : (data?.selectedDate ?? todayISO(0, propertyTimezone));
   const isHistorical = data?.isHistorical ?? false;
   const inHouse = data?.inHouse ?? [];
   const moveCandidates =
@@ -548,7 +550,7 @@ function FrontOfficeContent() {
               placeholder="Día a consultar"
               ariaLabel="Día operativo a consultar"
               max={data?.operationalDate}
-              today={data?.operationalDate ?? todayISO()}
+              today={data?.operationalDate ?? todayISO(0, propertyTimezone)}
               width="168px"
             />
             <Button

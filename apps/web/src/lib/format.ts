@@ -172,10 +172,39 @@ export function formatLongDate(value: string): string {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
-export function todayISO(offsetDays = 0): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+/**
+ * Calendar date (`YYYY-MM-DD`) for an instant in a property timezone.
+ * Use it for "today" defaults; never for values that are already calendar
+ * dates (`YYYY-MM-DD`), which are timezone-independent.
+ */
+export function calendarDateInTimezone(instant: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(instant);
+  const value = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+function localCalendarDate(instant: Date): string {
+  const year = instant.getFullYear();
+  const month = String(instant.getMonth() + 1).padStart(2, '0');
+  const day = String(instant.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Today as a calendar date. Pass the property timezone whenever it is known;
+ * the browser-local date is only a fallback before the session is loaded.
+ */
+export function todayISO(offsetDays = 0, timezone?: string): string {
+  const base =
+    timezone !== undefined
+      ? calendarDateInTimezone(new Date(), timezone)
+      : localCalendarDate(new Date());
+  return addDaysISO(base, offsetDays);
 }
 
 export function addDaysISO(value: string, days: number): string {

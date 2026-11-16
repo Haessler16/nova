@@ -42,12 +42,14 @@ import {
   RESERVATION_STATUS_LABELS,
   formatMoney,
   formatDateTime,
+  todayISO,
 } from '@/lib/format';
 import type { Folio, Reservation } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 
 function FoliosContent() {
-  const { tenant } = useSession();
+  const { tenant, property } = useSession();
+  const propertyTimezone = property?.timezone;
   const router = useRouter();
   const toast = useToast();
   const modal = useDisclosure();
@@ -119,7 +121,7 @@ function FoliosContent() {
       await downloadCsv(
         `/api/v1/exports/folios?${params.toString()}`,
         tenant,
-        `folios-${new Date().toISOString().slice(0, 10)}.csv`,
+        `folios-${todayISO(0, propertyTimezone)}.csv`,
       );
       toast({ title: 'Exportación descargada', status: 'success' });
     } catch (cause) {

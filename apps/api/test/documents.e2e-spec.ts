@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { propertyCalendarDate as calendarDate } from './support/property-date';
 
 const ORG_A = '00000000-0000-4000-8000-000000000001';
 const ORG_B = '00000000-0000-4000-8000-000000000004';
@@ -23,12 +24,6 @@ function headers(userId: string, organizationId = ORG_A, propertyId = PROPERTY_C
     'x-organization-id': organizationId,
     'x-property-id': propertyId,
   };
-}
-
-function calendarDate(offsetDays: number): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
 }
 
 describe('Documents (E2E)', () => {
@@ -135,6 +130,7 @@ describe('Documents (E2E)', () => {
     documentHash = generated.body.sha256;
 
     expect(documentNumber).toMatch(/^DOC-\d{8}-[A-Z0-9]{12}$/);
+    expect(documentNumber).toContain(`DOC-${today.replaceAll('-', '')}-`);
     expect(generated.body.status).toBe('GENERATED');
     expect(generated.body.mimeType).toBe('application/pdf');
     expect(generated.body.sha256).toMatch(/^[a-f0-9]{64}$/);

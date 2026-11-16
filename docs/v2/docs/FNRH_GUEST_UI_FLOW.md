@@ -1,6 +1,6 @@
 # FNRH Digital — Flujo de UI para huéspedes, acompañantes y menores
 
-- Estado: **primera integración implementada en código; migración no aplicada; envío FNRH fuera de alcance**.
+- Estado: **primera integración implementada en código y migración aplicada/verificada en base local autorizada; no aplicada en staging ni producción; envío FNRH fuera de alcance**.
 - Fecha: 2026-11-15.
 - Alcance: captura y edición de la fiesta de una reserva en la web actual, con el huésped principal como responsable y los menores/incapaces como dependientes.
 - Fuera de alcance: implementar componentes, endpoints, migraciones, envío FNRH, escaneo de documentos o validación legal de autorizaciones.
@@ -456,6 +456,6 @@ La sección “Huéspedes de la reserva” ya está integrada en el detalle de r
 - **Persistencia:** `ReservationGuest` para la fiesta y `GuestFnrhProfile` para la fecha de nacimiento. El principal sigue siendo `Reservation.guestId`.
 - **Check-in:** el backend bloquea el check-in sólo por códigos legales de la fiesta; una FNRH incompleta o un conteo distinto no lo impiden.
 - **UI:** listado de principal, acompañantes y menores; alta de adulto existente o nuevo; alta de menor con responsable y supervisión; edición, conversión de menor a adulto al cumplir 18 y baja con bloqueo de dependientes.
-- **Migración:** `prisma/migrations/20261115120000_phase10_reservation_party` está creada pero **no aplicada** a ninguna base.
+- **Migración:** `prisma/migrations/20261115120000_phase10_reservation_party` está aplicada y verificada en la base local autorizada; **no** se aplicó en staging ni producción.
 
 Límites vigentes: no hay aprobación formal de producto/legal/DPO para capturar datos de menores; no hay credenciales FNRH; no se implementó el checklist de llegadas de Front Office ni el envío por lote.

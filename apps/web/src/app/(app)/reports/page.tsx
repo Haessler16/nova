@@ -104,11 +104,12 @@ function formatZonedDateTime(value: string, timezone: string): string {
 }
 
 function ReportsContent() {
-  const { tenant } = useSession();
+  const { tenant, property } = useSession();
+  const propertyTimezone = property?.timezone;
   const toast = useToast();
   const [selected, setSelected] = useState<ReportKey>('occupancy');
-  const [from, setFrom] = useState(addDaysISO(todayISO(), -6));
-  const [to, setTo] = useState(todayISO());
+  const [from, setFrom] = useState(addDaysISO(todayISO(0, propertyTimezone), -6));
+  const [to, setTo] = useState(todayISO(0, propertyTimezone));
   const [result, setResult] = useState<ReportResult | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [running, setRunning] = useState(false);

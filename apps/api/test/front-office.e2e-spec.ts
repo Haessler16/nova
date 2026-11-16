@@ -5,6 +5,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { propertyCalendarDate } from './support/property-date';
 
 const ORG_A = '00000000-0000-4000-8000-000000000001';
 const PROPERTY_CENTRO = '00000000-0000-4000-8000-000000000002';
@@ -32,9 +33,7 @@ function headers(userId: string, organizationId: string, propertyId: string) {
 }
 
 function calendarDate(offsetDays: number): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  return propertyCalendarDate(offsetDays);
 }
 
 function instant(date: string): string {

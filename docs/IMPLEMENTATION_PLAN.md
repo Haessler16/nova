@@ -233,6 +233,46 @@ Known Phase 7 gaps:
 
 Status: discovery only. Groundwork implemented locally without committing the Edge architecture: `/health/version` diagnostics, audited CSV exports (guests, reservations, folios) and cursor/date/actor filters for the audit feed. There is no local coordinator, sync, agent or provider integration yet; those remain blocked on hotel/provider validation.
 
+## Phase 9 — Documents & Reports v1 (implemented locally)
+
+Status: **implemented locally on 2026-11-13**.
+
+- [x] property-scoped immutable document templates, typed context and safe HTML preview;
+- [x] server-side A4 PDF, private bytes in PostgreSQL, SHA-256, snapshot and authenticated download;
+- [x] print events (dialog/request only), physical-signature receipt and reprint history;
+- [x] fixed report catalog (occupancy, arrivals, departures, reservations, cash-daily), permissions, 62-day window, pagination;
+- [x] PDF/CSV export with formula neutralization, 5000-row cap and audit-backed execution history;
+- [x] contextual UI on reservation, guest, check-in, check-out and folio;
+- [ ] logo per property, object storage/signed URLs, real printer/margin validation, XLSX and scheduled delivery;
+- [x] FNRH remains discovery/integration boundary only; no HTTP client or credentials.
+
+## Phase 10 — Reservation party / FNRH local model (implemented locally)
+
+Status: **first internal slice implemented locally on 2026-11-16; external FNRH integration not implemented**.
+
+- [x] `ReservationGuest` party with one `PRIMARY` per reservation and legacy backfill;
+- [x] optional `GuestFnrhProfile` separated from the operational guest profile;
+- [x] party API, readiness (FNRH vs hotel check-in), minor supervision and authorization rules;
+- [x] legal check-in block only for party legal codes; incomplete FNRH does not block hotel check-in;
+- [x] reservation detail UI for principal, companions, minors, conversion to adult and removal guards;
+- [x] migration applied and verified in the authorized local database; not applied to staging/production;
+- [ ] product/legal/DPO/security gates, Front Office arrival checklist, accessibility and legacy cleanup;
+- [ ] FNRH adapter, credentials, homologation, operation ledger and real submission.
+
+## Phase 11 — Notes & Instructions v1 (implemented locally)
+
+Status: **implemented locally on 2026-11-15**.
+
+- [x] structured reservation instructions with category, priority, visibility, assignment and status transitions;
+- [x] immutable source text with PAN/CVV redaction, hashes and deterministic pt-BR parser suggestions;
+- [x] human confirmation and deduplication; no payment, charge, rate or room mutation;
+- [x] append-only instruction events, tags and validity window;
+- [x] persistent guest notes separated from reservation instructions;
+- [x] reservation, guest and check-in summary UI, including pending payment instructions;
+- [x] isolated API/unit coverage and `datetime-local` timezone limitation documented;
+- [ ] real preauthorization/payment provider integration (requires the payment module);
+- [ ] property-timezone wall-clock editing for instruction validity and room blocks.
+
 ## Indicative timeline
 
 For one experienced full-stack developer working full-time, a usable pilot-quality Front Office core may take roughly 20–30+ weeks depending on discovery, test depth, design and integration complexity. A broader hardened commercial release may take 30–40+ weeks. Treat these as planning ranges, not promises. Validate with a hotel pilot before fixing a commercial date.

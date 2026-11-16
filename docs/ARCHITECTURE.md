@@ -62,17 +62,20 @@ No crear paquetes por cada módulo de dominio. `packages/contracts` contiene con
 - audit: eventos de auditoría.
 - property-config: timezone, moneda, hotel day y preferencias.
 - inventory: tipos y habitaciones.
-- guests: perfiles y deduplicación.
-- reservations: reservas, disponibilidad, asignaciones.
+- guests: perfiles, deduplicación e importación CSV.
+- reservations: reservas, disponibilidad, asignaciones y fiesta FNRH.
 - front-office: room rack, arrivals, departures, check-in/out.
 - folio: cargos, pagos registrados y ajustes.
 - cash: caja y movimientos.
 - night-audit: cierre del día operativo.
 - reporting: consultas y reportes.
+- documents: plantillas, preview, PDF, historial y eventos de impresión.
+- instructions: notas e instrucciones de reserva y notas persistentes de huésped.
+- exports: exportaciones CSV auditadas de huéspedes, reservas y folios.
 
 Cada módulo expone servicios de aplicación y contratos internos. Evitar que un módulo escriba directamente tablas de otro módulo sin pasar por sus casos de uso/contratos.
 
-Implementación actual (Phases 1–4): `auth` (sesiones locales, CSRF, rate limiting, dev-header aislado), `tenancy`, `identity`, `properties` + `operational-day`, `inventory` (room types, rooms, blocks, reconciliación de estado e historial), `guests`, `reservations` (disponibilidad, asignación transaccional, historial), `front-office` (room rack, llegadas/salidas/in-house, check-in/out, room move, no-show, incidencias) y `audit`, sobre `prisma`, `redis` y `health`. `folio`, `cash`, `night-audit` y `reporting` todavía no existen.
+Implementación actual (Phases 1–11): `auth`, `tenancy`, `identity`, `properties` + `operational-day`, `inventory`, `guests` (incluye importación CSV), `reservations` (disponibilidad, asignación transaccional, historial y fiesta FNRH), `front-office`, `folio`, `cash`, `night-audit`, `documents`, `reports`, `exports`, `instructions`, `pilot`, `admin`, `audit`, `health`, `prisma` y `redis`. Los reportes son síncronos y no persisten artefactos; la integración HTTP con FNRH sigue fuera de alcance y sólo existe el modelo local de fiesta/perfil.
 
 ## 5. Multi-tenancy
 

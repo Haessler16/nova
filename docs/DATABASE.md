@@ -160,7 +160,7 @@ Append-only. No tiene `updatedAt`; un trigger rechaza `UPDATE`, `DELETE` y `TRUN
 - status (`ACTIVE`, `DISABLED`; sin borrado físico)
 - createdAt / updatedAt
 
-Perfil minimizado por propiedad. Sin fecha de nacimiento, dirección ni historial de documentos. No hay unicidad de email/documento: la deduplicación es asistida y nunca automática.
+Perfil minimizado por propiedad. Sin fecha de nacimiento, dirección ni historial de documentos. Los datos FNRH opcionales (fecha de nacimiento, país, domicilio, etc.) viven en una tabla separada `GuestFnrhProfile` y no se devuelven en el listado de huéspedes. No hay unicidad de email/documento: la deduplicación es asistida y nunca automática.
 
 ### Reservation
 
@@ -191,13 +191,13 @@ Append-only. Un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE`.
 
 - RatePlan, Rate
 - GuestContact, GuestDocument (documento separado y con protección reforzada si se aprueba)
-- ReservationGuest, ReservationRoomAssignment múltiple
+- ReservationRoomAssignment múltiple
 - AvailabilityHold / RoomLease
-- Stay
-- Folio, FolioLine, PaymentRecord, CashSession, CashMovement
-- OperationalDay, NightAuditRun
-- ImportJob, ImportRow, ImportError
 - OutboxEvent
+- Modelos separados `OperationalDay`/`NightAuditRun` (hoy el día operativo se calcula y el cierre usa `OperationalClose`)
+- Integraciones externas: configuración FNRH, ledger de operaciones y identificadores externos (diseño en `docs/v2`, sin migración)
+
+`Stay`, `Folio`, `FolioLine`, `Payment`, `CashSession`, `CashMovement`, `OperationalClose`, `ImportJob`/`GuestImport`, `ReservationGuest`, `GuestFnrhProfile` y los modelos de notas/instrucciones ya están implementados y se documentan en las notas de fase.
 
 ## Integridad multi-tenant
 
@@ -470,9 +470,85 @@ Aplicado en `prisma/migrations/20261109150000_phase7_guest_import/migration.sql`
 - FKs simples a organización/propiedad/usuario, FK compuesta a propiedad y FK de membresía para el creador.
 - Los huéspedes creados viven en `Guest`; la auditoría `guest.imported` guarda solo conteos.
 
+## Phase 8 implementation notes — groundwork
+
+No agrega tablas de dominio. `/health/version` es diagnóstico; las exportaciones CSV se derivan de `Guest`, `Reservation` y `Folio`, y sólo escriben `AuditEvent` (`export.*`) con conteos. El feed de auditoría amplía filtros sobre `AuditEvent`.
+
+## Phase 9 implementation notes — Documents & Reports
+
+Aplicado en `prisma/migrations/20261112120040_phase9_documents/migration.sql`.
+
+### DocumentTemplate
+
+- Plantilla property-scoped por `(propertyId, key, locale, version)`.
+- `key` en `GUEST_REGISTRATION`, `LODGING_TERMS`, `CHECKIN_SUMMARY`; `locale` en `pt-BR`.
+- `body` es texto plano; el renderer lo escapa y nunca interpreta HTML arbitrario.
+- Una versión publicada es inmutable en el flujo de emisión; no hay endpoints de escritura de plantillas en v1.
+
+### GeneratedDocument
+
+- Snapshot inmutable de plantilla, propiedad, huésped, reserva, estancia o folio y datos mínimos; `number` único por propiedad con formato `DOC-YYYYMMDD-XXXXXXXXXXXX`.
+- Guarda bytes del PDF en PostgreSQL (`content`), `mimeType`, `fileSizeBytes`, `pageCount`, `sha256` y `storageKey`.
+- Trigger `GeneratedDocument_immutable_trigger` rechaza `DELETE` y cambios en número, tipo, locale, versión, snapshot, contenido, MIME, tamaño, páginas, hash o storage. Sólo permite avanzar estado, recepción física y notas.
+- Descarga autenticada por request; no hay URL pública ni firmada.
+
+### DocumentPrintEvent
+
+- Append-only: registra `PRINT_DIALOG_OPENED`, `PRINT_CONFIRMED_BY_STAFF` o `REPRINT_REQUESTED`; no afirma impresión física.
+- Trigger `DocumentPrintEvent_append_only_trigger` rechaza `UPDATE`/`DELETE`.
+
+### Reports
+
+- No persiste reportes ni artefactos. Cada ejecución/exportación escribe `AuditEvent` (`report.executed`/`report.exported`) con `reportKey`, fechas, formato y conteos; el historial se deriva del audit log.
+- `cash-daily` lee `CashSession`/`CashMovement`; el resto lee reservas, estancias, habitaciones y bloqueos. La ocupación se calcula por día de la propiedad.
+
+## Phase 10 implementation notes — Reservation party (FNRH)
+
+Aplicado en `prisma/migrations/20261115120000_phase10_reservation_party/migration.sql`.
+
+### GuestFnrhProfile
+
+- Perfil FNRH opcional, 1:1 con `Guest` por `guestId`; guarda fecha de nacimiento, país, domicilio, género/raza/discapacidad y códigos IBGE.
+- Separado de `Guest` para no ampliar el perfil operativo ni el listado de huéspedes.
+- FKs de tenant a organización y propiedad; no se expone en la lista de huéspedes.
+
+### ReservationGuest
+
+- Fiesta explícita por reserva: `role` (`PRIMARY`, `COMPANION`), `ageGroup`, `legalIncapacity`, `minorSupervision`, `authorizationReference`, `origin` y `responsibleReservationGuestId`.
+- `(reservationId, guestId)` único; índice parcial `ReservationGuest_one_primary_per_reservation` garantiza un solo `PRIMARY` por reserva.
+- El `PRIMARY` debe coincidir con `Reservation.guestId`; la migración hizo backfill de una fila `PRIMARY` por reserva existente con `ageGroup=UNKNOWN` y `origin=LEGACY_BACKFILL`, sin inventar acompañantes ni menores.
+- Menores e incapaces apuntan a un responsable adulto de la misma fiesta; la aplicación valida capacidad del room type y la sincronización de `adults`/`children`.
+
+## Phase 11 implementation notes — Notes & instructions
+
+Aplicado en `prisma/migrations/20261115130000_phase11_notes_instructions`, `20261115140000_phase11_append_only_truncate` y `20261115150000_phase11_instruction_tags`.
+
+### ReservationSourceNote
+
+- Texto original inmutable recibido de un canal o pegado por recepción; PAN/CVV se redactan antes de persistir.
+- `sourceTextHash` conserva el digest del texto exacto recibido; `contentHash` + `parserVersion` deduplican reintentos.
+- `suggestions` y `warnings` son JSON; el parser sólo sugiere y nunca ejecuta pagos, cargos, tarifas ni asignaciones.
+- Trigger rechaza `UPDATE`/`DELETE`/`TRUNCATE`.
+
+### ReservationInstruction
+
+- Nota estructurada o instrucción operativa por reserva: categoría, prioridad, estado, visibilidad, departamento, usuario asignado, `actionType`, `executionMoment`, `paymentMethod`, vencimientos y vigencia.
+- Máximo 10 tags; índice GIN sobre `tags`.
+- `(sourceNoteId, dedupeKey)` único para confirmaciones repetidas; no crea pagos ni folios.
+
+### InstructionEvent
+
+- Timeline append-only por instrucción (`CREATED`, `UPDATED`, `ACKNOWLEDGED`, `IN_PROGRESS`, `COMPLETED`, `DISMISSED`, `NEEDS_CLARIFICATION`, `CONFIRMED_FROM_SOURCE`).
+- Trigger rechaza `UPDATE`/`DELETE`/`TRUNCATE`.
+
+### GuestNote
+
+- Nota persistente del huésped, independiente de las instrucciones de reserva; no se copia automáticamente a una reserva.
+- Categoría, prioridad, visibilidad, propósito, vencimiento y `isActive`. La visibilidad y las categorías confidenciales se filtran en el servidor.
+
 ## Prisma
 
-`prisma/schema.prisma` modela la foundation, el inventario, las reservas, Front Office, folios, caja, night audit, feedback de piloto e importaciones de huéspedes. Las constraints avanzadas de PostgreSQL se agregan como SQL manual en las migraciones; documentarlas y probarlas. No simular una constraint compleja solo en TypeScript.
+`prisma/schema.prisma` modela la foundation, inventario, reservas, Front Office, folios, caja, night audit, feedback de piloto, importaciones de huéspedes, documentos, reportes (sin tablas propias), fiesta FNRH y notas/instrucciones. Las constraints avanzadas de PostgreSQL se agregan como SQL manual en las migraciones; documentarlas y probarlas. No simular una constraint compleja solo en TypeScript.
 
 Reglas para futuras migraciones:
 

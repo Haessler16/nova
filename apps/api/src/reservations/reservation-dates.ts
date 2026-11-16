@@ -1,5 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
+import { calendarDateInTimezone } from '../common/time/property-day';
+
+export { calendarDateInTimezone };
 
 /**
  * Reservation dates are hotel calendar dates (`YYYY-MM-DD`) in the property
@@ -74,18 +77,6 @@ export function assertStayWindow(
       message: 'A reservation cannot start in the past.',
     });
   }
-}
-
-/** Calendar date (`YYYY-MM-DD`) at an instant in the property's timezone. */
-export function calendarDateInTimezone(instant: Date, timezone: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(instant);
-  const value = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
-  return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
 /** `RES-YYYYMMDD-XXXXXX`; unique per property via a database constraint. */

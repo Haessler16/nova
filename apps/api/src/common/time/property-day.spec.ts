@@ -1,5 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { addCalendarDays, propertyDayBounds, propertyDayStart } from './property-day';
+import {
+  addCalendarDays,
+  calendarDateInTimezone,
+  propertyDayBounds,
+  propertyDayStart,
+} from './property-day';
 
 describe('property day helpers', () => {
   it('resolves local midnight in a western timezone', () => {
@@ -46,5 +51,28 @@ describe('property day helpers', () => {
 
   it('adds calendar days across month boundaries', () => {
     expect(addCalendarDays('2026-01-31', 1)).toBe('2026-02-01');
+  });
+
+  it('resolves the hotel calendar date at an instant, not the UTC date', () => {
+    const afterUtcMidnight = new Date('2026-11-16T00:42:00.000Z');
+
+    expect(calendarDateInTimezone(afterUtcMidnight, 'America/Sao_Paulo')).toBe('2026-11-15');
+    expect(calendarDateInTimezone(afterUtcMidnight, 'Asia/Tokyo')).toBe('2026-11-16');
+    expect(calendarDateInTimezone(afterUtcMidnight, 'UTC')).toBe('2026-11-16');
+  });
+
+  it('resolves the local date across DST transitions', () => {
+    expect(calendarDateInTimezone(new Date('2026-03-09T04:30:00.000Z'), 'America/New_York')).toBe(
+      '2026-03-09',
+    );
+    expect(calendarDateInTimezone(new Date('2026-03-09T03:30:00.000Z'), 'America/New_York')).toBe(
+      '2026-03-08',
+    );
+  });
+
+  it('rejects an invalid instant when resolving the local date', () => {
+    expect(() => calendarDateInTimezone(new Date('invalid'), 'America/Sao_Paulo')).toThrow(
+      'instant must be a valid Date',
+    );
   });
 });

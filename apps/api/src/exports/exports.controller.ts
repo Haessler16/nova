@@ -36,7 +36,7 @@ export class ExportsController {
     @Query() query: ExportGuestsQueryDto,
     @Res({ passthrough: true }) response: Response,
   ): Promise<string> {
-    return this.send(await this.csvExports.guests(tenant, query), response, 'guests');
+    return this.send(tenant, await this.csvExports.guests(tenant, query), response, 'guests');
   }
 
   @Get('reservations')
@@ -46,7 +46,12 @@ export class ExportsController {
     @Query() query: ExportReservationsQueryDto,
     @Res({ passthrough: true }) response: Response,
   ): Promise<string> {
-    return this.send(await this.csvExports.reservations(tenant, query), response, 'reservations');
+    return this.send(
+      tenant,
+      await this.csvExports.reservations(tenant, query),
+      response,
+      'reservations',
+    );
   }
 
   @Get('folios')
@@ -56,11 +61,16 @@ export class ExportsController {
     @Query() query: ExportFoliosQueryDto,
     @Res({ passthrough: true }) response: Response,
   ): Promise<string> {
-    return this.send(await this.csvExports.folios(tenant, query), response, 'folios');
+    return this.send(tenant, await this.csvExports.folios(tenant, query), response, 'folios');
   }
 
-  private send(result: CsvExport, response: Response, name: string): string {
-    const date = new Date().toISOString().slice(0, 10);
+  private async send(
+    tenant: TenantContext,
+    result: CsvExport,
+    response: Response,
+    name: string,
+  ): Promise<string> {
+    const date = await this.csvExports.filenameDate(tenant);
     response.setHeader('Content-Type', 'text/csv; charset=utf-8');
     response.setHeader('Content-Disposition', `attachment; filename="nova-${name}-${date}.csv"`);
     response.setHeader('Cache-Control', 'no-store');

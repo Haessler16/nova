@@ -49,15 +49,16 @@ const BAR_COLORS: Record<Reservation['status'], string> = {
 };
 
 function CalendarContent() {
-  const { tenant } = useSession();
-  const [startDate, setStartDate] = useState(todayISO());
+  const { tenant, property } = useSession();
+  const propertyTimezone = property?.timezone;
+  const [startDate, setStartDate] = useState(todayISO(0, propertyTimezone));
   const [days, setDays] = useState(14);
   const detail = useDisclosure();
   const [selected, setSelected] = useState<Reservation | null>(null);
 
   const endDate = addDaysISO(startDate, days);
   const dates = Array.from({ length: days }, (_, index) => addDaysISO(startDate, index));
-  const today = todayISO();
+  const today = todayISO(0, propertyTimezone);
 
   const { data, loading, error, reload } = useAsyncData<{
     rooms: Room[];

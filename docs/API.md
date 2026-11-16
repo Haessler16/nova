@@ -157,6 +157,7 @@ Filtros: `action`, `entityType`, `entityId`, `actorUserId`, `fromDate`, `toDate`
 - En reservas, `fromDate`/`toDate` son fechas calendario con solapamiento `[fromDate, toDate)` (el `toDate` no se incluye), igual que `GET /reservations`. En folios, `date` es un único día calendario en la timezone de la propiedad, convertido a `[inicio, inicio+1 día)`.
 - Un rango invertido o una fecha imposible responde `invalid_date_filter` / `invalid_calendar_date`.
 - CSV con BOM UTF-8, comillas RFC 4180 y neutralización de fórmulas de hoja de cálculo.
+- El nombre descargado es `nova-<guests|reservations|folios>-YYYY-MM-DD.csv`; la fecha se calcula en la timezone de la propiedad, no en UTC.
 - Cada exportación escribe un `AuditEvent` (`export.guests`, `export.reservations`, `export.folios`) con `{ rowCount }`, sin datos personales.
 - La UI expone "Exportar CSV" en Huéspedes, Reservas y Folios respetando los filtros visibles.
 
@@ -196,6 +197,9 @@ Notas:
 | PATCH  | `/api/v1/guests/:id`            | auth + tenant | `guests.manage` | 200    |
 | POST   | `/api/v1/guests/import/preview` | auth + tenant | `guests.manage` | 201    |
 | POST   | `/api/v1/guests/import`         | auth + tenant | `guests.manage` | 201    |
+| GET    | `/api/v1/guests/:id/notes`      | auth + tenant | `guests.read`   | 200    |
+| POST   | `/api/v1/guests/:id/notes`      | auth + tenant | `guests.manage` | 201    |
+| PATCH  | `/api/v1/guests/:id/notes/:noteId` | auth + tenant | `guests.manage` | 200  |
 
 - Campos: `fullName` (2–160), `email` (normalizado a minúsculas), `phone`, `documentType` + `documentNumber` (solo juntos) y `notes` (≤ 2000).
 - `GET /guests` acepta `search` (nombre/email/teléfono/documento), `status`, `cursor`, `limit`. La búsqueda es asistida: no fusiona perfiles automáticamente.
@@ -206,6 +210,13 @@ Notas:
 - `GuestImport` no almacena el CSV; la auditoría `guest.imported` guarda solo conteos.
 
 Errores de importación: `guest_import_invalid_rows`, `guest_import_too_large`, `guest_import_too_many_rows`, `guest_import_empty`, `guest_import_unknown_column`, `guest_import_missing_column`, `guest_import_unterminated_quote`, `idempotency_key_reused`.
+
+Notas persistentes del huésped:
+
+- `GET /guests/:id/notes` acepta `includeInactive=true`; por defecto devuelve sólo notas activas y no vencidas.
+- `POST` acepta `body` (2–2000), `category`, `priority`, `visibility`, `purpose` (≤ 64) y `expiresAt` ISO-8601. Son independientes de las instrucciones de reserva y no se copian automáticamente a una reserva.
+- `PATCH /guests/:id/notes/:noteId` edita el contenido; desactivar se representa con `isActive=false`. La visibilidad se filtra en el servidor y las categorías confidenciales sólo son legibles por roles con `audit.read`, `property.manage` u `organization.properties.manage`.
+- Errores: `guest_not_found`, `guest_note_not_found`, `instruction_visibility_forbidden`, `instruction_confidential_forbidden`, `invalid_date`.
 
 ### Reservations
 
@@ -219,6 +230,10 @@ Errores de importación: `guest_import_invalid_rows`, `guest_import_too_large`, 
 | POST   | `/api/v1/reservations/:id/room-assignment` | auth + tenant | `reservations.manage` | 201    |
 | POST   | `/api/v1/reservations/:id/cancel`          | auth + tenant | `reservations.manage` | 201    |
 | GET    | `/api/v1/reservations/:id/history`         | auth + tenant | `reservations.read`   | 200    |
+| GET    | `/api/v1/reservations/:id/party`           | auth + tenant | `reservations.read` + `guests.read` | 200 |
+| POST   | `/api/v1/reservations/:id/party`           | auth + tenant | `reservations.manage` + `guests.manage` | 201 |
+| PATCH  | `/api/v1/reservations/:id/party/:reservationGuestId` | auth + tenant | `reservations.manage` + `guests.manage` | 200 |
+| DELETE | `/api/v1/reservations/:id/party/:reservationGuestId` | auth + tenant | `reservations.manage` + `guests.manage` | 200 |
 
 Fechas y ocupación:
 
@@ -232,6 +247,42 @@ Fechas y ocupación:
 - `ReservationHistory` es append-only (`reservation.created`, `reservation.updated`, `reservation.room_assigned`, `reservation.cancelled`).
 
 Errores específicos: `guest_not_found`, `invalid_guest_document`, `invalid_calendar_date`, `invalid_stay_window`, `reservation_in_past`, `reservation_too_long`, `invalid_date_filter`, `reservation_not_found`, `room_not_available`, `room_type_mismatch`, `room_inactive`, `occupancy_exceeds_room_type`, `reservation_not_editable`, `reservation_not_assignable`, `reservation_not_cancellable`, `reservation_conflict`, `idempotency_key_reuse`.
+
+Fiesta de la reserva (FNRH):
+
+- `GET /reservations/:id/party` devuelve `primary`, `companions`, `summary` (`adults`, `minors`, `unknown`, `declaredAdults`, `declaredChildren`) y `readiness` (`checkIn: ALLOWED | BLOCKED`, `fnrh: READY | INCOMPLETE | BLOCKED`, `codes`, `legalCodes`).
+- La fiesta sólo se edita mientras la reserva está `CONFIRMED` (`409 reservation_party_not_editable`). Debe existir exactamente un `PRIMARY` que coincida con `Reservation.guestId`; no se puede quitar (`409 primary_guest_cannot_be_removed`) ni duplicar un huésped (`409 guest_already_in_party`).
+- `POST` acepta un `guestId` existente o datos mínimos para crear el huésped (`fullName` 2–160; email, teléfono, documento y `birthDate` opcionales). `birthDate` usa `YYYY-MM-DD` y la edad se calcula a la fecha de check-in, no a la fecha actual.
+- Menores y personas con incapacidad legal exigen un responsable adulto y capaz de la misma fiesta; los menores exigen además `minorSupervision`. `UNACCOMPANIED_AUTHORIZED` exige `authorizationReference`. La fiesta no puede superar la capacidad del room type (`400 party_exceeds_room_capacity`).
+- `adults`/`children` se recalculan desde la fiesta; no son una fuente independiente de identidades. El check-in hotelero sólo se bloquea por códigos legales de la fiesta, no por una FNRH incompleta.
+
+Errores específicos: `reservation_not_found`, `reservation_party_not_editable`, `guest_not_found`, `guest_name_required`, `guest_already_primary`, `guest_already_in_party`, `birth_date_required`, `primary_must_be_adult`, `primary_guest_cannot_be_removed`, `guest_has_dependents`, `minor_cannot_be_legal_incapacity`, `responsible_required`, `responsible_not_in_party`, `responsible_must_be_adult`, `minor_supervision_required`, `authorization_reference_required`, `invalid_guest_document`, `party_exceeds_room_capacity`.
+
+### Notas e instrucciones de reserva
+
+| Método | Ruta                                                                  | Guard         | Permiso               | Status |
+| ------ | --------------------------------------------------------------------- | ------------- | --------------------- | ------ |
+| GET    | `/api/v1/reservations/:reservationId/instructions`                    | auth + tenant | `reservations.read`   | 200    |
+| POST   | `/api/v1/reservations/:reservationId/instructions`                    | auth + tenant | `reservations.manage` | 201    |
+| GET    | `/api/v1/reservations/:reservationId/instructions/:instructionId`     | auth + tenant | `reservations.read`   | 200    |
+| PATCH  | `/api/v1/reservations/:reservationId/instructions/:instructionId`     | auth + tenant | `reservations.manage` | 200    |
+| GET    | `/api/v1/reservations/:reservationId/instructions/:instructionId/events` | auth + tenant | `reservations.read` | 200 |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/acknowledge` | auth + tenant | `reservations.manage` | 201 |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/start` | auth + tenant | `reservations.manage` | 201 |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/complete` | auth + tenant | `reservations.manage` | 201 |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/dismiss` | auth + tenant | `reservations.manage` | 201 |
+| POST   | `/api/v1/reservations/:reservationId/instructions/:instructionId/needs-clarification` | auth + tenant | `reservations.manage` | 201 |
+| POST   | `/api/v1/reservations/:reservationId/source-notes/parse`              | auth + tenant | `reservations.manage` | 201    |
+| GET    | `/api/v1/reservations/:reservationId/source-notes`                    | auth + tenant | `reservations.manage` | 200    |
+| POST   | `/api/v1/reservations/:reservationId/source-notes/:sourceNoteId/confirm` | auth + tenant | `reservations.manage` | 201 |
+
+- Categorías: `PAYMENT`, `MEAL`, `BILLING`, `ROOM`, `ARRIVAL`, `IMPORTANT`, `EXTRA`, `CONFIDENTIAL`, `GENERAL`. Prioridad: `LOW`, `NORMAL`, `HIGH`, `CRITICAL`. Estados: `NEW`, `ACKNOWLEDGED`, `IN_PROGRESS`, `COMPLETED`, `DISMISSED`, `NEEDS_CLARIFICATION`.
+- `POST` acepta `title` (2–160), `body` (2–4000), hasta 10 `tags` (≤ 32 cada uno), categoría, prioridad, visibilidad, departamento, usuario asignado, `actionType`, `executionMoment`, `paymentMethod`, `actionDueAt`, `validFrom` y `validUntil` ISO-8601. `validFrom` debe ser anterior a `validUntil` (`400 instruction_invalid_validity`).
+- Las transiciones siguen una máquina de estados; una transición no permitida responde `409 instruction_invalid_transition`. Cada cambio escribe un `InstructionEvent` append-only y un `AuditEvent`. Repetir la transición al mismo estado es idempotente.
+- `GET` filtra por `status`, `priority`, `category`, `actionType`, `executionMoment`, `includeCompleted`, `cursor` y `limit` (≤ 100). Por defecto excluye `COMPLETED`/`DISMISSED`. La visibilidad se aplica en el servidor: `FRONT_DESK` requiere `front_office.read|manage`, `RESERVATIONS` requiere `reservations.manage`, `FINANCE` requiere `reports.financial` y `MANAGEMENT` requiere `property.manage`, `audit.read` u `organization.properties.manage`. Las instrucciones `CONFIDENTIAL` sólo son legibles por esos últimos roles y su lectura se audita.
+- `POST /source-notes/parse` acepta texto de 1–8000 caracteres y sólo genera sugerencias (`requiresHumanConfirmation: true`). El parser pt-BR `pt-br-notes-v1` redacta PAN/CVV antes de persistir, conserva `sourceTextHash` y `contentHash`, y nunca crea pagos, cargos, tarifas ni asignaciones. Es idempotente por `contentHash` + versión del parser.
+- `POST /source-notes/:sourceNoteId/confirm` acepta hasta 50 sugerencias y crea instrucciones sólo tras confirmación humana; deduplica por sugerencia y devuelve `created`/`skipped`. No ejecuta la acción descrita: una preautorización queda como instrucción pendiente, nunca como pago realizado.
+- Errores: `reservation_not_found`, `instruction_not_found`, `instruction_invalid_transition`, `instruction_invalid_validity`, `instruction_visibility_forbidden`, `instruction_confidential_forbidden`, `source_note_not_found`, `source_note_empty`, `invalid_date`.
 
 ### Front Office
 
@@ -250,14 +301,14 @@ Errores específicos: `guest_not_found`, `invalid_guest_document`, `invalid_cale
 - Para el día operativo actual, las listas mantienen semántica de trabajo pendiente: llegadas `CONFIRMED`, estancias `IN_HOUSE` y salidas cuya fecha de check-out ya llegó.
 - Para una fecha anterior al día operativo, `isHistorical` es `true` y las listas reconstruyen lo ocurrido: llegadas con `checkInDate` ese día (todos los estados salvo `CANCELLED`), estancias activas en algún momento del día (según `checkedInAt`/`checkedOutAt` en la timezone de la propiedad) y check-outs registrados ese día. `roomRack` e incidencias siguen reflejando el estado actual; la UI histórica los oculta y no permite mutaciones.
 - La vista histórica no reconstruye la habitación ocupada en ese día si hubo cambios de habitación: muestra la última asignada.
-- Check-in: solo `CONFIRMED`, con habitación asignada, `ACTIVE`/`AVAILABLE`, sin bloqueo activo y sin otra estancia in-house. Se habilita desde la fecha local de llegada y hasta el check-out. Idempotente: si la reserva ya está `CHECKED_IN`, devuelve la misma estancia.
+- Check-in: solo `CONFIRMED`, con habitación asignada, `ACTIVE`/`AVAILABLE`, sin bloqueo activo y sin otra estancia in-house. Se habilita desde la fecha local de llegada y hasta el check-out. Idempotente: si la reserva ya está `CHECKED_IN`, devuelve la misma estancia. Si la fiesta de la reserva tiene un bloqueo legal (principal menor/incapaz, menor sin responsable o supervisión, autorización faltante) responde `409 reservation_party_check_in_blocked`; una FNRH incompleta o un conteo distinto no bloquean el check-in hotelero.
 - Check-out: idempotente, marca `Stay.CHECKED_OUT`, la reserva `CHECKED_OUT` y libera la habitación. Acepta `notes` opcionales (≤ 2000).
 - Room move: mismo room type, habitación libre, sin bloqueo ni reserva solapada; actualiza `Stay.roomId`, `Reservation.roomId` e incrementa `moveCount`.
 - No-show: solo `CONFIRMED`, después de la fecha de llegada y sin estancia existente. Idempotente para reservas ya `NO_SHOW`.
 - Incidencias: `type` (`NOTE`, `MAINTENANCE`, `COMPLAINT`, `SAFETY`, `OTHER`), `severity` (`LOW`, `MEDIUM`, `HIGH`), título 3–120, descripción 3–4000 y alcance opcional por `roomId`, `reservationId` o `stayId`. Si se envía `stayId`, el alcance se deriva de la estancia y no puede contradecirla. Resolver exige `resolution` de 3–4000 y es idempotente.
 - Cada acción escribe `ReservationHistory` (check-in/out/move/no-show) y `AuditEvent` en la misma transacción.
 
-Errores específicos: `reservation_room_required`, `check_in_too_early`, `check_in_window_elapsed`, `room_out_of_service`, `room_occupied`, `stay_inconsistent`, `reservation_not_check_in_eligible`, `stay_not_check_out_eligible`, `stay_not_in_house`, `no_show_too_early`, `reservation_has_stay`, `reservation_not_no_show_eligible`, `stay_not_found`, `incident_not_found`, `incident_scope_mismatch`.
+Errores específicos: `reservation_room_required`, `check_in_too_early`, `check_in_window_elapsed`, `room_out_of_service`, `room_occupied`, `stay_inconsistent`, `reservation_not_check_in_eligible`, `reservation_party_check_in_blocked`, `stay_not_check_out_eligible`, `stay_not_in_house`, `no_show_too_early`, `reservation_has_stay`, `reservation_not_no_show_eligible`, `stay_not_found`, `incident_not_found`, `incident_scope_mismatch`.
 
 ### Folio, caja y night audit
 

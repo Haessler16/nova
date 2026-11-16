@@ -50,7 +50,7 @@ La integración no puede empezar sólo con el modelo actual:
 
 Cualquier campo nuevo de PII requiere finalidad, base legal, retención y control de acceso aprobados antes de migrar.
 
-El diseño detallado de la fiesta de reserva, acompañantes, menores, perfil FNRH y migración aditiva está en `FNRH_GUEST_MODEL.md`; la revisión oficial y las firmas pendientes están en `FNRH_GUEST_MODEL_REVIEW.md`. No se implementó ni se ejecutó ninguna migración.
+El diseño detallado de la fiesta de reserva, acompañantes, menores, perfil FNRH y migración aditiva está en `FNRH_GUEST_MODEL.md`; la revisión oficial y las firmas pendientes están en `FNRH_GUEST_MODEL_REVIEW.md`. La primera implementación interna ya existe en código y su migración está aplicada/verificada sólo en la base local autorizada; no se aplicó en staging ni producción.
 
 ## 4. Límites que se mantienen
 
@@ -72,4 +72,4 @@ El plan `FNRH_INTEGRATION_PLAN.md` define:
 6. fases de homologación, pruebas, rollout y rollback;
 7. puerta de aceptación antes de escribir el cliente HTTP.
 
-La integración sigue **no implementada** y sin fecha comprometida hasta resolver los puntos abiertos y obtener credenciales de homologación.
+La integración externa con FNRH sigue **no implementada** y sin fecha comprometida hasta resolver los puntos abiertos y obtener credenciales de homologación.

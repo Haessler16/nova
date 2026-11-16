@@ -60,13 +60,13 @@
 - [x] Mapear Guest/Reservation/Stay/dependentes (mapa candidato, não contrato).
 - [x] ADR-045/046 para credenciais, retry, reconciliação e logs.
 - [x] Plan de integração, adapter, homologação e critérios de aceite em `FNRH_INTEGRATION_PLAN.md`.
-- [x] Desenho do modelo/migração de hóspedes, acompanhantes e menores em `FNRH_GUEST_MODEL.md`; não implementado.
+- [x] Desenho do modelo/migração de hóspedes, acompanhantes e menores em `FNRH_GUEST_MODEL.md`; modelo implementado em código e migração aplicada/verificada apenas na base local autorizada.
 - [x] Revisão oficial e matriz de firmas de produto/legal em `FNRH_GUEST_MODEL_REVIEW.md`; aprovações pendentes.
 - [x] Decisões de produto P-01 a P-06 registradas para planejamento; ratificação humana e decisões legais pendentes.
-- [x] Fluxo de UI de acompanhantes/menores em `FNRH_GUEST_UI_FLOW.md`; primeira integração implementada em código, migração não aplicada.
+- [x] Fluxo de UI de acompanhantes/menores em `FNRH_GUEST_UI_FLOW.md`; primeira integração implementada em código e migração aplicada/verificada apenas na base local autorizada.
 - [x] Protótipo navegável da festa da reserva em `prototypes/fnrh-party/index.html`; dados sintéticos, sem backend.
 - [x] Guia da sessão de validação com recepção e registro inicial de achados em `FNRH_PARTY_VALIDATION_SESSION.md`; sessão não executada.
-- [ ] Executar o plano de tarefas derivado do protótipo em `FNRH_PARTY_IMPLEMENTATION_TASKS.md`, após as portas de produto, legal/DPO, segurança e Serpro.
+- [ ] Executar as tarefas restantes do plano derivado do protótipo em `FNRH_PARTY_IMPLEMENTATION_TASKS.md` (T-13 a T-18 e pendências de T-09/T-15), após as portas de produto, legal/DPO, segurança e Serpro. T-05 a T-08, T-11 e T-12 já têm primeira implementação verificada em local.
 - [ ] Resolver URL base, formato de credencial, paginação e `cpf_solicitante` com Serpro/legal.
 - [ ] Adapter + mocks somente após contrato confirmado.
 - [ ] Homologação com dados sintéticos; pilot por feature flag; produção após validação.

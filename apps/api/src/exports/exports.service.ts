@@ -4,7 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { money } from '../common/money/decimal';
-import { addCalendarDays, propertyDayStart } from '../common/time/property-day';
+import {
+  addCalendarDays,
+  calendarDateInTimezone,
+  propertyDayStart,
+} from '../common/time/property-day';
 import { requirePropertyContext } from '../inventory/room-state.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseCalendarDate } from '../reservations/reservation-dates';
@@ -311,6 +315,22 @@ export class ExportsService {
       correlationId: context.correlationId,
       metadata: { rowCount },
     });
+  }
+
+  /** Property-local date used in the downloaded file name. */
+  async filenameDate(context: TenantContext): Promise<string> {
+    const propertyId = requirePropertyContext(context);
+    const property = await this.prisma.property.findFirst({
+      where: { id: propertyId, organizationId: context.organizationId },
+      select: { timezone: true },
+    });
+    if (property === null) {
+      throw new NotFoundException({
+        code: 'property_not_found',
+        message: 'Property not found in the current organization.',
+      });
+    }
+    return calendarDateInTimezone(new Date(), property.timezone);
   }
 }
 

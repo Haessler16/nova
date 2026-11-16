@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import type { TenantContext } from '../common/http/request-context';
+import { calendarDateInTimezone } from '../common/time/property-day';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   DOCUMENT_TYPE_LABELS,
@@ -166,8 +167,9 @@ export class DocumentsService {
     const propertyId = this.requireProperty(tenant);
     const id = randomUUID();
     const generatedAt = new Date();
-    const number = this.nextNumber(id, generatedAt);
-    const { context, template } = await this.buildContext(tenant, dto, number, generatedAt);
+    const { context, template } = await this.buildContext(tenant, dto, null, generatedAt);
+    const number = this.nextNumber(id, generatedAt, context.property.timezone);
+    context.document.number = number;
     const pdf = await renderDocumentPdf(context);
     const sha256 = createHash('sha256').update(pdf.buffer).digest('hex');
 
@@ -467,8 +469,8 @@ export class DocumentsService {
     return tenant.propertyId;
   }
 
-  private nextNumber(id: string, generatedAt: Date): string {
-    const date = generatedAt.toISOString().slice(0, 10).replaceAll('-', '');
+  private nextNumber(id: string, generatedAt: Date, timezone: string): string {
+    const date = calendarDateInTimezone(generatedAt, timezone).replaceAll('-', '');
     return `DOC-${date}-${id.replaceAll('-', '').slice(0, 12).toUpperCase()}`;
   }
 

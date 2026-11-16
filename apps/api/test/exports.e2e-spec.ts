@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { propertyCalendarDate as calendarDate } from './support/property-date';
 
 const ORG_A = '00000000-0000-4000-8000-000000000001';
 const PROPERTY_CENTRO = '00000000-0000-4000-8000-000000000002';
@@ -18,12 +19,6 @@ function headers(userId: string) {
     'x-organization-id': ORG_A,
     'x-property-id': PROPERTY_CENTRO,
   };
-}
-
-function calendarDate(offsetDays: number): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
 }
 
 function csvText(response: { text?: string; body: unknown }): string {
@@ -63,6 +58,7 @@ describe('CSV exports (E2E)', () => {
       .expect(200);
 
     expect(response.headers['content-type']).toContain('text/csv');
+    expect(response.headers['content-disposition']).toContain(`nova-guests-${today}.csv`);
     expect(response.headers['cache-control']).toBe('no-store');
     const text = csvText(response);
     expect(text.startsWith('\uFEFF')).toBe(true);

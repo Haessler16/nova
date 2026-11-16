@@ -1,7 +1,7 @@
 # FNRH Digital — Tareas de implementación derivadas del prototipo
 
-- Estado: **plan de ejecución; implementación parcial en código, migración no aplicada**.
-- Fecha: 2026-11-15.
+- Estado: **implementación parcial verificada en base local autorizada; migración no aplicada en staging ni producción**.
+- Fecha: 2026-11-16 (actualización de la corrida local).
 - Origen: `prototypes/fnrh-party/index.html` y `prototypes/fnrh-party/README.md`.
 - Diseño de referencia: `FNRH_GUEST_UI_FLOW.md`, `FNRH_GUEST_MODEL.md`, `FNRH_GUEST_MODEL_REVIEW.md` y `FNRH_INTEGRATION_PLAN.md`.
 - Guía de validación con recepción y registro de hallazgos: `FNRH_PARTY_VALIDATION_SESSION.md`.
@@ -37,7 +37,7 @@ Ninguna tarea que capture datos reales de menores, aplique la migración en prod
 
 ## 3. Tareas
 
-Las tareas `T-05` a `T-09` tienen una primera implementación en el repositorio, pero no se consideran cerradas hasta aplicar la migración en un entorno autorizado y ejecutar las pruebas de integración correspondientes.
+Las tareas `T-05` a `T-09` tienen una primera implementación en el repositorio. `T-05`, `T-06`, `T-07` y `T-08` fueron verificadas el 2026-11-16 contra la base local autorizada; no se aplicó la migración en staging ni producción, y `T-09` sigue parcial.
 
 ### 3.1 Habilitadores de producto y legal
 
@@ -50,24 +50,24 @@ Las tareas `T-05` a `T-09` tienen una primera implementación en el repositorio,
 
 ### 3.2 Persistencia y API
 
-| ID   | Tarea                                                                                                               | Depende de       | Criterio de aceptación                                                                                         | Estado                          |
-| ---- | ------------------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| T-05 | Aplicar la migración `20261115120000_phase10_reservation_party` en un entorno autorizado y verificar el backfill.   | T-01, T-02       | Migración aplicada; una fila `PRIMARY` por reserva; `ageGroup=UNKNOWN` en legacy; sin acompañantes inventados. | Creada, no aplicada             |
-| T-06 | Probar la API de fiesta: lectura, alta de adulto existente/nuevo, alta de menor, edición, baja, capacidad y tenant. | T-05             | E2E con datos sintéticos; cross-tenant y permisos denegados; auditoría append-only; sin PII en logs.           | E2E preparado; no ejecutado     |
-| T-07 | Bloquear el check-in sólo por códigos legales de la fiesta y mantener la FNRH como estado separado.                 | T-05, T-06       | Check-in con FNRH incompleta permitido; menor sin autorización rechazado; error tipado y auditable.            | Implementado; E2E preparado     |
-| T-08 | Crear y mantener sincronizada la fila `PRIMARY` al crear o cambiar `Reservation.guestId`.                           | T-05             | Alta de reserva crea principal; cambio de huésped no duplica ni deja principal huérfano; colisión rechazada.   | Implementado; E2E preparado     |
-| T-09 | Resolver el conteo declarado vs. fiesta sin crear huéspedes automáticamente.                                        | T-01, T-05       | Discrepancia visible; ningún placeholder; la política de edición de `adults`/`children` queda aprobada.        | Parcial: readiness implementado |
-| T-10 | Implementar la política de bajas después del check-in o de un envío FNRH.                                           | T-01, T-02, T-04 | Baja bloqueada o sujeta a flujo auditado; dependientes reasignados; no se promete corrección posterior libre.  | Pendiente                       |
+| ID   | Tarea                                                                                                               | Depende de       | Criterio de aceptación                                                                                         | Estado                                      |
+| ---- | ------------------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| T-05 | Aplicar la migración `20261115120000_phase10_reservation_party` en un entorno autorizado y verificar el backfill.   | T-01, T-02       | Migración aplicada; una fila `PRIMARY` por reserva; `ageGroup=UNKNOWN` en legacy; sin acompañantes inventados. | Aplicada y verificada en local (2026-11-16) |
+| T-06 | Probar la API de fiesta: lectura, alta de adulto existente/nuevo, alta de menor, edición, baja, capacidad y tenant. | T-05             | E2E con datos sintéticos; cross-tenant y permisos denegados; auditoría append-only; sin PII en logs.           | E2E 8/8 en local (2026-11-16)               |
+| T-07 | Bloquear el check-in sólo por códigos legales de la fiesta y mantener la FNRH como estado separado.                 | T-05, T-06       | Check-in con FNRH incompleta permitido; menor sin autorización rechazado; error tipado y auditable.            | Implementado; E2E 8/8 en local              |
+| T-08 | Crear y mantener sincronizada la fila `PRIMARY` al crear o cambiar `Reservation.guestId`.                           | T-05             | Alta de reserva crea principal; cambio de huésped no duplica ni deja principal huérfano; colisión rechazada.   | Implementado; E2E 8/8 en local              |
+| T-09 | Resolver el conteo declarado vs. fiesta sin crear huéspedes automáticamente.                                        | T-01, T-05       | Discrepancia visible; ningún placeholder; la política de edición de `adults`/`children` queda aprobada.        | Parcial: readiness implementado             |
+| T-10 | Implementar la política de bajas después del check-in o de un envío FNRH.                                           | T-01, T-02, T-04 | Baja bloqueada o sujeta a flujo auditado; dependientes reasignados; no se promete corrección posterior libre.  | Pendiente                                   |
 
 ### 3.3 Experiencia de la reserva
 
-| ID   | Tarea                                                                                         | Depende de | Criterio de aceptación                                                                                                 | Estado                         |
-| ---- | --------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| T-11 | Integrar la sección “Huéspedes de la reserva” en el detalle real y conectarla a la API.       | T-05, T-06 | Alta/edición/baja visibles; estados loading/empty/error; principal destacado; menores indentados; permisos respetados. | Implementado; E2E UI preparado |
-| T-12 | Implementar la conversión de menor a adulto al cumplir 18 al check-in.                        | T-11, T-06 | El formulario de adulto se abre para el menor convertido; al guardar se limpian supervisión y responsable; auditoría.  | Implementado; falta E2E/UI     |
-| T-13 | Implementar el checklist de llegada en Front Office con resumen de fiesta y advertencia FNRH. | T-11, T-01 | Recepción ve fiesta, bloqueo legal y FNRH pendiente sin confundir ambos estados; no hay envío FNRH.                    | Pendiente                      |
-| T-14 | Verificar accesibilidad y responsive del flujo real.                                          | T-11       | Navegación por teclado, foco, lectores, contraste y ancho móvil; sin overflow; probado por una persona.                | Pendiente                      |
-| T-15 | Definir y probar el comportamiento de huéspedes legacy sin `birthDate` o sin fila de fiesta.  | T-05, T-06 | Legacy puede hacer check-in; FNRH queda incompleta; no se inventa edad ni documento; se muestra tarea de corrección.   | Parcial: readiness y backfill  |
+| ID   | Tarea                                                                                         | Depende de | Criterio de aceptación                                                                                                 | Estado                            |
+| ---- | --------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| T-11 | Integrar la sección “Huéspedes de la reserva” en el detalle real y conectarla a la API.       | T-05, T-06 | Alta/edición/baja visibles; estados loading/empty/error; principal destacado; menores indentados; permisos respetados. | Implementado; E2E UI 2/2 en local |
+| T-12 | Implementar la conversión de menor a adulto al cumplir 18 al check-in.                        | T-11, T-06 | El formulario de adulto se abre para el menor convertido; al guardar se limpian supervisión y responsable; auditoría.  | Implementado; E2E UI 3/3 en local |
+| T-13 | Implementar el checklist de llegada en Front Office con resumen de fiesta y advertencia FNRH. | T-11, T-01 | Recepción ve fiesta, bloqueo legal y FNRH pendiente sin confundir ambos estados; no hay envío FNRH.                    | Pendiente                         |
+| T-14 | Verificar accesibilidad y responsive del flujo real.                                          | T-11       | Navegación por teclado, foco, lectores, contraste y ancho móvil; sin overflow; probado por una persona.                | Pendiente                         |
+| T-15 | Definir y probar el comportamiento de huéspedes legacy sin `birthDate` o sin fila de fiesta.  | T-05, T-06 | Legacy puede hacer check-in; FNRH queda incompleta; no se inventa edad ni documento; se muestra tarea de corrección.   | Parcial: readiness y backfill     |
 
 ### 3.4 Integración FNRH (fuera de esta implementación)
 
@@ -92,10 +92,10 @@ Las tareas `T-05` a `T-09` tienen una primera implementación en el repositorio,
 El archivo `apps/api/test/reservation-party.e2e-spec.ts` contiene los casos de T-06, T-07 y T-08. Requiere una base local/staging con la migración `20261115120000_phase10_reservation_party` aplicada y el seed sintético cargado.
 
 ```bash
-pnpm --filter @nova/api test:e2e -- --runInBand reservation-party.e2e-spec.ts
+pnpm --filter @nova/api test:e2e -- reservation-party.e2e-spec.ts
 ```
 
-El suite falla de forma explícita si faltan `ReservationGuest` o `GuestFnrhProfile`; no aplica la migración ni usa datos reales. No ejecutarlo contra una base compartida sin autorización.
+El suite falla de forma explícita si faltan `ReservationGuest` o `GuestFnrhProfile`; no aplica la migración ni usa datos reales. No ejecutarlo contra una base compartida sin autorización. Crea un huésped sintético nuevo por reserva para no contaminar el huésped demo y no hace limpieza automática.
 
 El archivo `apps/web/e2e/reservation-party.spec.ts` contiene las pruebas de UI de T-11 y del alta de menores. Playwright inicia sesión como recepción, crea una reserva sintética por API y recorre el detalle real: alta de adulto, alta de menor con responsable y supervisión, y bloqueo legal al marcar un menor sin autorización. No usa datos reales ni crea menores en el seed.
 
@@ -108,6 +108,26 @@ PLAYWRIGHT_BASE_URL=http://localhost:3000 PLAYWRIGHT_API_URL=http://localhost:30
 ```
 
 El test cubre tanto `AUTH_MODE=local-session` como `dev-header`; se omite con `AUTH_MODE=disabled`. Deja la reserva sintética creada para inspección y no hace limpieza automática.
+
+### 3.7 Resultado de la corrida local (2026-11-16)
+
+Base local PostgreSQL autorizada, `AUTH_MODE=dev-header`, datos sintéticos. No se ejecutó reset ni se borraron datos; no se aplicó la migración en staging ni producción.
+
+- `pnpm prisma migrate status`: esquema al día, 16 migraciones aplicadas.
+- `ReservationGuest` y `GuestFnrhProfile` existen; antes de las corridas había 14 reservas, cada una con su fila `PRIMARY`.
+- API E2E `apps/api/test/reservation-party.e2e-spec.ts`: **8/8 pasan**. Cubre alta de adulto existente y nuevo, menor con responsable y supervisión, duplicados, capacidad, bloqueo/desbloqueo legal del check-in, FNRH incompleta, sincronización del principal, permisos y tenant. El caso de conversión mueve la fecha de llegada al cumpleaños 18, verifica que el huésped queda `ADULT` sin supervisión ni responsable y comprueba el `AuditEvent` `reservation.guest_updated` con el actor y los metadatos del huésped.
+- Unit tests `reservation-dates.spec.ts`: **6/6 pasan**, incluido el guard de reserva pasada con la fecha calendario de la propiedad.
+- UI E2E `apps/web/e2e/reservation-party.spec.ts`: **3/3 pasan**. Detalle real, alta de adulto + menor con bloqueo legal visible, y conversión de menor a adulto al cumplir 18. La conversión se prueba moviendo la fecha de llegada más allá del cumpleaños: la UI abre el editor de adulto, guarda sin responsable ni supervisión y la API confirma `ageGroup=ADULT` con ambos campos en `null`. No se ejecuta el POST de check-in porque la fecha de llegada es futura; se valida la clasificación a la fecha de check-in.
+- Typecheck y lint de API y web, y Prettier sobre los archivos tocados: pasan.
+
+Correcciones de producto encontradas por las pruebas (no cambios en los tests):
+
+- El guard de “reserva en el pasado” usa la fecha calendario en la timezone de la propiedad, no UTC.
+- Al agregar o editar un menor, el snapshot en memoria del huésped incluye el perfil FNRH recién guardado; antes provocaba un falso `party_exceeds_room_capacity`.
+- Email, teléfono y documento vacíos se normalizan a `null`; evita la violación del índice único de email y el `null.trim()` al limpiar un documento.
+- El bloque de búsqueda de huésped y el mensaje de error de la UI quedaron dentro de un contexto de formulario válido.
+
+Limitaciones: no se ejecutó el POST de check-in en el E2E de conversión (la llegada es futura y sólo se valida la clasificación a esa fecha); no se probaron accesibilidad ni responsive (T-14); los E2E dejan reservas y habitaciones sintéticas; no se verificó staging ni producción; el envío FNRH real sigue fuera de alcance.
 
 ## 4. Orden de ejecución recomendado
 

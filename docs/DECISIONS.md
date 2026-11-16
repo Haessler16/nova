@@ -884,3 +884,21 @@ These choices should be confirmed against the existing repository and current st
   - Ambiguous dates and monetary mentions produce warnings instead of hard failures; the source text remains available for human review.
   - Real pre-authorization, fiscal document issuance and folio routing are still out of scope and must be implemented in their own modules with their own permissions and providers. Until a pre-authorization module exists, the UI cannot offer a real deep-link; it only displays the pending instruction and warning.
   - E2E coverage requires an isolated schema because source notes and instruction events reject updates/deletes and seed data must be created idempotently.
+
+### ADR-049 — Hotel calendar dates come from the property timezone, never from the UTC date
+
+- Status: accepted and implemented.
+- Date: 2026-11-15.
+- Context: reservations and operational days store calendar dates (`YYYY-MM-DD`) as PostgreSQL `date`, interpreted at UTC midnight by Prisma. That representation is correct for date-only values, but instants (`new Date()`, `createdAt`, `generatedAt`, `receivedAt`) must be projected to the property timezone before becoming a calendar date. Several E2E helpers derived "today" with `new Date().toISOString().slice(0, 10)`. In São Paulo (UTC-3), from 21:00 to 23:59 local time UTC is already the next day, so tests created arrivals for tomorrow: the arrival list came back empty and check-in failed with `check_in_too_early`. The same UTC shortcut appeared in the folio list date filter, folio/document numbers, CSV download names and web defaults.
+- Decision:
+  - Keep `Reservation.checkInDate`, `Reservation.checkOutDate` and `OperationalDay.operationalDate` as timezone-independent calendar dates. Never run them through a timezone conversion.
+  - Add `calendarDateInTimezone(instant, timezone)` in `apps/api/src/common/time/property-day.ts` as the single helper to project instants to a property calendar date. `reservation-dates.ts` re-exports it for compatibility.
+  - Use property-day bounds (`propertyDayStart` / `propertyDayBounds`) for instant filters such as the folio list `date` query, matching audit, reports and exports.
+  - Use the property-local date for business identifiers and file names: `F-YYYYMMDD-...` folios, `DOC-YYYYMMDD-...` documents and `nova-<export>-YYYY-MM-DD.csv` downloads.
+  - In the web app, `todayISO(offsetDays, timezone?)` uses the provided property timezone and falls back to the browser-local date, not UTC. Pages pass `property.timezone` from the session for reservation defaults, calendar start, front-office fallback, report range and CSV names.
+  - E2E suites share `apps/api/test/support/property-date.ts`, which computes dates in the property timezone. A fixed-instant unit test (`2026-11-16T00:42:00Z` → `2026-11-15` in São Paulo) prevents regressions without depending on the hour CI runs.
+- Consequences:
+  - Date-sensitive tests are deterministic at any UTC hour, including the 21:00–00:00 São Paulo window.
+  - Business numbers and downloaded file names can legitimately differ across local midnight; that is the intended hotel-day behavior.
+  - No migration or data backfill is required: stored date-only values were already correct.
+  - Editing wall-clock values (room blocks, instruction validity) still interprets `datetime-local` input in the browser timezone. Aligning those forms with the property timezone is a separate UI task because it requires converting a property-local wall time back to an instant.

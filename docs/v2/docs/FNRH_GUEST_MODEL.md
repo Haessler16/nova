@@ -1,6 +1,6 @@
 # FNRH Digital — Modelo de huéspedes, acompañantes y menores
 
-- Estado: **diseño revisado contra la documentación oficial; firmas de producto/legal pendientes; no implementado**.
+- Estado: **modelo implementado en código y migración aplicada/verificada en base local autorizada; no aplicada en staging ni producción; envío FNRH no implementado**.
 - Fecha: 2026-11-13.
 - Alcance: modelo de datos y migración para representar la fiesta de una reserva, los acompañantes y los menores que FNRH exige registrar.
 - Fuera de alcance: ejecutar migraciones, modificar `prisma/schema.prisma`, crear endpoints/UI, enviar datos a FNRH o decidir la base legal de `cpf_solicitante`.
@@ -525,7 +525,7 @@ No seleccionar nombres, documentos, emails, teléfonos ni fechas de nacimiento e
 - [ ] Legal/LGPD aprueban finalidad, retención y acceso a datos de menores.
 - [ ] Se confirma la lista exacta de campos obligatorios de FNRH para personas y menores.
 - [ ] Se revisa el preflight con una copia de datos reales (sólo agregados).
-- [ ] Se aprueba la migración real y su ventana de ejecución.
+- [ ] Se aprueba la migración en staging/producción y su ventana de ejecución (la migración local ya está aplicada y verificada).
 - [ ] Se completan las firmas de `FNRH_GUEST_MODEL_REVIEW.md`.
 
 ## 14. Estado de las decisiones abiertas

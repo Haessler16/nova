@@ -9,6 +9,11 @@ import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { money, parseMoney } from '../common/money/decimal';
+import {
+  addCalendarDays,
+  calendarDateInTimezone,
+  propertyDayStart,
+} from '../common/time/property-day';
 import { requirePropertyContext } from '../inventory/room-state.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -215,10 +220,11 @@ export class FolioService {
       ];
     }
     if (query.date !== undefined) {
-      const start = new Date(`${query.date}T00:00:00.000Z`);
-      const end = new Date(start);
-      end.setUTCDate(end.getUTCDate() + 1);
-      where.createdAt = { gte: start, lt: end };
+      const property = await this.loadProperty(context.organizationId, propertyId);
+      where.createdAt = {
+        gte: propertyDayStart(query.date, property.timezone),
+        lt: propertyDayStart(addCalendarDays(query.date, 1), property.timezone),
+      };
     }
 
     const rows = await this.prisma.folio.findMany({
@@ -301,7 +307,7 @@ export class FolioService {
             propertyId,
             stayId: link.stayId,
             reservationId: link.reservationId,
-            number: this.generateNumber(),
+            number: this.generateNumber(property.timezone),
             status: FolioStatus.OPEN,
             currencyCode: property.currencyCode,
             notes: dto.notes ?? null,
@@ -673,10 +679,10 @@ export class FolioService {
   private async loadProperty(
     organizationId: string,
     propertyId: string,
-  ): Promise<{ currencyCode: string }> {
+  ): Promise<{ currencyCode: string; timezone: string }> {
     const property = await this.prisma.property.findFirst({
       where: { id: propertyId, organizationId },
-      select: { currencyCode: true },
+      select: { currencyCode: true, timezone: true },
     });
     if (property === null) {
       throw new NotFoundException({
@@ -812,8 +818,8 @@ export class FolioService {
     return { charges, payments: paid, balance: charges.minus(paid) };
   }
 
-  private generateNumber(): string {
-    const day = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  private generateNumber(timezone: string): string {
+    const day = calendarDateInTimezone(new Date(), timezone).replaceAll('-', '');
     return `F-${day}-${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
   }
 

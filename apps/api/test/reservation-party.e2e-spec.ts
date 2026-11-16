@@ -5,6 +5,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { propertyCalendarDate as calendarDate } from './support/property-date';
 
 const ORG_A = '00000000-0000-4000-8000-000000000001';
 const PROPERTY_CENTRO = '00000000-0000-4000-8000-000000000002';
@@ -17,7 +18,6 @@ const ADMIN_B = '00000000-0000-4000-8000-000000000014';
 const HOUSEKEEPER = '00000000-0000-4000-8000-000000000016';
 
 const ROOM_TYPE_STD = '00000000-0000-4000-8000-000000000041';
-const PROPERTY_TIMEZONE = 'America/Sao_Paulo';
 
 function headers(userId: string, organizationId = ORG_A, propertyId = PROPERTY_CENTRO) {
   return {
@@ -25,22 +25,6 @@ function headers(userId: string, organizationId = ORG_A, propertyId = PROPERTY_C
     'x-organization-id': organizationId,
     'x-property-id': propertyId,
   };
-}
-
-function calendarDate(offsetDays: number): string {
-  // Check-in is evaluated against the property's local calendar date. Using
-  // the host's UTC date fails when local time is still the previous day.
-  const [year, month, day] = new Intl.DateTimeFormat('en-CA', {
-    timeZone: PROPERTY_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-    .format(new Date())
-    .split('-')
-    .map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day + offsetDays));
-  return date.toISOString().slice(0, 10);
 }
 
 describe('Reservation party (E2E)', () => {
@@ -307,6 +291,84 @@ describe('Reservation party (E2E)', () => {
       .expect(400);
 
     expect(overCapacity.body.code).toBe('party_exceeds_room_capacity');
+  });
+
+  it('audits the conversion of a minor to an adult when the check-in passes the birthday', async () => {
+    const reservation = await createReservation({});
+    const primaryId = await setPrimaryBirthDate(reservation.id);
+    const conversionCheckIn = calendarDate(181);
+    const conversionCheckOut = calendarDate(182);
+    const birthday = new Date(`${conversionCheckIn}T00:00:00Z`);
+    birthday.setUTCFullYear(birthday.getUTCFullYear() - 18);
+    const birthDate = birthday.toISOString().slice(0, 10);
+
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/reservations/${reservation.id}/party`)
+      .set(headers(RECEPTION))
+      .send({
+        fullName: `Minor Turning 18 ${suffix}`,
+        birthDate,
+        minorSupervision: 'ACCOMPANIED',
+        responsibleReservationGuestId: primaryId,
+      })
+      .expect(201);
+
+    const minor = (
+      created.body.companions as Array<{ reservationGuestId: string; ageGroup: string }>
+    )[0];
+    expect(minor.ageGroup).toBe('MINOR');
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/reservations/${reservation.id}`)
+      .set(headers(RECEPTION))
+      .send({ checkInDate: conversionCheckIn, checkOutDate: conversionCheckOut })
+      .expect(200);
+
+    const converted = await request(app.getHttpServer())
+      .patch(`/api/v1/reservations/${reservation.id}/party/${minor.reservationGuestId}`)
+      .set(headers(RECEPTION))
+      .send({ birthDate })
+      .expect(200);
+
+    const convertedMinor = (
+      converted.body.companions as Array<{
+        reservationGuestId: string;
+        ageGroup: string;
+        minorSupervision: string | null;
+        responsibleReservationGuestId: string | null;
+      }>
+    ).find((member) => member.reservationGuestId === minor.reservationGuestId);
+    expect(convertedMinor).toMatchObject({
+      ageGroup: 'ADULT',
+      minorSupervision: null,
+      responsibleReservationGuestId: null,
+    });
+
+    const events = await prisma.auditEvent.findMany({
+      where: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        entityType: 'Reservation',
+        entityId: reservation.id,
+        action: 'reservation.guest_updated',
+      },
+      orderBy: { occurredAt: 'asc' },
+      select: { actorUserId: true, metadata: true },
+    });
+    const conversionAudit = [...events]
+      .reverse()
+      .find(
+        (event) =>
+          (event.metadata as { reservationGuestId?: string } | null)?.reservationGuestId ===
+          minor.reservationGuestId,
+      );
+
+    expect(conversionAudit).toBeDefined();
+    expect(conversionAudit?.actorUserId).toBe(RECEPTION);
+    expect(conversionAudit?.metadata).toMatchObject({
+      reservationGuestId: minor.reservationGuestId,
+      ageGroup: 'ADULT',
+    });
   });
 
   it('blocks check-in for an unauthorized minor and allows it after authorization', async () => {
