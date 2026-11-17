@@ -291,7 +291,7 @@ function GuestsContent() {
           >
             Limpiar
           </Button>
-          <Text fontSize="xs" color="gray.500" ml="auto">
+          <Text fontSize="xs" color="textSecondary" ml="auto">
             {data?.items.length ?? 0} huéspedes cargados
           </Text>
         </HStack>
@@ -321,14 +321,14 @@ function GuestsContent() {
                     <Td>
                       <Text fontWeight="medium">{guest.fullName}</Text>
                       {guest.notes !== null && (
-                        <Text fontSize="xs" color="gray.500" noOfLines={1} maxW="260px">
+                        <Text fontSize="xs" color="textSecondary" noOfLines={1} maxW="260px">
                           {guest.notes}
                         </Text>
                       )}
                     </Td>
                     <Td>
                       <Text fontSize="sm">{guest.email ?? '—'}</Text>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="textSecondary">
                         {guest.phone ?? 'sin teléfono'}
                       </Text>
                     </Td>
@@ -341,7 +341,7 @@ function GuestsContent() {
                           </Text>
                         </>
                       ) : (
-                        <Text fontSize="sm" color="gray.500">
+                        <Text fontSize="sm" color="textSecondary">
                           Sin documento
                         </Text>
                       )}
@@ -353,32 +353,30 @@ function GuestsContent() {
                       />
                     </Td>
                     <Td>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="textSecondary">
                         {formatDateTime(guest.createdAt)}
                       </Text>
                     </Td>
                     <Td>
                       <HStack spacing={1} justify="flex-end" wrap="nowrap">
                         <GuestDocuments guestId={guest.id} guestName={guest.fullName} />
-                                                  <RowActionButton
-                            onClick={() => {
-                              setNotesTarget(guest);
-                              notesModal.onOpen();
-                            }}
-                          >
-                            Notas
-                          </RowActionButton>
-                          <RowActionButton
-                            onClick={() => openEdit(guest)}
-                          >
-                            Editar
-                          </RowActionButton>
-                          <RowActionButton
-                            onClick={() => void toggleStatus(guest)}
-                            colorScheme={guest.status === 'ACTIVE' ? 'warning' : 'sky'}
-                          >
-                            {guest.status === 'ACTIVE' ? 'Deshabilitar' : 'Reactivar'}
-                          </RowActionButton>
+                        <RowActionButton
+                          onClick={() => {
+                            setNotesTarget(guest);
+                            notesModal.onOpen();
+                          }}
+                        >
+                          Notas
+                        </RowActionButton>
+                        <RowActionButton onClick={() => openEdit(guest)}>
+                          Editar
+                        </RowActionButton>
+                        <RowActionButton
+                          onClick={() => void toggleStatus(guest)}
+                          colorScheme={guest.status === 'ACTIVE' ? 'warning' : 'sky'}
+                        >
+                          {guest.status === 'ACTIVE' ? 'Deshabilitar' : 'Reactivar'}
+                        </RowActionButton>
                       </HStack>
                     </Td>
                   </Tr>

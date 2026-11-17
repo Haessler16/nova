@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { CsrfGuard } from './auth/csrf.guard';
 import { DocumentsModule } from './documents/documents.module';
 import { ExportsModule } from './exports/exports.module';
@@ -62,6 +63,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     FrontOfficeModule,
     DocumentsModule,
     FolioModule,
+    CatalogModule,
     NightAuditModule,
     ReportsModule,
     ExportsModule,

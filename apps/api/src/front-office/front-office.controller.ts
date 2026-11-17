@@ -72,6 +72,24 @@ export class FrontOfficeController {
     return this.frontOffice.noShow(tenant, id, dto);
   }
 
+  @Get('stays/:id/checkout-readiness')
+  @RequirePermissions(PERMISSIONS.FRONT_OFFICE_READ, PERMISSIONS.FOLIO_READ)
+  checkoutReadiness(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.frontOffice.checkoutReadiness(tenant, id);
+  }
+
+  @Get('stays/:id/room-move-candidates')
+  @RequirePermissions(PERMISSIONS.FRONT_OFFICE_READ)
+  roomMoveCandidates(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.frontOffice.roomMoveCandidates(tenant, id);
+  }
+
   @Post('stays/:id/check-out')
   @RequirePermissions(PERMISSIONS.FRONT_OFFICE_MANAGE)
   checkOut(

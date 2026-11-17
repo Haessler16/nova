@@ -1,6 +1,7 @@
 import { IncidentSeverity, IncidentType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -26,6 +27,26 @@ export class CheckOutDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  /** Close the account(s) in the same transaction. Defaults to true. */
+  @IsOptional()
+  @IsBoolean()
+  closeFolios?: boolean;
+
+  /**
+   * Hotel policy decides whether a pending balance blocks checkout. The
+   * reversible default is to block; an operator can authorize the exception
+   * explicitly and it is audited with a reason (OPEN QUESTION, ADR-055).
+   */
+  @IsOptional()
+  @IsBoolean()
+  allowOutstandingBalance?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  balanceReason?: string;
 }
 
 export class MoveStayRoomDto {

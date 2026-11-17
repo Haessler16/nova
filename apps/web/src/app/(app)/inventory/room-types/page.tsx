@@ -160,7 +160,7 @@ function RoomTypesContent() {
       <SectionCard>
         <HStack mb={4} justify="space-between" wrap="wrap" spacing={3}>
           <HStack>
-            <Text fontSize="sm" color="gray.600">
+            <Text fontSize="sm" color="textSecondary">
               Filtrar por estado
             </Text>
             <Select
@@ -174,7 +174,7 @@ function RoomTypesContent() {
               <option value="DISABLED">Deshabilitados</option>
             </Select>
           </HStack>
-          <Text fontSize="xs" color="gray.500">
+          <Text fontSize="xs" color="textSecondary">
             {data?.items.length ?? 0} tipos cargados
           </Text>
         </HStack>
@@ -206,7 +206,7 @@ function RoomTypesContent() {
                     <Td>
                       <Text fontWeight="medium">{roomType.name}</Text>
                       {roomType.description !== null && (
-                        <Text fontSize="xs" color="gray.500" noOfLines={1} maxW="320px">
+                        <Text fontSize="xs" color="textSecondary" noOfLines={1} maxW="320px">
                           {roomType.description}
                         </Text>
                       )}

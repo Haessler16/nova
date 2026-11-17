@@ -142,9 +142,11 @@ export function RowActionLink({
       fontSize="sm"
       fontWeight="semibold"
       textDecoration="none"
-      color="textPrimary"
-      bg="gray.100"
-      _hover={{ bg: 'gray.200', textDecoration: 'none' }}
+      color="brand.800"
+      bg="brand.50"
+      borderWidth="1px"
+      borderColor="brand.300"
+      _hover={{ bg: 'brand.100', borderColor: 'brand.400', textDecoration: 'none' }}
       _focusVisible={{ boxShadow: 'focus' }}
       aria-label={label}
     >
@@ -165,8 +167,6 @@ export function RowActionButton({
   colorScheme?: 'gray' | 'brand' | 'sky' | 'mint' | 'warning' | 'danger';
   isLoading?: boolean;
 }) {
-  const label =
-    typeof children === 'string' ? children : undefined;
   return (
     <Button
       size="xs"
@@ -175,10 +175,10 @@ export function RowActionButton({
       onClick={onClick}
       isLoading={isLoading}
       fontWeight="semibold"
-      aria-label={label}
+      aria-label={typeof children === 'string' ? children : undefined}
     >
       {children}
-      <CaretDownIcon boxSize={3.5} ml={1} />
+      <CaretDownIcon boxSize={3.5} ml={1} aria-hidden="true" />
     </Button>
   );
 }
@@ -306,7 +306,7 @@ export function EmptyState({ text, hint }: { text: string; hint?: string }) {
       borderStyle="dashed"
       borderColor="line"
       borderRadius="xl"
-      bg="gray.50"
+      bg="gray.100"
       flexDirection="column"
       textAlign="center"
     >
@@ -393,7 +393,7 @@ export function MetricCard({
         )}
       </HStack>
       {progress !== undefined && (
-        <Box mt={4} h="5px" bg="gray.100" borderRadius="full" overflow="hidden">
+        <Box mt={4} h="5px" bg="gray.200" borderRadius="full" overflow="hidden">
           <Box
             h="100%"
             width={`${Math.min(Math.max(progress, 0), 100)}%`}

@@ -46,6 +46,7 @@ import {
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
 import {
+  FOLIO_LINE_SOURCE_LABELS,
   FOLIO_STATUS_COLORS,
   FOLIO_STATUS_LABELS,
   PAYMENT_STATUS_COLORS,
@@ -53,7 +54,7 @@ import {
   formatDateTime,
   formatMoney,
 } from '@/lib/format';
-import type { Folio, FolioLine, PaymentStatus } from '@/lib/types';
+import type { Folio, FolioLine, FolioProduct, PaymentStatus } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 import {
   buildErrors,
@@ -84,11 +85,17 @@ function FolioDetailContent() {
     `${tenant.organizationId}:${tenant.propertyId}:folio:${folioId}`,
   );
 
+  const products = useAsyncData<{ items: FolioProduct[] }>(
+    () => api<{ items: FolioProduct[] }>('/api/v1/products?isActive=true', { tenant }),
+    `${tenant.organizationId}:${tenant.propertyId}:folio-products`,
+  );
+
   const voidModal = useDisclosure();
   const cancelModal = useDisclosure();
 
   const [busy, setBusy] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [consumption, setConsumption] = useState({ productId: '', quantity: '1' });
   const [charge, setCharge] = useState({ description: '', amount: '' });
   const [payment, setPayment] = useState({ amount: '', method: 'CASH', referenceId: '' });
   const [voidTarget, setVoidTarget] = useState<FolioLine | null>(null);
@@ -142,6 +149,36 @@ function FolioDetailContent() {
         }),
       'Cargo registrado',
       () => setCharge({ description: '', amount: '' }),
+    );
+  }
+
+  async function submitConsumption(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    const nextErrors = buildErrors([
+      [
+        'consumption.productId',
+        consumption.productId === '' ? 'Elegí un producto del catálogo.' : null,
+      ],
+      ['consumption.quantity', moneyField(consumption.quantity, 'La cantidad', { allowZero: false })],
+    ]);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      return;
+    }
+    await run(
+      'consumption',
+      () =>
+        api(`/api/v1/folios/${folioId}/charges`, {
+          method: 'POST',
+          tenant,
+          body: {
+            productId: consumption.productId,
+            quantity: consumption.quantity,
+            idempotencyKey: `consume-ui-${crypto.randomUUID()}`,
+          },
+        }),
+      'Consumo registrado',
+      () => setConsumption({ productId: '', quantity: '1' }),
     );
   }
 
@@ -230,6 +267,8 @@ function FolioDetailContent() {
 
   const data = folio.data;
   const isOpen = data?.status === 'OPEN';
+  const catalog = products.data?.items ?? [];
+  const selectedProduct = catalog.find((item) => item.id === consumption.productId) ?? null;
   const hasPayments = (data?.payments.length ?? 0) > 0;
 
   return (
@@ -321,7 +360,10 @@ function FolioDetailContent() {
                             <Td>
                               <Text fontSize="sm">{line.description}</Text>
                               <Text fontSize="xs" color="textSecondary">
-                                {formatDateTime(line.postedAt)}
+                                {FOLIO_LINE_SOURCE_LABELS[line.source]} ·{' '}
+                                {line.productId === null
+                                  ? formatDateTime(line.postedAt)
+                                  : `${line.quantity} × ${formatMoney(line.unitAmount, line.currencyCode)}`}
                               </Text>
                             </Td>
                             <Td isNumeric>{formatMoney(line.amount, line.currencyCode)}</Td>
@@ -348,8 +390,81 @@ function FolioDetailContent() {
                 {isOpen && (
                   <>
                     <Divider my={4} />
+                    <Box as="form" onSubmit={submitConsumption}>
+                      <Stack spacing={3}>
+                        <Text fontWeight="semibold" fontSize="sm">
+                          Registrar consumo
+                        </Text>
+                        <Field
+                          label="Producto"
+                          isRequired
+                          error={errors['consumption.productId']}
+                          helper={
+                            catalog.length === 0
+                              ? 'No hay productos activos. Creá el catálogo en Catálogo de consumos.'
+                              : undefined
+                          }
+                        >
+                          <Select
+                            size="sm"
+                            value={consumption.productId}
+                            onChange={(event) =>
+                              setConsumption((current) => ({
+                                ...current,
+                                productId: event.target.value,
+                              }))
+                            }
+                            required
+                          >
+                            <option value="">Seleccionar…</option>
+                            {catalog.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} · {formatMoney(item.unitAmount, item.currencyCode)}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field
+                          label="Cantidad"
+                          isRequired
+                          error={errors['consumption.quantity']}
+                          helper={
+                            selectedProduct === null
+                              ? 'Se multiplica por el precio vigente del catálogo.'
+                              : `Precio vigente: ${formatMoney(selectedProduct.unitAmount, selectedProduct.currencyCode)} por ${selectedProduct.unit}.`
+                          }
+                        >
+                          <Input
+                            size="sm"
+                            inputMode="decimal"
+                            value={consumption.quantity}
+                            onChange={(event) =>
+                              setConsumption((current) => ({
+                                ...current,
+                                quantity: event.target.value,
+                              }))
+                            }
+                            required
+                          />
+                        </Field>
+                        <Button
+                          type="submit"
+                          size="sm"
+                          colorScheme="brand"
+                          alignSelf="flex-start"
+                          isLoading={busy === 'consumption'}
+                        >
+                          Cargar consumo
+                        </Button>
+                      </Stack>
+                    </Box>
+
+                    <Divider my={4} />
                     <Box as="form" onSubmit={submitCharge}>
                       <Stack spacing={3}>
+                        <Text fontWeight="semibold" fontSize="sm">
+                          Cargo manual autorizado
+                        </Text>
                         <Field label="Concepto" isRequired error={errors['charge.description']}>
                           <Input
                             size="sm"

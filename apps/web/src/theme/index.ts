@@ -113,42 +113,42 @@ const BUTTON_TONES: Record<string, ButtonTone> = {
     bg: 'brand.700',
     hover: 'brand.800',
     active: 'brand.900',
-    border: 'brand.200',
+    border: 'brand.300',
   },
   sky: {
     fg: 'sky.700',
     bg: 'sky.700',
     hover: 'sky.800',
     active: 'sky.900',
-    border: 'sky.200',
+    border: 'sky.300',
   },
   mint: {
     fg: 'mint.800',
     bg: 'mint.800',
     hover: 'mint.900',
     active: 'mint.900',
-    border: 'mint.200',
+    border: 'mint.300',
   },
   warning: {
     fg: 'warning.800',
     bg: 'warning.800',
     hover: 'warning.900',
     active: 'warning.900',
-    border: 'warning.200',
+    border: 'warning.300',
   },
   danger: {
     fg: 'danger.700',
     bg: 'danger.700',
     hover: 'danger.800',
     active: 'danger.900',
-    border: 'danger.200',
+    border: 'danger.300',
   },
   gray: {
     fg: 'gray.700',
     bg: 'gray.600',
     hover: 'gray.700',
     active: 'gray.800',
-    border: 'gray.200',
+    border: 'gray.300',
   },
 };
 
@@ -190,10 +190,11 @@ function outlineButton(props: Record<string, unknown>): SystemStyleObject {
 
 function ghostButton(props: Record<string, unknown>): SystemStyleObject {
   const tone = buttonTone(props);
+  const scheme = tone.border.split('.')[0];
   return {
     color: tone.fg,
-    _hover: { bg: `${tone.border.split('.')[0]}.50` },
-    _active: { bg: `${tone.border.split('.')[0]}.100` },
+    _hover: { bg: `${scheme}.100` },
+    _active: { bg: `${scheme}.200` },
     _disabled: { opacity: 0.5 },
   };
 }
@@ -211,13 +212,13 @@ const theme = extendTheme({
     // Light theme keeps the approved NOVA look but moves the page canvas slightly off
     // pure white, and uses a clearer secondary text and divider line so labels and
     // cards read with better contrast without heavier borders or stronger shadows.
-    canvas: '#F4F7FB',
+    canvas: '#EFF4FA',
     surface: '#FFFFFF',
     sidebar: '#102A43',
     sidebarHover: '#1B3B5A',
     textPrimary: '#172B4D',
-    textSecondary: '#54657A',
-    line: '#D8E1EC',
+    textSecondary: '#4E6177',
+    line: '#C9D6E4',
     skySoft: '#E8F5FD',
     mintSoft: '#E8F8F2',
     limeSoft: '#F6FDEB',
@@ -246,8 +247,8 @@ const theme = extendTheme({
     full: '9999px',
   },
   shadows: {
-    card: '0 1px 2px rgba(16, 42, 67, 0.04), 0 10px 28px rgba(16, 42, 67, 0.05)',
-    cardHover: '0 2px 6px rgba(16, 42, 67, 0.06), 0 16px 36px rgba(16, 42, 67, 0.08)',
+    card: '0 1px 2px rgba(16, 42, 67, 0.07), 0 6px 18px rgba(16, 42, 67, 0.06)',
+    cardHover: '0 2px 6px rgba(16, 42, 67, 0.09), 0 14px 32px rgba(16, 42, 67, 0.10)',
     modal: '0 24px 64px rgba(16, 42, 67, 0.22), 0 4px 12px rgba(16, 42, 67, 0.08)',
     focus: focusRing,
   },
@@ -317,7 +318,7 @@ const theme = extendTheme({
             bg: 'surface',
             borderColor: 'line',
             borderRadius: 'lg',
-            _hover: { borderColor: 'gray.300' },
+            _hover: { borderColor: 'gray.400' },
             _focusVisible: { borderColor: 'brand.500', boxShadow: focusRing },
           },
         },
@@ -333,7 +334,7 @@ const theme = extendTheme({
             bg: 'surface',
             borderColor: 'line',
             borderRadius: 'lg',
-            _hover: { borderColor: 'gray.300' },
+            _hover: { borderColor: 'gray.400' },
             _focusVisible: { borderColor: 'brand.500', boxShadow: focusRing },
           },
         },
@@ -348,7 +349,7 @@ const theme = extendTheme({
           bg: 'surface',
           borderColor: 'line',
           borderRadius: 'lg',
-          _hover: { borderColor: 'gray.300' },
+          _hover: { borderColor: 'gray.400' },
           _focusVisible: { borderColor: 'brand.500', boxShadow: focusRing },
         },
       },
@@ -472,6 +473,28 @@ const theme = extendTheme({
           color: 'textSecondary',
           _hover: { bg: 'gray.100', color: 'textPrimary' },
           _focusVisible: { boxShadow: focusRing },
+        },
+      },
+    },
+    // Tables share one style so dense screens (racks, reservations, folios) keep
+    // a readable header band and visible row separation instead of faint lines.
+    Table: {
+      variants: {
+        simple: {
+          table: { borderColor: 'line' },
+          thead: { bg: 'gray.50' },
+          th: {
+            bg: 'gray.50',
+            color: 'textSecondary',
+            fontSize: 'xs',
+            fontWeight: 'bold',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            borderColor: 'line',
+          },
+          td: {
+            borderColor: 'line',
+          },
         },
       },
     },

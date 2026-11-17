@@ -702,7 +702,7 @@ function RoomsContent() {
         <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3} mb={4}>
           {summaryCards.map((card) => (
             <Box key={card.label} borderWidth="1px" borderRadius="md" px={3} py={2}>
-              <Text fontSize="xs" color="gray.500">
+              <Text fontSize="xs" color="textSecondary">
                 {card.label}
               </Text>
               <Text fontSize="xl" fontWeight="semibold" color={card.color}>
@@ -711,7 +711,7 @@ function RoomsContent() {
             </Box>
           ))}
         </SimpleGrid>
-        <Text fontSize="xs" color="gray.500" mb={3}>
+        <Text fontSize="xs" color="textSecondary" mb={3}>
           {data?.summary.totalRooms ?? 0} habitaciones activas en la propiedad. Los contadores no
           dependen de los filtros.
         </Text>
@@ -850,7 +850,7 @@ function RoomsContent() {
               Limpiar
             </Button>
           </HStack>
-          <Text fontSize="xs" color="gray.500">
+          <Text fontSize="xs" color="textSecondary">
             {data?.rooms.length ?? 0} habitaciones cargadas (máximo 100 por consulta).
           </Text>
         </Stack>
@@ -873,7 +873,7 @@ function RoomsContent() {
                   <Th width="110px">Housekeeping</Th>
                   <Th width="125px">Operativo</Th>
                   <Th width="115px">Actualizada</Th>
-                  <Th width="110px" position="sticky" right={0} bg="white" zIndex={1}>
+                  <Th width="110px" position="sticky" right={0} bg="gray.50" zIndex={1}>
                     Acciones
                   </Th>
                 </Tr>
@@ -890,14 +890,14 @@ function RoomsContent() {
                         />
                       )}
                       {room.attributes.length > 0 && (
-                        <Text fontSize="xs" color="gray.500" noOfLines={1} maxW="180px">
+                        <Text fontSize="xs" color="textSecondary" noOfLines={1} maxW="180px">
                           {room.attributes.join(' · ')}
                         </Text>
                       )}
                     </Td>
                     <Td>
                       <Text>{room.roomType.name}</Text>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="textSecondary">
                         {room.roomType.capacityAdults} adulto(s)
                         {room.roomType.capacityChildren > 0
                           ? ` + ${room.roomType.capacityChildren} menor(es)`
@@ -918,14 +918,14 @@ function RoomsContent() {
                           <Text fontSize="xs" fontWeight="medium" noOfLines={1}>
                             {room.currentStay.guestName}
                           </Text>
-                          <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                          <Text fontSize="xs" color="textSecondary" noOfLines={1}>
                             {room.currentStay.code} · hasta{' '}
                             {formatCalendarDate(room.currentStay.checkOutDate)}
                           </Text>
                         </Box>
                       )}
                       {room.currentStay === null && room.nextArrival !== null && (
-                        <Text fontSize="xs" color="gray.500" mt={1} noOfLines={1}>
+                        <Text fontSize="xs" color="textSecondary" mt={1} noOfLines={1}>
                           Próx. {room.nextArrival.code} ·{' '}
                           {formatCalendarDate(room.nextArrival.checkInDate)}
                         </Text>
@@ -948,14 +948,14 @@ function RoomsContent() {
                         label={OPERATIONAL_LABELS[room.operationalState]}
                       />
                       {room.activeBlock !== null && (
-                        <Text fontSize="xs" color="gray.500" mt={1}>
+                        <Text fontSize="xs" color="textSecondary" mt={1}>
                           Bloqueo hasta {formatDateTime(room.activeBlock.endsAt)}
                         </Text>
                       )}
                     </Td>
                     <Td>
                       <Text fontSize="xs">{formatDateTime(room.updatedAt)}</Text>
-                      <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                      <Text fontSize="xs" color="textSecondary" noOfLines={1}>
                         {room.updatedBy?.name ?? 'Sistema'}
                       </Text>
                     </Td>
@@ -1153,7 +1153,7 @@ function RoomsContent() {
           <DrawerHeader>
             Habitación {selectedRoom?.number}
             {selectedRoom !== null && (
-              <Text fontSize="sm" fontWeight="normal" color="gray.500">
+              <Text fontSize="sm" fontWeight="normal" color="textSecondary">
                 {selectedRoom.roomType.name} ·{' '}
                 {selectedRoom.attributes.join(' · ') || 'sin atributos'}
               </Text>
@@ -1210,12 +1210,12 @@ function RoomsContent() {
                       </Text>
                     </Stack>
                   ) : (
-                    <Text fontSize="sm" color="gray.500">
+                    <Text fontSize="sm" color="textSecondary">
                       Sin estancia en casa.
                     </Text>
                   )}
                   {selectedRoom.nextArrival !== null && (
-                    <Text fontSize="sm" color="gray.600" mt={2}>
+                    <Text fontSize="sm" color="textPrimary" mt={2}>
                       Próxima llegada: {selectedRoom.nextArrival.guestName} ·{' '}
                       {selectedRoom.nextArrival.code} ·{' '}
                       {formatCalendarDate(selectedRoom.nextArrival.checkInDate)}
@@ -1307,7 +1307,7 @@ function RoomsContent() {
                     </Stack>
                   ) : (
                     <Stack spacing={2}>
-                      <Text fontSize="sm" color="gray.500">
+                      <Text fontSize="sm" color="textSecondary">
                         Nadie está seleccionando esta habitación. La selección expira sola y no
                         reserva la habitación.
                       </Text>
@@ -1417,7 +1417,7 @@ function RoomsContent() {
                   </HStack>
                   <HStack wrap="wrap">
                     {nextHousekeeping.length === 0 && (
-                      <Text fontSize="sm" color="gray.500">
+                      <Text fontSize="sm" color="textSecondary">
                         Sin transiciones disponibles.
                       </Text>
                     )}
@@ -1473,7 +1473,7 @@ function RoomsContent() {
                             <Text fontSize="sm" mt={1}>
                               {block.reason}
                             </Text>
-                            <Text fontSize="xs" color="gray.500">
+                            <Text fontSize="xs" color="textSecondary">
                               {formatDateTime(block.startsAt)} → {formatDateTime(block.endsAt)}
                             </Text>
                           </Box>
@@ -1528,7 +1528,7 @@ function RoomsContent() {
                       )}
                       <HStack>
                         <Box flex="1">
-                          <Text fontSize="xs" color="gray.500" mb={1}>
+                          <Text fontSize="xs" color="textSecondary" mb={1}>
                             Inicio
                           </Text>
                           <Input
@@ -1542,7 +1542,7 @@ function RoomsContent() {
                           />
                         </Box>
                         <Box flex="1">
-                          <Text fontSize="xs" color="gray.500" mb={1}>
+                          <Text fontSize="xs" color="textSecondary" mb={1}>
                             Fin
                           </Text>
                           <Input
@@ -1584,7 +1584,7 @@ function RoomsContent() {
                     <Stack spacing={2} maxH="320px" overflowY="auto">
                       {detail.data?.history.map((entry) => (
                         <Box key={entry.id} borderLeftWidth="3px" borderColor="brand.200" pl={3}>
-                          <Text fontSize="xs" color="gray.500">
+                          <Text fontSize="xs" color="textSecondary">
                             {formatDateTime(entry.occurredAt)} · {entry.category}
                             {entry.actorName !== null ? ` · ${entry.actorName}` : ''}
                           </Text>
@@ -1592,7 +1592,7 @@ function RoomsContent() {
                             {entry.fromState ?? '—'} → <strong>{entry.toState}</strong>
                           </Text>
                           {entry.reason !== null && (
-                            <Text fontSize="xs" color="gray.600">
+                            <Text fontSize="xs" color="textSecondary">
                               {entry.reason}
                             </Text>
                           )}

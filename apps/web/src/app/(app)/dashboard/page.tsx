@@ -258,7 +258,7 @@ function ArrivalsPanel({
               gap={3}
               py={3}
               borderBottomWidth="1px"
-              borderColor="gray.100"
+              borderColor="line"
               _last={{ borderBottomWidth: 0, pb: 0 }}
             >
               <HStack spacing={3} minW={0}>

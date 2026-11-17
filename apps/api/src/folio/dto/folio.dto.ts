@@ -1,4 +1,4 @@
-import { CashMovementType } from '@prisma/client';
+import { CashMovementType, FolioLineSource } from '@prisma/client';
 import {
   IsEnum,
   IsOptional,
@@ -37,15 +37,39 @@ export class CreateFolioDto {
   idempotencyKey!: string;
 }
 
+const QUANTITY_PATTERN = /^(0|[1-9]\d{0,3})(\.\d{1,2})?$/;
+
+/**
+ * A charge is either a catalog consumption (`productId` + `quantity`, price
+ * resolved server-side) or an authorized manual charge (`description` +
+ * `amount`). Mixing both modes is rejected; the service validates the pair.
+ */
 export class AddFolioChargeDto {
+  @IsOptional()
+  @IsUUID()
+  productId?: string;
+
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(120)
-  description!: string;
+  description?: string;
 
+  @IsOptional()
   @IsString()
   @Matches(MONEY_PATTERN, { message: 'amount must be a decimal string with up to 2 decimals' })
-  amount!: string;
+  amount?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(QUANTITY_PATTERN, {
+    message: 'quantity must be a decimal string with up to 2 decimals',
+  })
+  quantity?: string;
+
+  @IsOptional()
+  @IsEnum(FolioLineSource)
+  source?: FolioLineSource;
 
   @IsOptional()
   @IsString()

@@ -56,7 +56,9 @@ describe('Front Office (E2E)', () => {
   let roomAId: string;
   let roomBId: string;
   let dirtyRoomId: string;
+  let dirtyCheckInRoomId: string;
   let blockedRoomId: string;
+  let deluxeRoomId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -67,7 +69,7 @@ describe('Front Office (E2E)', () => {
 
     // The seed intentionally fills the demo rooms with in-house stays. Dedicated
     // rooms keep this suite deterministic without mutating demo data.
-    const [roomA, roomB, dirtyRoom, blockedRoom] = await Promise.all([
+    const [roomA, roomB, dirtyRoom, dirtyCheckInRoom, blockedRoom, deluxeRoom] = await Promise.all([
       prisma.room.create({
         data: {
           organizationId: ORG_A,
@@ -109,7 +111,31 @@ describe('Front Office (E2E)', () => {
           organizationId: ORG_A,
           propertyId: PROPERTY_CENTRO,
           roomTypeId: ROOM_TYPE_STD,
+          number: `E2E-${suffix.slice(-4)}-F`,
+          floor: '9',
+          building: 'E2E',
+          housekeepingState: HousekeepingState.DIRTY,
+        },
+        select: { id: true },
+      }),
+      prisma.room.create({
+        data: {
+          organizationId: ORG_A,
+          propertyId: PROPERTY_CENTRO,
+          roomTypeId: ROOM_TYPE_STD,
           number: `E2E-${suffix.slice(-4)}-D`,
+          floor: '9',
+          building: 'E2E',
+          housekeepingState: HousekeepingState.CLEAN,
+        },
+        select: { id: true },
+      }),
+      prisma.room.create({
+        data: {
+          organizationId: ORG_A,
+          propertyId: PROPERTY_CENTRO,
+          roomTypeId: ROOM_TYPE_DLX,
+          number: `E2E-${suffix.slice(-4)}-E`,
           floor: '9',
           building: 'E2E',
           housekeepingState: HousekeepingState.CLEAN,
@@ -120,7 +146,9 @@ describe('Front Office (E2E)', () => {
     roomAId = roomA.id;
     roomBId = roomB.id;
     dirtyRoomId = dirtyRoom.id;
+    dirtyCheckInRoomId = dirtyCheckInRoom.id;
     blockedRoomId = blockedRoom.id;
+    deluxeRoomId = deluxeRoom.id;
   });
 
   afterAll(async () => {
@@ -316,7 +344,7 @@ describe('Front Office (E2E)', () => {
         adults: 1,
         guestId: GUEST_ANA,
         roomTypeId: ROOM_TYPE_STD,
-        roomId: dirtyRoomId,
+        roomId: dirtyCheckInRoomId,
         source: 'front-office-dirty-room',
       })
       .expect(201);
@@ -406,6 +434,81 @@ describe('Front Office (E2E)', () => {
     expect(rackRoomA.currentStay.id).toBe(stayId);
   });
 
+  it('exposes room-move candidates with eligibility, warnings and tenant scope', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/stays/${stayId}/room-move-candidates`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+
+    expect(response.body.stay.id).toBe(stayId);
+    expect(response.body.stay.room.id).toBe(roomAId);
+    expect(response.body.stay.room.roomType.capacityAdults).toEqual(expect.any(Number));
+    expect(response.body.stay.reservation).toMatchObject({
+      checkInDate: today,
+      checkOutDate: tomorrow,
+      nights: 1,
+      adults: 2,
+    });
+
+    const byId = new Map(
+      (
+        response.body.candidates as Array<{
+          id: string;
+          eligible: boolean;
+          occupancy: string;
+          blockers: Array<{ code: string }>;
+          warnings: Array<{ code: string }>;
+        }>
+      ).map((room) => [room.id, room]),
+    );
+
+    // The current room is context, never a destination.
+    expect(byId.has(roomAId)).toBe(false);
+
+    const target = byId.get(roomBId);
+    expect(target?.eligible).toBe(true);
+    expect(target?.blockers).toEqual([]);
+    expect(target?.occupancy).toBe('VACANT');
+
+    // Housekeeping is a warning: the transactional rule allows the move.
+    const dirty = byId.get(dirtyRoomId);
+    expect(dirty?.eligible).toBe(true);
+    expect(dirty?.warnings.map((item) => item.code)).toContain('housekeeping_not_ready');
+
+    const blocked = byId.get(blockedRoomId);
+    expect(blocked?.eligible).toBe(false);
+    expect(blocked?.blockers.map((item) => item.code)).toEqual(
+      expect.arrayContaining(['room_block_overlap', 'room_out_of_service']),
+    );
+
+    const deluxe = byId.get(deluxeRoomId);
+    expect(deluxe?.eligible).toBe(false);
+    expect(deluxe?.blockers.map((item) => item.code)).toContain('room_type_mismatch');
+
+    // Reading alternatives needs front_office.read; moving needs manage.
+    await request(app.getHttpServer())
+      .get(`/api/v1/front-office/stays/${stayId}/room-move-candidates`)
+      .set(headers(HOUSEKEEPER, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/front-office/stays/${stayId}/room-move-candidates`)
+      .set(headers(AUDITOR, ORG_A, PROPERTY_CENTRO))
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/front-office/stays/${stayId}/room-move`)
+      .set(headers(HOUSEKEEPER, ORG_A, PROPERTY_CENTRO))
+      .send({ roomId: roomBId, reason: 'Synthetic denied move' })
+      .expect(403);
+
+    const missing = await request(app.getHttpServer())
+      .get('/api/v1/front-office/stays/00000000-0000-4000-8000-0000000000ff/room-move-candidates')
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(404);
+    expect(missing.body.code).toBe('stay_not_found');
+  });
+
   it('moves an in-house stay to another room and rejects room type mismatches', async () => {
     const moved = await request(app.getHttpServer())
       .post(`/api/v1/front-office/stays/${stayId}/room-move`)
@@ -430,6 +533,123 @@ describe('Front Office (E2E)', () => {
       .expect(409);
 
     expect(mismatch.body.code).toBe('room_type_mismatch');
+  });
+
+  it('rejects a blocked destination, keeps the new room and audits the move', async () => {
+    const rejected = await request(app.getHttpServer())
+      .post(`/api/v1/front-office/stays/${stayId}/room-move`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .send({ roomId: blockedRoomId, reason: 'Synthetic blocked move' })
+      .expect(409);
+    // The out-of-order block drives the room's operational state first, so the
+    // first blocker matches what the operator sees in the candidate list.
+    expect(rejected.body.code).toBe('room_out_of_service');
+
+    // A stale UI must be able to refresh alternatives after the conflict.
+    const candidates = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/stays/${stayId}/room-move-candidates`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+    expect(candidates.body.stay.room.id).toBe(roomBId);
+
+    const byId = new Map(
+      (
+        candidates.body.candidates as Array<{
+          id: string;
+          eligible: boolean;
+          blockers: Array<{ code: string }>;
+        }>
+      ).map((room) => [room.id, room]),
+    );
+    expect(byId.has(roomBId)).toBe(false);
+    expect(byId.get(roomAId)?.eligible).toBe(true);
+    expect(byId.get(blockedRoomId)?.blockers.map((item) => item.code)).toContain(
+      'room_block_overlap',
+    );
+
+    const audit = await prisma.auditEvent.findFirst({
+      where: { organizationId: ORG_A, action: 'reservation.room_moved', entityId: reservationId },
+      orderBy: { occurredAt: 'desc' },
+    });
+    expect(audit?.actorUserId).toBe(RECEPTION);
+    expect(audit?.reason).toBe('Synthetic E2E room move');
+    expect(audit?.metadata).toMatchObject({
+      fromRoomId: roomAId,
+      toRoomId: roomBId,
+      fromRoomNumber: expect.stringContaining('-A'),
+      toRoomNumber: expect.stringContaining('-B'),
+    });
+
+    const history = await prisma.reservationHistory.findFirst({
+      where: { reservationId, action: 'reservation.room_moved' },
+      orderBy: { occurredAt: 'desc' },
+    });
+    expect(history?.fromRoomId).toBe(roomAId);
+    expect(history?.toRoomId).toBe(roomBId);
+  });
+
+  it('marks a room taken by another in-house stay as ineligible and rejects the move', async () => {
+    const otherReservation = await prisma.reservation.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        code: `OCC${suffix.slice(-10)}`,
+        status: ReservationStatus.CHECKED_IN,
+        checkInDate: new Date(instant(today)),
+        checkOutDate: new Date(instant(tomorrow)),
+        adults: 1,
+        guestId: GUEST_ANA,
+        roomTypeId: ROOM_TYPE_STD,
+        roomId: roomAId,
+      },
+      select: { id: true },
+    });
+    await prisma.stay.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        reservationId: otherReservation.id,
+        guestId: GUEST_ANA,
+        roomId: roomAId,
+        status: StayStatus.IN_HOUSE,
+        checkedInAt: new Date(instant(today)),
+      },
+      select: { id: true },
+    });
+
+    const candidates = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/stays/${stayId}/room-move-candidates`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+
+    expect(candidates.body.stay.room.id).toBe(roomBId);
+    const byId = new Map(
+      (
+        candidates.body.candidates as Array<{
+          id: string;
+          eligible: boolean;
+          occupancy: string;
+          blockers: Array<{ code: string }>;
+        }>
+      ).map((room) => [room.id, room]),
+    );
+    const taken = byId.get(roomAId);
+    expect(taken?.occupancy).toBe('OCCUPIED');
+    expect(taken?.eligible).toBe(false);
+    expect(taken?.blockers.map((item) => item.code)).toContain('room_occupied');
+
+    const rejected = await request(app.getHttpServer())
+      .post(`/api/v1/front-office/stays/${stayId}/room-move`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .send({ roomId: roomAId, reason: 'Synthetic occupied move' })
+      .expect(409);
+    expect(rejected.body.code).toBe('room_occupied');
+
+    const unchanged = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/stays/${stayId}/room-move-candidates`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(200);
+    expect(unchanged.body.stay.room.id).toBe(roomBId);
   });
 
   it('records and resolves an incident linked to the stay', async () => {

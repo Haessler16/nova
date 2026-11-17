@@ -564,6 +564,38 @@ export type CashSessionStatus = 'OPEN' | 'CLOSED';
 export type CashMovementType = 'CASH_IN' | 'CASH_OUT' | 'REFUND' | 'ADJUSTMENT';
 export type OperationalCloseStatus = 'CLOSED' | 'REOPENED';
 
+export type FolioLineSource =
+  | 'MANUAL'
+  | 'MINIBAR'
+  | 'FRONT_DESK'
+  | 'PARKING'
+  | 'SERVICE'
+  | 'INTEGRATION';
+
+export type FolioProductCategory =
+  | 'MINIBAR'
+  | 'FOOD_BEVERAGE'
+  | 'PARKING'
+  | 'LAUNDRY'
+  | 'SERVICE'
+  | 'OTHER';
+
+export interface FolioProduct {
+  id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  category: FolioProductCategory;
+  unit: string;
+  unitAmount: string;
+  currencyCode: string;
+  isActive: boolean;
+  createdByUserId: string | null;
+  updatedByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface FolioLine {
   id: string;
   description: string;
@@ -573,6 +605,11 @@ export interface FolioLine {
   postedAt: string;
   voidedAt: string | null;
   voidReason: string | null;
+  productId: string | null;
+  quantity: string;
+  unitAmount: string | null;
+  unit: string | null;
+  source: FolioLineSource;
   createdByUserId: string | null;
 }
 
@@ -603,6 +640,102 @@ export interface Folio {
   payments: FolioPayment[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CheckoutFolioSummary {
+  id: string;
+  number: string;
+  status: FolioStatus;
+  currencyCode: string;
+  charges: string;
+  payments: string;
+  balance: string;
+}
+
+export interface CheckoutSummary {
+  folios: CheckoutFolioSummary[];
+  totals: { charges: string; payments: string; balance: string };
+  housekeeping: { from: HousekeepingState; to: HousekeepingState };
+  outstandingBalance: boolean;
+}
+
+export interface CheckoutReadiness {
+  stay: {
+    id: string;
+    status: StayStatus;
+    room: { id: string; number: string };
+    guest: { id: string; fullName: string };
+    reservation: { id: string; code: string };
+  };
+  folios: CheckoutFolioSummary[];
+  totals: { charges: string; payments: string; balance: string };
+  housekeeping: { current: HousekeepingState; target: HousekeepingState };
+  blockedReasons: Array<{ code: string; message: string }>;
+  warnings: Array<{ code: string; message: string }>;
+  canCheckOut: boolean;
+}
+
+export type RoomMoveBlockerCode =
+  | 'room_inactive'
+  | 'room_out_of_service'
+  | 'room_type_mismatch'
+  | 'room_block_overlap'
+  | 'room_occupied'
+  | 'room_not_available';
+
+export interface RoomMoveBlocker {
+  code: RoomMoveBlockerCode;
+  message: string;
+}
+
+export interface RoomMoveCandidateType {
+  id: string;
+  name: string;
+  code: string;
+  capacityAdults: number;
+  capacityChildren: number;
+}
+
+export interface RoomMoveCandidate {
+  id: string;
+  number: string;
+  floor: string | null;
+  building: string | null;
+  roomType: RoomMoveCandidateType;
+  housekeepingState: HousekeepingState;
+  operationalState: RoomOperationalState;
+  occupancy: 'VACANT' | 'OCCUPIED';
+  activeBlock: { id: string; type: RoomBlockType; endsAt: string } | null;
+  eligible: boolean;
+  blockers: RoomMoveBlocker[];
+  warnings: Array<{ code: 'housekeeping_not_ready'; message: string }>;
+}
+
+export interface RoomMoveCandidates {
+  stay: {
+    id: string;
+    status: StayStatus;
+    room: {
+      id: string;
+      number: string;
+      floor: string | null;
+      building: string | null;
+      housekeepingState: HousekeepingState;
+      roomType: RoomMoveCandidateType;
+    };
+    guest: { id: string; fullName: string };
+    reservation: {
+      id: string;
+      code: string;
+      status: ReservationStatus;
+      checkInDate: string;
+      checkOutDate: string;
+      nights: number;
+      adults: number;
+      children: number;
+    };
+  };
+  candidates: RoomMoveCandidate[];
 }
 
 export interface CashMovement {

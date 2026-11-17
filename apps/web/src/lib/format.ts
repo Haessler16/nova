@@ -4,6 +4,8 @@ import type {
   CheckInRoomBlockReason,
   DocumentStatus,
   DocumentType,
+  FolioLineSource,
+  FolioProductCategory,
   FolioStatus,
   GuestDocumentType,
   HousekeepingState,
@@ -45,6 +47,24 @@ export const CHECK_IN_BLOCK_REASON_LABELS: Record<CheckInRoomBlockReason, string
   ROOM_OCCUPIED: 'Habitación ocupada',
   ROOM_NOT_AVAILABLE: 'Otra reserva ocupa esas fechas',
   HOUSEKEEPING_NOT_READY: 'Housekeeping no lista',
+};
+
+export const FOLIO_LINE_SOURCE_LABELS: Record<FolioLineSource, string> = {
+  MANUAL: 'Manual',
+  MINIBAR: 'Minibar',
+  FRONT_DESK: 'Recepción',
+  PARKING: 'Estacionamiento',
+  SERVICE: 'Servicio',
+  INTEGRATION: 'Integración',
+};
+
+export const PRODUCT_CATEGORY_LABELS: Record<FolioProductCategory, string> = {
+  MINIBAR: 'Minibar',
+  FOOD_BEVERAGE: 'Alimentos y bebidas',
+  PARKING: 'Estacionamiento',
+  LAUNDRY: 'Lavandería',
+  SERVICE: 'Servicios',
+  OTHER: 'Otros',
 };
 
 export const HOUSEKEEPING_LABELS: Record<HousekeepingState, string> = {

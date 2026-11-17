@@ -917,7 +917,7 @@ function ReservationsContent() {
               ))}
             </Select>
             <HStack spacing={1}>
-              <Text fontSize="xs" color="gray.500">
+              <Text fontSize="xs" color="textSecondary">
                 Desde
               </Text>
               <DateField
@@ -935,7 +935,7 @@ function ReservationsContent() {
                   })
                 }
               />
-              <Text fontSize="xs" color="gray.500">
+              <Text fontSize="xs" color="textSecondary">
                 Hasta
               </Text>
               <DateField
@@ -960,7 +960,7 @@ function ReservationsContent() {
               Limpiar
             </Button>
           </HStack>
-          <Text fontSize="xs" color="gray.500">
+          <Text fontSize="xs" color="textSecondary">
             {data?.items.length ?? 0} reservas cargadas
             {data?.nextCursor != null ? ' · hay más resultados: refiná los filtros' : ''}
           </Text>
@@ -992,13 +992,13 @@ function ReservationsContent() {
                       <Text as="code" fontSize="xs" fontWeight="semibold">
                         {reservation.code}
                       </Text>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="textSecondary">
                         {reservation.source ?? 'directa'}
                       </Text>
                     </Td>
                     <Td>
                       <Text fontWeight="medium">{reservation.guest.fullName}</Text>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="textSecondary">
                         {reservation.guest.email ?? reservation.guest.phone ?? 'sin contacto'}
                       </Text>
                     </Td>
@@ -1007,7 +1007,7 @@ function ReservationsContent() {
                         {formatCalendarDate(reservation.checkInDate)} →{' '}
                         {formatCalendarDate(reservation.checkOutDate)}
                       </Text>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="textSecondary">
                         {reservation.nights} {reservation.nights === 1 ? 'noche' : 'noches'} ·{' '}
                         {reservation.adults} adultos
                         {reservation.children > 0 ? ` · ${reservation.children} menores` : ''}
@@ -1015,7 +1015,7 @@ function ReservationsContent() {
                     </Td>
                     <Td>
                       <Text fontSize="sm">{reservation.roomType.name}</Text>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="textSecondary">
                         {reservation.room !== null
                           ? `Hab. ${reservation.room.number}`
                           : 'Sin asignar'}
@@ -1112,11 +1112,11 @@ function ReservationsContent() {
                     <HStack justify="space-between" align="flex-start" wrap="wrap" spacing={3}>
                       <Box minW={0}>
                         <Text fontWeight="semibold">{selectedGuest.fullName}</Text>
-                        <Text fontSize="xs" color="gray.600" isTruncated>
+                        <Text fontSize="xs" color="textSecondary" isTruncated>
                           {[selectedGuest.email, selectedGuest.phone].filter(Boolean).join(' · ') ||
                             'Sin datos de contacto'}
                         </Text>
-                        <Text fontSize="xs" color="gray.600">
+                        <Text fontSize="xs" color="textSecondary">
                           {selectedGuest.documentType !== null
                             ? `${DOCUMENT_TYPE_LABELS[selectedGuest.documentType]} ${selectedGuest.documentNumber ?? ''}`
                             : 'Sin documento'}
@@ -1183,11 +1183,11 @@ function ReservationsContent() {
                       overflowY="auto"
                     >
                       {guestLookup.loading ? (
-                        <Text px={3} py={2} fontSize="sm" color="gray.500">
+                        <Text px={3} py={2} fontSize="sm" color="textSecondary">
                           Buscando huéspedes…
                         </Text>
                       ) : (guestLookup.data?.items.length ?? 0) === 0 ? (
-                        <Text px={3} py={2} fontSize="sm" color="gray.500">
+                        <Text px={3} py={2} fontSize="sm" color="textSecondary">
                           No hay huéspedes activos
                           {debouncedGuestSearch !== '' ? ` para “${debouncedGuestSearch}”` : ''}.
                         </Text>
@@ -1208,7 +1208,7 @@ function ReservationsContent() {
                                 <Text fontSize="sm" fontWeight="medium" isTruncated>
                                   {guest.fullName}
                                 </Text>
-                                <Text fontSize="xs" color="gray.500" isTruncated>
+                                <Text fontSize="xs" color="textSecondary" isTruncated>
                                   {[guest.email, guest.phone].filter(Boolean).join(' · ') ||
                                     'Sin datos de contacto'}
                                 </Text>
@@ -1302,7 +1302,7 @@ function ReservationsContent() {
                     />
                   </Field>
                 </SimpleGrid>
-                <Text mt={2} fontSize="xs" color={createDatesValid ? 'gray.600' : 'danger.500'}>
+                <Text mt={2} fontSize="xs" color={createDatesValid ? 'textSecondary' : 'danger.500'}>
                   {createDatesValid
                     ? `${createNights} ${createNights === 1 ? 'noche' : 'noches'} · la noche de check-out no se ocupa`
                     : 'La estadía debe tener entre 1 y 366 noches.'}
@@ -1331,7 +1331,7 @@ function ReservationsContent() {
                     </Select>
                   </Field>
                   <Box alignSelf="end">
-                    <Text fontSize="xs" color="gray.500">
+                    <Text fontSize="xs" color="textSecondary">
                       {createForm.roomTypeId === ''
                         ? 'Elegí un tipo para ver las habitaciones libres.'
                         : 'Asignar habitación ahora es opcional; podés hacerlo al llegar.'}
@@ -1342,7 +1342,7 @@ function ReservationsContent() {
                 {createForm.roomTypeId !== '' && createDatesValid && (
                   <Box mt={3}>
                     {availability.loading ? (
-                      <Text fontSize="sm" color="gray.500">
+                      <Text fontSize="sm" color="textSecondary">
                         Consultando disponibilidad…
                       </Text>
                     ) : availability.error !== null ? (
@@ -1355,7 +1355,7 @@ function ReservationsContent() {
                       </Text>
                     ) : (
                       <Box>
-                        <Text fontSize="xs" color="gray.500" mb={2}>
+                        <Text fontSize="xs" color="textSecondary" mb={2}>
                           {availability.data?.items.length}{' '}
                           {availability.data?.items.length === 1
                             ? 'habitación disponible'
@@ -1509,7 +1509,7 @@ function ReservationsContent() {
                   onChange={(event) => setEditForm({ ...editForm, notes: event.target.value })}
                 />
               </Field>
-              <Text fontSize="xs" color="gray.500">
+              <Text fontSize="xs" color="textSecondary">
                 Cambiar fechas o tipo puede requerir reasignar habitación si la actual deja de ser
                 válida.
               </Text>
@@ -1571,7 +1571,7 @@ function ReservationsContent() {
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={3}>
-              <Text fontSize="sm" color="gray.600">
+              <Text fontSize="sm" color="textSecondary">
                 Los cambios se guardan en el perfil del huésped y quedan disponibles para futuras
                 reservas y check-ins.
               </Text>
@@ -1603,7 +1603,7 @@ function ReservationsContent() {
           <DrawerHeader>
             Reserva {selectedReservation?.code ?? ''}
             {selectedReservation !== null && (
-              <Text fontSize="sm" fontWeight="normal" color="gray.500">
+              <Text fontSize="sm" fontWeight="normal" color="textSecondary">
                 {selectedReservation.guest.fullName}
               </Text>
             )}
@@ -1702,7 +1702,7 @@ function ReservationsContent() {
 
                   {selectedReservation.notes !== null && (
                     <Box>
-                      <Text fontSize="xs" color="gray.500" textTransform="uppercase">
+                      <Text fontSize="xs" color="textSecondary" textTransform="uppercase">
                         Notas
                       </Text>
                       <Text fontSize="sm" whiteSpace="pre-wrap">
@@ -1719,7 +1719,7 @@ function ReservationsContent() {
                           Habitación
                         </Text>
                         {detailAvailability.loading ? (
-                          <Text fontSize="sm" color="gray.500">
+                          <Text fontSize="sm" color="textSecondary">
                             Consultando disponibilidad…
                           </Text>
                         ) : detailAvailability.error !== null ? (
@@ -1764,12 +1764,12 @@ function ReservationsContent() {
                           </Button>
                         </HStack>
                         {selectedReservation.room === null && (
-                          <Text fontSize="xs" color="gray.500" mt={2}>
+                          <Text fontSize="xs" color="textSecondary" mt={2}>
                             Asigná una habitación para habilitar el check-in.
                           </Text>
                         )}
                         {selectedReservation.room !== null && !checkInEligible && (
-                          <Text fontSize="xs" color="gray.500" mt={2}>
+                          <Text fontSize="xs" color="textSecondary" mt={2}>
                             El check-in se habilita desde el día de llegada.
                           </Text>
                         )}
@@ -1779,11 +1779,11 @@ function ReservationsContent() {
 
                   {selectedReservation.cancellationReason !== null && (
                     <Box>
-                      <Text fontSize="xs" color="gray.500" textTransform="uppercase">
+                      <Text fontSize="xs" color="textSecondary" textTransform="uppercase">
                         Motivo de cancelación
                       </Text>
                       <Text fontSize="sm">{selectedReservation.cancellationReason}</Text>
-                      <Text fontSize="xs" color="gray.500">
+                      <Text fontSize="xs" color="textSecondary">
                         {formatDateTime(selectedReservation.cancelledAt)}
                       </Text>
                     </Box>
@@ -1806,14 +1806,14 @@ function ReservationsContent() {
                             <Text fontSize="sm" fontWeight="medium">
                               {ACTION_LABELS[entry.action] ?? entry.action}
                             </Text>
-                            <Text fontSize="xs" color="gray.500">
+                            <Text fontSize="xs" color="textSecondary">
                               {formatDateTime(entry.occurredAt)}
                               {entry.toStatus !== null
                                 ? ` · ${RESERVATION_STATUS_LABELS[entry.toStatus]}`
                                 : ''}
                             </Text>
                             {entry.reason !== null && (
-                              <Text fontSize="xs" color="gray.600">
+                              <Text fontSize="xs" color="textSecondary">
                                 {entry.reason}
                               </Text>
                             )}

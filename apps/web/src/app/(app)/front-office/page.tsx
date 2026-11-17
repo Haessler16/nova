@@ -4,6 +4,7 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   Divider,
   HStack,
   Input,
@@ -49,7 +50,7 @@ import {
   StatusBadge,
 } from '@/components/ui';
 import { useSession } from '@/context/session';
-import { api, errorMessage } from '@/lib/api';
+import { api, errorMessage, isApiError } from '@/lib/api';
 import {
   HOUSEKEEPING_COLORS,
   HOUSEKEEPING_LABELS,
@@ -64,26 +65,77 @@ import {
   formatCalendarDate,
   formatDateTime,
   formatLongDate,
+  formatMoney,
   todayISO,
 } from '@/lib/format';
 import type {
+  CheckoutReadiness,
   FrontOfficeOverview,
+  HousekeepingState,
   Incident,
   IncidentSeverity,
   IncidentStatus,
   IncidentType,
   Reservation,
   ReservationStatus,
+  RoomMoveBlockerCode,
+  RoomMoveCandidate,
+  RoomMoveCandidates,
   RoomRackItem,
   Stay,
 } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
+import {
+  buildErrors,
+  hasErrors,
+  reasonField,
+  type FieldErrors,
+} from '@/lib/validation';
 
 interface IncidentList {
   items: Incident[];
 }
 
 type IncidentScope = 'none' | 'stay' | 'room';
+
+interface MoveFilters {
+  roomTypeId: string;
+  floor: string;
+  building: string;
+  housekeeping: '' | HousekeepingState;
+  search: string;
+  showIneligible: boolean;
+}
+
+const ROOM_MOVE_BLOCKER_LABELS: Record<RoomMoveBlockerCode, string> = {
+  room_inactive: 'Habitación inactiva',
+  room_out_of_service: 'Fuera de servicio',
+  room_type_mismatch: 'Tipo distinto al de la reserva',
+  room_block_overlap: 'Bloqueo operativo vigente',
+  room_occupied: 'Ocupada por otra estancia',
+  room_not_available: 'Reserva solapada',
+};
+
+/** Friendly, actionable version of the transaction's conflict codes. */
+function roomMoveErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    switch (error.code) {
+      case 'room_occupied':
+        return 'Otra estancia ocupa esa habitación. Actualizamos las alternativas disponibles.';
+      case 'room_block_overlap':
+        return 'La habitación tiene un bloqueo operativo vigente. Elegí otra.';
+      case 'room_not_available':
+        return 'La habitación tiene una reserva solapada. Elegí otra.';
+      case 'room_out_of_service':
+        return 'La habitación no está operativamente disponible.';
+      case 'room_type_mismatch':
+        return 'La habitación no pertenece al tipo de la reserva.';
+      case 'stay_not_in_house':
+        return 'La estancia ya no está en casa. Actualizá el front office.';
+    }
+  }
+  return errorMessage(error);
+}
 
 const TAB_INDEX: Record<string, number> = {
   arrivals: 0,
@@ -227,12 +279,33 @@ function FrontOfficeContent() {
 
   const [checkoutTarget, setCheckoutTarget] = useState<Stay | null>(null);
   const [checkoutNotes, setCheckoutNotes] = useState('');
+  const [checkoutReadiness, setCheckoutReadiness] = useState<CheckoutReadiness | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<unknown>(null);
+  const [checkoutAllowBalance, setCheckoutAllowBalance] = useState(false);
+  const [checkoutBalanceReason, setCheckoutBalanceReason] = useState('');
 
   const [checkInTarget, setCheckInTarget] = useState<Reservation | null>(null);
 
   const [moveTarget, setMoveTarget] = useState<Stay | null>(null);
   const [moveRoomId, setMoveRoomId] = useState('');
   const [moveReason, setMoveReason] = useState('');
+  const [moveData, setMoveData] = useState<RoomMoveCandidates | null>(null);
+  const [moveLoading, setMoveLoading] = useState(false);
+  const [moveError, setMoveError] = useState<unknown>(null);
+  const [moveErrors, setMoveErrors] = useState<FieldErrors>({});
+  const [moveFilters, setMoveFilters] = useState<MoveFilters>({
+    roomTypeId: '',
+    floor: '',
+    building: '',
+    housekeeping: '',
+    search: '',
+    showIneligible: false,
+  });
+  const [moveResult, setMoveResult] = useState<{ fromNumber: string; toNumber: string } | null>(
+    null,
+  );
+  const moveRequestRef = useRef(0);
 
   const [noShowTarget, setNoShowTarget] = useState<Reservation | null>(null);
   const [noShowReason, setNoShowReason] = useState('');
@@ -407,7 +480,18 @@ function FrontOfficeContent() {
   function openCheckOut(stay: Stay): void {
     setCheckoutTarget(stay);
     setCheckoutNotes('');
+    setCheckoutReadiness(null);
+    setCheckoutError(null);
+    setCheckoutAllowBalance(false);
+    setCheckoutBalanceReason('');
     checkoutModal.onOpen();
+    setCheckoutLoading(true);
+    void api<CheckoutReadiness>(`/api/v1/front-office/stays/${stay.id}/checkout-readiness`, {
+      tenant,
+    })
+      .then((readiness) => setCheckoutReadiness(readiness))
+      .catch((cause: unknown) => setCheckoutError(cause))
+      .finally(() => setCheckoutLoading(false));
   }
 
   async function handleCheckOut(event: FormEvent): Promise<void> {
@@ -416,13 +500,33 @@ function FrontOfficeContent() {
       return;
     }
     const target = checkoutTarget;
+    const body: {
+      notes?: string;
+      allowOutstandingBalance?: boolean;
+      balanceReason?: string;
+    } = {};
+    if (checkoutNotes.trim() !== '') {
+      body.notes = checkoutNotes.trim();
+    }
+    if (checkoutAllowBalance) {
+      if (checkoutBalanceReason.trim().length < 3) {
+        toast({
+          title: 'Indicá el motivo del saldo pendiente',
+          description: 'El checkout con saldo pendiente requiere un motivo auditado.',
+          status: 'warning',
+        });
+        return;
+      }
+      body.allowOutstandingBalance = true;
+      body.balanceReason = checkoutBalanceReason.trim();
+    }
     await run(
       `check-out:${target.id}`,
       () =>
         api(`/api/v1/front-office/stays/${target.id}/check-out`, {
           method: 'POST',
           tenant,
-          body: checkoutNotes.trim() === '' ? {} : { notes: checkoutNotes.trim() },
+          body,
         }),
       `Check-out registrado para ${target.guest.fullName}`,
       checkoutModal.onClose,
@@ -433,29 +537,105 @@ function FrontOfficeContent() {
     setMoveTarget(stay);
     setMoveRoomId('');
     setMoveReason('');
+    setMoveData(null);
+    setMoveError(null);
+    setMoveErrors({});
+    setMoveResult(null);
+    setMoveFilters({
+      roomTypeId: '',
+      floor: '',
+      building: '',
+      housekeeping: '',
+      search: '',
+      showIneligible: false,
+    });
     moveModal.onOpen();
+    void loadMoveCandidates(stay.id, true);
+  }
+
+  async function loadMoveCandidates(stayId: string, resetFilters: boolean): Promise<void> {
+    const requestId = moveRequestRef.current + 1;
+    moveRequestRef.current = requestId;
+    setMoveLoading(true);
+    setMoveError(null);
+    try {
+      const payload = await api<RoomMoveCandidates>(
+        `/api/v1/front-office/stays/${stayId}/room-move-candidates`,
+        { tenant },
+      );
+      if (moveRequestRef.current !== requestId) {
+        return;
+      }
+      setMoveData(payload);
+      if (resetFilters) {
+        setMoveFilters({
+          roomTypeId: payload.stay.room.roomType.id,
+          floor: '',
+          building: '',
+          housekeeping: '',
+          search: '',
+          showIneligible: false,
+        });
+      }
+    } catch (cause) {
+      if (moveRequestRef.current === requestId) {
+        setMoveError(cause);
+      }
+    } finally {
+      if (moveRequestRef.current === requestId) {
+        setMoveLoading(false);
+      }
+    }
+  }
+
+  function updateMoveFilter<K extends keyof MoveFilters>(
+    key: K,
+    value: MoveFilters[K],
+  ): void {
+    setMoveFilters((current) => ({ ...current, [key]: value }));
+    setMoveRoomId('');
   }
 
   async function handleMove(event: FormEvent): Promise<void> {
     event.preventDefault();
-    if (moveTarget === null || moveRoomId === '') {
+    if (moveTarget === null || moveResult !== null) {
+      return;
+    }
+    const nextErrors = buildErrors([
+      ['move.roomId', moveRoomId === '' ? 'Elegí una habitación destino.' : null],
+      ['move.reason', reasonField(moveReason, 'El motivo del cambio')],
+    ]);
+    setMoveErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
       return;
     }
     const target = moveTarget;
-    await run(
-      `move:${target.id}`,
-      () =>
-        api(`/api/v1/front-office/stays/${target.id}/room-move`, {
-          method: 'POST',
-          tenant,
-          body: {
-            roomId: moveRoomId,
-            ...(moveReason.trim().length >= 3 ? { reason: moveReason.trim() } : {}),
-          },
-        }),
-      'Habitación actualizada',
-      moveModal.onClose,
-    );
+    setBusy(`move:${target.id}`);
+    try {
+      const updated = await api<Stay>(`/api/v1/front-office/stays/${target.id}/room-move`, {
+        method: 'POST',
+        tenant,
+        body: { roomId: moveRoomId, reason: moveReason.trim() },
+      });
+      setMoveResult({ fromNumber: target.room.number, toNumber: updated.room.number });
+      toast({
+        title: `Habitación actualizada: ${target.room.number} → ${updated.room.number}`,
+        status: 'success',
+        duration: 6000,
+      });
+      reloadAll();
+    } catch (cause) {
+      toast({
+        title: 'No se pudo cambiar la habitación',
+        description: roomMoveErrorMessage(cause),
+        status: 'error',
+        duration: 8000,
+      });
+      setMoveRoomId('');
+      void loadMoveCandidates(target.id, false);
+    } finally {
+      setBusy(null);
+    }
   }
 
   function openNoShow(reservation: Reservation): void {
@@ -561,16 +741,42 @@ function FrontOfficeContent() {
     selectedDate !== '' ? selectedDate : (data?.selectedDate ?? todayISO(0, propertyTimezone));
   const isHistorical = data?.isHistorical ?? false;
   const inHouse = data?.inHouse ?? [];
-  const moveCandidates =
-    data?.roomRack.filter(
-      (room) =>
-        moveTarget !== null &&
-        room.id !== moveTarget.room.id &&
-        room.roomType.id === moveTarget.reservation.roomType.id &&
-        room.occupancy === 'VACANT' &&
-        room.operationalState === 'AVAILABLE' &&
-        room.activeBlock === null,
-    ) ?? [];
+  const moveRooms = moveData?.candidates ?? [];
+  const moveRoomTypes = Array.from(
+    new Map(moveRooms.map((room) => [room.roomType.id, room.roomType])).values(),
+  );
+  const moveFloors = Array.from(
+    new Set(moveRooms.map((room) => room.floor).filter((value): value is string => value !== null)),
+  ).sort();
+  const moveBuildings = Array.from(
+    new Set(
+      moveRooms.map((room) => room.building).filter((value): value is string => value !== null),
+    ),
+  ).sort();
+  const moveSearch = moveFilters.search.trim().toLowerCase();
+  const filteredMoveCandidates = moveRooms.filter((room) => {
+    if (moveFilters.roomTypeId !== '' && room.roomType.id !== moveFilters.roomTypeId) {
+      return false;
+    }
+    if (moveFilters.floor !== '' && (room.floor ?? '') !== moveFilters.floor) {
+      return false;
+    }
+    if (moveFilters.building !== '' && (room.building ?? '') !== moveFilters.building) {
+      return false;
+    }
+    if (moveFilters.housekeeping !== '' && room.housekeepingState !== moveFilters.housekeeping) {
+      return false;
+    }
+    if (moveSearch !== '' && !room.number.toLowerCase().includes(moveSearch)) {
+      return false;
+    }
+    if (!moveFilters.showIneligible && !room.eligible) {
+      return false;
+    }
+    return true;
+  });
+  const selectedMoveRoom: RoomMoveCandidate | null =
+    moveRooms.find((room) => room.id === moveRoomId) ?? null;
 
   return (
     <>
@@ -1344,9 +1550,113 @@ function FrontOfficeContent() {
                   {checkoutTarget.reservation.code}
                 </Text>
                 <Text fontSize="xs" color="gray.500">
-                  Se libera la habitación y la reserva queda como check-out. La operación es
-                  idempotente y auditable.
+                  Cierra la cuenta y la estancia en una sola transacción, y deja la habitación
+                  sucia. Si el cierre falla, la habitación no se libera.
                 </Text>
+
+                {checkoutLoading && (
+                  <Text fontSize="sm" color="gray.500">
+                    Revisando la cuenta…
+                  </Text>
+                )}
+                {checkoutError !== null && (
+                  <Text fontSize="sm" color="danger.600">
+                    {errorMessage(checkoutError)}
+                  </Text>
+                )}
+
+                {checkoutReadiness !== null &&
+                  (() => {
+                    const currency =
+                      checkoutReadiness.folios[0]?.currencyCode ??
+                      property?.currencyCode ??
+                      'BRL';
+                    const hasBalance = checkoutReadiness.totals.balance !== '0.00';
+                    return (
+                      <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
+                        <Stack spacing={1}>
+                          <HStack justify="space-between">
+                            <Text fontSize="xs" color="gray.500">
+                              Cargos
+                            </Text>
+                            <Text fontSize="sm">
+                              {formatMoney(checkoutReadiness.totals.charges, currency)}
+                            </Text>
+                          </HStack>
+                          <HStack justify="space-between">
+                            <Text fontSize="xs" color="gray.500">
+                              Pagos
+                            </Text>
+                            <Text fontSize="sm">
+                              {formatMoney(checkoutReadiness.totals.payments, currency)}
+                            </Text>
+                          </HStack>
+                          <HStack justify="space-between">
+                            <Text fontSize="xs" color="gray.500">
+                              Saldo
+                            </Text>
+                            <Text fontSize="sm" fontWeight="semibold">
+                              {formatMoney(checkoutReadiness.totals.balance, currency)}
+                            </Text>
+                          </HStack>
+                          <HStack justify="space-between">
+                            <Text fontSize="xs" color="gray.500">
+                              Housekeeping
+                            </Text>
+                            <Text fontSize="sm">
+                              {HOUSEKEEPING_LABELS[checkoutReadiness.housekeeping.current]} →{' '}
+                              {HOUSEKEEPING_LABELS[checkoutReadiness.housekeeping.target]}
+                            </Text>
+                          </HStack>
+                        </Stack>
+
+                        {checkoutReadiness.warnings.length > 0 && (
+                          <Stack spacing={1} mt={3}>
+                            {checkoutReadiness.warnings.map((warning) => (
+                              <Text key={warning.code} fontSize="xs" color="warning.700">
+                                {warning.message}
+                              </Text>
+                            ))}
+                          </Stack>
+                        )}
+                        {checkoutReadiness.blockedReasons.length > 0 && (
+                          <Stack spacing={1} mt={3}>
+                            {checkoutReadiness.blockedReasons.map((reason) => (
+                              <Text key={reason.code} fontSize="xs" color="danger.600">
+                                {reason.message}
+                              </Text>
+                            ))}
+                          </Stack>
+                        )}
+
+                        {hasBalance && (
+                          <Stack spacing={2} mt={3}>
+                            <Checkbox
+                              size="sm"
+                              isChecked={checkoutAllowBalance}
+                              onChange={(event) => setCheckoutAllowBalance(event.target.checked)}
+                            >
+                              Autorizar checkout con saldo pendiente
+                            </Checkbox>
+                            {checkoutAllowBalance && (
+                              <Field label="Motivo" isRequired helper="Queda auditado en la cuenta.">
+                                <Textarea
+                                  size="sm"
+                                  rows={2}
+                                  maxLength={500}
+                                  value={checkoutBalanceReason}
+                                  onChange={(event) =>
+                                    setCheckoutBalanceReason(event.target.value)
+                                  }
+                                  required
+                                />
+                              </Field>
+                            )}
+                          </Stack>
+                        )}
+                      </Box>
+                    );
+                  })()}
                 <Field label="Notas de salida" helper="Opcional, hasta 2000 caracteres.">
                   <Textarea
                     rows={3}
@@ -1369,64 +1679,354 @@ function FrontOfficeContent() {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={moveModal.isOpen} onClose={moveModal.onClose} size="md">
+      <Modal
+        isOpen={moveModal.isOpen}
+        onClose={moveModal.onClose}
+        size="4xl"
+        scrollBehavior="inside"
+      >
         <ModalOverlay />
         <ModalContent as="form" onSubmit={(event) => void handleMove(event)}>
           <ModalHeader>Cambiar habitación</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
-            {moveTarget !== null && (
-              <Stack spacing={3}>
-                <Text fontSize="sm">
-                  {moveTarget.guest.fullName} · actual Hab. {moveTarget.room.number} ·{' '}
-                  {moveTarget.reservation.nights} noches
+            {moveResult !== null ? (
+              <Stack spacing={3} align="center" py={8}>
+                <Badge colorScheme="mint">Cambio registrado</Badge>
+                <Text fontWeight="semibold">Habitación actualizada</Text>
+                <HStack fontSize="xl" fontWeight="bold" spacing={3}>
+                  <Text>Hab. {moveResult.fromNumber}</Text>
+                  <Text color="gray.400">→</Text>
+                  <Text>Hab. {moveResult.toNumber}</Text>
+                </HStack>
+                <Text fontSize="sm" color="gray.600" textAlign="center" maxW="380px">
+                  La reserva, la estancia y el room rack ya reflejan la nueva habitación. El
+                  motivo quedó auditado con actor, fecha y habitaciones de origen y destino.
                 </Text>
-                <Text fontSize="xs" color="gray.500">
-                  Solo se ofrecen habitaciones libres del mismo tipo. Un cambio inválido es
-                  rechazado por el backend.
-                </Text>
-                <Field label="Nueva habitación" isRequired>
-                  <Select
-                    value={moveRoomId}
-                    onChange={(event) => setMoveRoomId(event.target.value)}
-                    required
-                  >
-                    <option value="">Seleccionar…</option>
-                    {moveCandidates.map((room) => (
-                      <option key={room.id} value={room.id}>
-                        Hab. {room.number} · {room.roomType.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                {moveCandidates.length === 0 && (
-                  <Text fontSize="xs" color="warning.600">
-                    No hay habitaciones libres del mismo tipo en este momento.
-                  </Text>
-                )}
-                <Field label="Motivo" helper="Opcional, mínimo 3 caracteres.">
-                  <Textarea
-                    rows={2}
-                    value={moveReason}
-                    maxLength={500}
-                    onChange={(event) => setMoveReason(event.target.value)}
-                  />
-                </Field>
               </Stack>
+            ) : (
+              moveTarget !== null && (
+                <Stack spacing={4}>
+                  <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
+                    <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                      <Box>
+                        <Text fontSize="xs" color="gray.500">
+                          Huésped
+                        </Text>
+                        <Text fontSize="sm" fontWeight="semibold">
+                          {moveTarget.guest.fullName}
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          {moveTarget.reservation.code} ·{' '}
+                          {formatCalendarDate(moveTarget.reservation.checkInDate)} →{' '}
+                          {formatCalendarDate(moveTarget.reservation.checkOutDate)} ·{' '}
+                          {moveTarget.reservation.nights} noches
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          {moveTarget.reservation.adults} adultos ·{' '}
+                          {moveTarget.reservation.children} menores
+                        </Text>
+                      </Box>
+                      <Box>
+                        <Text fontSize="xs" color="gray.500">
+                          Habitación actual
+                        </Text>
+                        <Text fontSize="sm" fontWeight="semibold">
+                          Hab. {moveTarget.room.number} · {moveTarget.reservation.roomType.name}
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          Piso {moveTarget.room.floor ?? '—'} · {moveTarget.room.building ?? '—'}
+                        </Text>
+                      </Box>
+                    </SimpleGrid>
+                  </Box>
+
+                  {moveLoading && (
+                    <Text fontSize="sm" color="gray.500">
+                      Buscando habitaciones disponibles…
+                    </Text>
+                  )}
+                  {moveError !== null && (
+                    <Text fontSize="sm" color="danger.600">
+                      {errorMessage(moveError)}
+                    </Text>
+                  )}
+
+                  {moveData !== null && (
+                    <>
+                      <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
+                        <Field label="Tipo">
+                          <Select
+                            size="sm"
+                            value={moveFilters.roomTypeId}
+                            onChange={(event) => updateMoveFilter('roomTypeId', event.target.value)}
+                          >
+                            <option value="">Todos</option>
+                            {moveRoomTypes.map((type) => (
+                              <option key={type.id} value={type.id}>
+                                {type.name} ({type.capacityAdults}A/{type.capacityChildren}N)
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Piso">
+                          <Select
+                            size="sm"
+                            value={moveFilters.floor}
+                            onChange={(event) => updateMoveFilter('floor', event.target.value)}
+                          >
+                            <option value="">Todos</option>
+                            {moveFloors.map((floor) => (
+                              <option key={floor} value={floor}>
+                                {floor}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Ala / edificio">
+                          <Select
+                            size="sm"
+                            value={moveFilters.building}
+                            onChange={(event) => updateMoveFilter('building', event.target.value)}
+                          >
+                            <option value="">Todas</option>
+                            {moveBuildings.map((building) => (
+                              <option key={building} value={building}>
+                                {building}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Housekeeping">
+                          <Select
+                            size="sm"
+                            value={moveFilters.housekeeping}
+                            onChange={(event) =>
+                              updateMoveFilter(
+                                'housekeeping',
+                                event.target.value as MoveFilters['housekeeping'],
+                              )
+                            }
+                          >
+                            <option value="">Todos</option>
+                            {(
+                              ['DIRTY', 'CLEANING', 'CLEAN', 'INSPECTED'] as HousekeepingState[]
+                            ).map((state) => (
+                              <option key={state} value={state}>
+                                {HOUSEKEEPING_LABELS[state]}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                      </SimpleGrid>
+                      <HStack spacing={3} wrap="wrap" align="flex-end" justify="space-between">
+                        <Field label="Buscar UH">
+                          <Input
+                            size="sm"
+                            width="160px"
+                            value={moveFilters.search}
+                            onChange={(event) => updateMoveFilter('search', event.target.value)}
+                          />
+                        </Field>
+                        <Checkbox
+                          size="sm"
+                          isChecked={moveFilters.showIneligible}
+                          onChange={(event) =>
+                            updateMoveFilter('showIneligible', event.target.checked)
+                          }
+                        >
+                          Mostrar no elegibles
+                        </Checkbox>
+                        <Text fontSize="xs" color="gray.500">
+                          {filteredMoveCandidates.length} de {moveRooms.length} habitaciones
+                        </Text>
+                      </HStack>
+
+                      {moveRooms.length === 0 ? (
+                        <Text fontSize="sm" color="warning.700">
+                          La propiedad no tiene otras habitaciones cargadas.
+                        </Text>
+                      ) : filteredMoveCandidates.length === 0 ? (
+                        <Text fontSize="sm" color="warning.700">
+                          No hay habitaciones que cumplan los filtros. Ajustá el tipo, el piso o el
+                          estado de housekeeping.
+                        </Text>
+                      ) : (
+                        <TableContainer
+                          maxH="280px"
+                          overflowY="auto"
+                          borderWidth="1px"
+                          borderColor="line"
+                          borderRadius="md"
+                        >
+                          <Table size="sm">
+                            <Thead>
+                              <Tr>
+                                <Th>UH</Th>
+                                <Th>Tipo</Th>
+                                <Th>Piso / ala</Th>
+                                <Th>Housekeeping</Th>
+                                <Th>Estado</Th>
+                                <Th />
+                              </Tr>
+                            </Thead>
+                            <Tbody>
+                              {filteredMoveCandidates.map((room) => (
+                                <Tr key={room.id} opacity={room.eligible ? 1 : 0.65}>
+                                  <Td fontWeight="semibold">{room.number}</Td>
+                                  <Td>
+                                    <Text fontSize="xs">{room.roomType.name}</Text>
+                                    <Text fontSize="xs" color="gray.500">
+                                      {room.roomType.capacityAdults}A /{' '}
+                                      {room.roomType.capacityChildren}N
+                                    </Text>
+                                  </Td>
+                                  <Td>
+                                    <Text fontSize="xs">{room.floor ?? '—'}</Text>
+                                    <Text fontSize="xs" color="gray.500">
+                                      {room.building ?? '—'}
+                                    </Text>
+                                  </Td>
+                                  <Td>
+                                    <StatusBadge
+                                      color={HOUSEKEEPING_COLORS[room.housekeepingState]}
+                                      label={HOUSEKEEPING_LABELS[room.housekeepingState]}
+                                    />
+                                  </Td>
+                                  <Td>
+                                    <Text fontSize="xs">
+                                      {room.occupancy === 'OCCUPIED' ? 'Ocupada' : 'Libre'} ·{' '}
+                                      {OPERATIONAL_LABELS[room.operationalState]}
+                                    </Text>
+                                    {room.activeBlock !== null && (
+                                      <Text fontSize="xs" color="danger.600">
+                                        Bloqueo {room.activeBlock.type} hasta{' '}
+                                        {formatDateTime(room.activeBlock.endsAt)}
+                                      </Text>
+                                    )}
+                                    {room.blockers.map((blocker) => (
+                                      <Text key={blocker.code} fontSize="xs" color="danger.600">
+                                        {ROOM_MOVE_BLOCKER_LABELS[blocker.code]}
+                                      </Text>
+                                    ))}
+                                  </Td>
+                                  <Td isNumeric>
+                                    <Button
+                                      size="xs"
+                                      variant={moveRoomId === room.id ? 'solid' : 'outline'}
+                                      colorScheme="brand"
+                                      isDisabled={!room.eligible}
+                                      onClick={() => {
+                                        setMoveRoomId(room.id);
+                                        setMoveErrors((current) => {
+                                          const next = { ...current };
+                                          delete next['move.roomId'];
+                                          return next;
+                                        });
+                                      }}
+                                    >
+                                      {moveRoomId === room.id ? 'Elegida' : 'Elegir'}
+                                    </Button>
+                                  </Td>
+                                </Tr>
+                              ))}
+                            </Tbody>
+                          </Table>
+                        </TableContainer>
+                      )}
+                      {moveErrors['move.roomId'] !== undefined && (
+                        <Text fontSize="xs" color="danger.600">
+                          {moveErrors['move.roomId']}
+                        </Text>
+                      )}
+
+                      {selectedMoveRoom !== null && (
+                        <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
+                          <Text fontSize="sm" fontWeight="semibold" mb={2}>
+                            Comparación
+                          </Text>
+                          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                            <Box>
+                              <Text fontSize="xs" color="gray.500">
+                                Actual
+                              </Text>
+                              <Text fontSize="sm">
+                                Hab. {moveData.stay.room.number} ·{' '}
+                                {moveData.stay.room.roomType.name}
+                              </Text>
+                              <Text fontSize="xs" color="gray.500">
+                                Piso {moveData.stay.room.floor ?? '—'} ·{' '}
+                                {moveData.stay.room.building ?? '—'} ·{' '}
+                                {HOUSEKEEPING_LABELS[moveData.stay.room.housekeepingState]}
+                              </Text>
+                            </Box>
+                            <Box>
+                              <Text fontSize="xs" color="gray.500">
+                                Destino
+                              </Text>
+                              <Text fontSize="sm">
+                                Hab. {selectedMoveRoom.number} · {selectedMoveRoom.roomType.name}
+                              </Text>
+                              <Text fontSize="xs" color="gray.500">
+                                Piso {selectedMoveRoom.floor ?? '—'} ·{' '}
+                                {selectedMoveRoom.building ?? '—'} ·{' '}
+                                {HOUSEKEEPING_LABELS[selectedMoveRoom.housekeepingState]}
+                              </Text>
+                            </Box>
+                          </SimpleGrid>
+                          {selectedMoveRoom.warnings.map((warning) => (
+                            <Text key={warning.code} fontSize="xs" color="warning.700" mt={2}>
+                              Housekeeping: la habitación destino figura{' '}
+                              {HOUSEKEEPING_LABELS[
+                                selectedMoveRoom.housekeepingState
+                              ].toLowerCase()}
+                              . Conviene confirmar con gobernanta antes de mover al huésped.
+                            </Text>
+                          ))}
+                        </Box>
+                      )}
+
+                      <Field
+                        label="Motivo del cambio"
+                        isRequired
+                        error={moveErrors['move.reason']}
+                        helper="Queda auditado con actor, fecha y habitaciones de origen y destino."
+                      >
+                        <Textarea
+                          size="sm"
+                          rows={2}
+                          value={moveReason}
+                          maxLength={500}
+                          onChange={(event) => setMoveReason(event.target.value)}
+                          required
+                        />
+                      </Field>
+                    </>
+                  )}
+                </Stack>
+              )
             )}
           </ModalBody>
           <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={moveModal.onClose}>
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              colorScheme="brand"
-              isLoading={busy?.startsWith('move')}
-              isDisabled={moveRoomId === ''}
-            >
-              Cambiar habitación
-            </Button>
+            {moveResult !== null ? (
+              <Button colorScheme="brand" onClick={moveModal.onClose}>
+                Cerrar
+              </Button>
+            ) : (
+              <>
+                <Button variant="ghost" mr={3} onClick={moveModal.onClose}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  colorScheme="brand"
+                  isLoading={busy === `move:${moveTarget?.id ?? ''}`}
+                  isDisabled={moveRoomId === '' || moveLoading}
+                >
+                  Cambiar habitación
+                </Button>
+              </>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>

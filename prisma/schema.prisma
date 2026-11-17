@@ -120,6 +120,28 @@ enum FolioLineStatus {
   VOID
 }
 
+/// Where a folio charge came from. It is operational provenance, never a
+/// financial state: the line stays POSTED or VOID regardless of origin.
+enum FolioLineSource {
+  MANUAL
+  MINIBAR
+  FRONT_DESK
+  PARKING
+  SERVICE
+  INTEGRATION
+}
+
+/// Coarse grouping for the property consumables catalog. It is deliberately
+/// not a fiscal classification; tax treatment stays out of this phase.
+enum FolioProductCategory {
+  MINIBAR
+  FOOD_BEVERAGE
+  PARKING
+  LAUNDRY
+  SERVICE
+  OTHER
+}
+
 enum PaymentStatus {
   PENDING
   COMPLETED
@@ -297,10 +319,10 @@ model PilotFeedback {
 }
 
 model Organization {
-  id                  String               @id @default(uuid()) @db.Uuid
+  id                  String                   @id @default(uuid()) @db.Uuid
   name                String
-  slug                String               @unique
-  status              RecordStatus         @default(ACTIVE)
+  slug                String                   @unique
+  status              RecordStatus             @default(ACTIVE)
   properties          Property[]
   memberships         Membership[]
   roles               Role[]
@@ -320,6 +342,7 @@ model Organization {
   incidents           Incident[]
   folios              Folio[]
   folioLines          FolioLine[]
+  folioProducts       FolioProduct[]
   payments            Payment[]
   cashSessions        CashSession[]
   cashMovements       CashMovement[]
@@ -333,22 +356,22 @@ model Organization {
   sourceNotes         ReservationSourceNote[]
   instructionEvents   InstructionEvent[]
   guestNotes          GuestNote[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 
   @@index([status])
 }
 
 model Property {
-  id                  String               @id @default(uuid()) @db.Uuid
-  organizationId      String               @db.Uuid
+  id                  String                   @id @default(uuid()) @db.Uuid
+  organizationId      String                   @db.Uuid
   name                String
   code                String
-  timezone            String               @default("America/Sao_Paulo")
-  currencyCode        String               @default("BRL") @db.VarChar(3)
-  operationalDayStart String               @default("06:00")
-  status              RecordStatus         @default(ACTIVE)
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  timezone            String                   @default("America/Sao_Paulo")
+  currencyCode        String                   @default("BRL") @db.VarChar(3)
+  operationalDayStart String                   @default("06:00")
+  status              RecordStatus             @default(ACTIVE)
+  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   propertyMemberships PropertyMembership[]
   auditEvents         AuditEvent[]
   roomTypes           RoomType[]
@@ -364,6 +387,7 @@ model Property {
   incidents           Incident[]
   folios              Folio[]
   folioLines          FolioLine[]
+  folioProducts       FolioProduct[]
   payments            Payment[]
   cashSessions        CashSession[]
   cashMovements       CashMovement[]
@@ -377,8 +401,8 @@ model Property {
   sourceNotes         ReservationSourceNote[]
   instructionEvents   InstructionEvent[]
   guestNotes          GuestNote[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 
   @@unique([organizationId, code])
   @@unique([organizationId, id])
@@ -418,6 +442,8 @@ model User {
   incidentsResolved        Incident[]               @relation("IncidentResolvedBy")
   foliosOpened             Folio[]                  @relation("FolioOpenedBy")
   folioLinesCreated        FolioLine[]              @relation("FolioLineCreatedBy")
+  folioProductsCreated     FolioProduct[]           @relation("FolioProductCreatedBy")
+  folioProductsUpdated     FolioProduct[]           @relation("FolioProductUpdatedBy")
   paymentsReceived         Payment[]                @relation("PaymentReceivedBy")
   cashSessionsOpened       CashSession[]            @relation("CashSessionOpenedBy")
   cashSessionsClosed       CashSession[]            @relation("CashSessionClosedBy")
@@ -435,7 +461,7 @@ model User {
   instructionsCompleted    ReservationInstruction[] @relation("InstructionCompletedBy")
   instructionsAssigned     ReservationInstruction[] @relation("InstructionAssignedTo")
   instructionEvents        InstructionEvent[]       @relation("InstructionEventActor")
-  sourceNotesImported      ReservationSourceNote[]   @relation("SourceNoteImportedBy")
+  sourceNotesImported      ReservationSourceNote[]  @relation("SourceNoteImportedBy")
   guestNotesCreated        GuestNote[]              @relation("GuestNoteCreatedBy")
   guestNotesUpdated        GuestNote[]              @relation("GuestNoteUpdatedBy")
   createdAt                DateTime                 @default(now())
@@ -726,31 +752,31 @@ model GuestFnrhProfile {
 /// calendar dates (property timezone) and the stay occupies
 /// [checkInDate, checkOutDate). One room per reservation in this phase.
 model Reservation {
-  id                 String               @id @default(uuid()) @db.Uuid
-  organizationId     String               @db.Uuid
-  propertyId         String               @db.Uuid
-  code               String               @db.VarChar(32)
-  status             ReservationStatus    @default(CONFIRMED)
-  source             String?              @db.VarChar(32)
-  checkInDate        DateTime             @db.Date
-  checkOutDate       DateTime             @db.Date
-  adults             Int                  @default(1)
-  children           Int                  @default(0)
-  guestId            String               @db.Uuid
-  roomTypeId         String               @db.Uuid
-  roomId             String?              @db.Uuid
+  id                 String                   @id @default(uuid()) @db.Uuid
+  organizationId     String                   @db.Uuid
+  propertyId         String                   @db.Uuid
+  code               String                   @db.VarChar(32)
+  status             ReservationStatus        @default(CONFIRMED)
+  source             String?                  @db.VarChar(32)
+  checkInDate        DateTime                 @db.Date
+  checkOutDate       DateTime                 @db.Date
+  adults             Int                      @default(1)
+  children           Int                      @default(0)
+  guestId            String                   @db.Uuid
+  roomTypeId         String                   @db.Uuid
+  roomId             String?                  @db.Uuid
   notes              String?
-  idempotencyKey     String?              @db.VarChar(64)
-  createdByUserId    String?              @db.Uuid
+  idempotencyKey     String?                  @db.VarChar(64)
+  createdByUserId    String?                  @db.Uuid
   cancelledAt        DateTime?
   cancellationReason String?
   noShowAt           DateTime?
-  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property           Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  guest              Guest                @relation(fields: [guestId], references: [id], onDelete: Restrict)
-  roomType           RoomType             @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
-  room               Room?                @relation(fields: [roomId], references: [id], onDelete: Restrict)
-  createdBy          User?                @relation("ReservationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property           Property                 @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  guest              Guest                    @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  roomType           RoomType                 @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  room               Room?                    @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  createdBy          User?                    @relation("ReservationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   history            ReservationHistory[]
   guests             ReservationGuest[]
   stay               Stay?
@@ -760,8 +786,8 @@ model Reservation {
   documents          GeneratedDocument[]
   instructions       ReservationInstruction[]
   sourceNotes        ReservationSourceNote[]
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 
   @@unique([propertyId, code])
   @@unique([propertyId, idempotencyKey])
@@ -949,6 +975,40 @@ model SecurityEvent {
   @@index([type, occurredAt])
 }
 
+// Phase 4 (v4) — property consumables catalog.
+//
+// The catalog is master data: a folio line snapshots `unitAmount`, `unit` and
+// `description` when the charge is posted, so editing or deactivating a product
+// never rewrites an issued account. There is no stock control in this phase.
+model FolioProduct {
+  id              String               @id @default(uuid()) @db.Uuid
+  organizationId  String               @db.Uuid
+  propertyId      String               @db.Uuid
+  sku             String               @db.VarChar(32)
+  name            String               @db.VarChar(120)
+  description     String?              @db.VarChar(400)
+  category        FolioProductCategory @default(OTHER)
+  unit            String               @default("UN") @db.VarChar(16)
+  unitAmount      Decimal              @db.Decimal(10, 2)
+  currencyCode    String               @default("BRL") @db.VarChar(3)
+  isActive        Boolean              @default(true)
+  createdByUserId String?              @db.Uuid
+  updatedByUserId String?              @db.Uuid
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  createdBy    User?        @relation("FolioProductCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedBy    User?        @relation("FolioProductUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  lines        FolioLine[]
+
+  @@unique([propertyId, sku])
+  @@unique([organizationId, propertyId, id])
+  @@index([organizationId, propertyId, isActive])
+  @@index([organizationId, propertyId, category])
+}
+
 // Phase 5 — Folio, cash and operational day.
 //
 // Folio is the account header; FolioLine stores each charge. Payments are
@@ -1000,15 +1060,21 @@ model FolioLine {
   postedAt        DateTime        @default(now())
   voidedAt        DateTime?
   voidReason      String?
+  productId       String?         @db.Uuid
+  quantity        Decimal         @default(1) @db.Decimal(10, 2)
+  unitAmount      Decimal?        @db.Decimal(10, 2)
+  unit            String?         @db.VarChar(16)
+  source          FolioLineSource @default(MANUAL)
   idempotencyKey  String          @db.VarChar(64)
   createdByUserId String?         @db.Uuid
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  folio        Folio        @relation(fields: [folioId], references: [id], onDelete: Restrict)
-  createdBy    User?        @relation("FolioLineCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property     Property      @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  folio        Folio         @relation(fields: [folioId], references: [id], onDelete: Restrict)
+  createdBy    User?         @relation("FolioLineCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  product      FolioProduct? @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@unique([propertyId, idempotencyKey])
   @@unique([organizationId, propertyId, id])
@@ -1243,23 +1309,23 @@ model DocumentPrintEvent {
 /// actions that require a human to execute them in another module. Creating one
 /// never changes tariffs, folios, cash or payments.
 model ReservationInstruction {
-  id                 String                    @id @default(uuid()) @db.Uuid
-  organizationId     String                    @db.Uuid
-  propertyId         String                    @db.Uuid
-  reservationId      String                    @db.Uuid
-  sourceNoteId       String?                   @db.Uuid
-  category           InstructionCategory       @default(GENERAL)
-  title              String                    @db.VarChar(160)
-  body               String                    @db.Text
+  id                 String                      @id @default(uuid()) @db.Uuid
+  organizationId     String                      @db.Uuid
+  propertyId         String                      @db.Uuid
+  reservationId      String                      @db.Uuid
+  sourceNoteId       String?                     @db.Uuid
+  category           InstructionCategory         @default(GENERAL)
+  title              String                      @db.VarChar(160)
+  body               String                      @db.Text
   /// Free-form pastel tags for filtering and grouping (e.g. VIP, PREAUTH).
-  tags               String[]                  @default([])
-  priority           InstructionPriority       @default(NORMAL)
-  status             InstructionStatus         @default(NEW)
-  source             InstructionSource         @default(RESERVATIONS)
-  sourceDepartment   String?                   @db.VarChar(64)
-  visibility         InstructionVisibility     @default(ALL_AUTHORIZED)
-  assignedDepartment String?                   @db.VarChar(64)
-  assignedUserId     String?                   @db.Uuid
+  tags               String[]                    @default([])
+  priority           InstructionPriority         @default(NORMAL)
+  status             InstructionStatus           @default(NEW)
+  source             InstructionSource           @default(RESERVATIONS)
+  sourceDepartment   String?                     @db.VarChar(64)
+  visibility         InstructionVisibility       @default(ALL_AUTHORIZED)
+  assignedDepartment String?                     @db.VarChar(64)
+  assignedUserId     String?                     @db.Uuid
   actionType         InstructionActionType?
   executionMoment    InstructionExecutionMoment?
   paymentMethod      InstructionPaymentMethod?
@@ -1267,9 +1333,9 @@ model ReservationInstruction {
   validFrom          DateTime?
   validUntil         DateTime?
   completedAt        DateTime?
-  completedByUserId  String?                   @db.Uuid
-  createdByUserId    String?                   @db.Uuid
-  dedupeKey          String?                   @db.VarChar(64)
+  completedByUserId  String?                     @db.Uuid
+  createdByUserId    String?                     @db.Uuid
+  dedupeKey          String?                     @db.VarChar(64)
   metadata           Json?
   organization       Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   property           Property                    @relation(fields: [propertyId], references: [id], onDelete: Restrict)
@@ -1278,9 +1344,9 @@ model ReservationInstruction {
   assignedUser       User?                       @relation("InstructionAssignedTo", fields: [assignedUserId], references: [id], onDelete: SetNull)
   completedBy        User?                       @relation("InstructionCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
   createdBy          User?                       @relation("InstructionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  events              InstructionEvent[]
-  createdAt           DateTime                    @default(now())
-  updatedAt           DateTime                    @updatedAt
+  events             InstructionEvent[]
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 
   @@unique([organizationId, propertyId, id])
   @@unique([sourceNoteId, dedupeKey])
@@ -1296,28 +1362,28 @@ model ReservationInstruction {
 /// verifiable digest of the exact received text and `contentHash` de-duplicates
 /// retries for the same parser version.
 model ReservationSourceNote {
-  id                  String                    @id @default(uuid()) @db.Uuid
-  organizationId      String                    @db.Uuid
-  propertyId          String                    @db.Uuid
-  reservationId       String                    @db.Uuid
-  sourceTextOriginal  String                    @db.Text
-  sourceTextHash      String                    @db.VarChar(64)
-  contentHash         String                    @db.VarChar(64)
-  parserVersion       String                    @db.VarChar(32)
-  redacted            Boolean                   @default(false)
-  suggestions         Json
-  warnings            Json
-  sourceSystem        String?                   @db.VarChar(64)
-  sourceDepartment    String?                   @db.VarChar(64)
-  externalReference   String?                   @db.VarChar(120)
-  importedByUserId    String?                   @db.Uuid
-  importedAt          DateTime                  @default(now())
-  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property            Property                  @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  reservation         Reservation               @relation(fields: [reservationId], references: [id], onDelete: Restrict)
-  importedBy          User?                     @relation("SourceNoteImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
-  instructions        ReservationInstruction[]
-  createdAt           DateTime                  @default(now())
+  id                 String                   @id @default(uuid()) @db.Uuid
+  organizationId     String                   @db.Uuid
+  propertyId         String                   @db.Uuid
+  reservationId      String                   @db.Uuid
+  sourceTextOriginal String                   @db.Text
+  sourceTextHash     String                   @db.VarChar(64)
+  contentHash        String                   @db.VarChar(64)
+  parserVersion      String                   @db.VarChar(32)
+  redacted           Boolean                  @default(false)
+  suggestions        Json
+  warnings           Json
+  sourceSystem       String?                  @db.VarChar(64)
+  sourceDepartment   String?                  @db.VarChar(64)
+  externalReference  String?                  @db.VarChar(120)
+  importedByUserId   String?                  @db.Uuid
+  importedAt         DateTime                 @default(now())
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property           Property                 @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservation        Reservation              @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  importedBy         User?                    @relation("SourceNoteImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
+  instructions       ReservationInstruction[]
+  createdAt          DateTime                 @default(now())
 
   @@unique([reservationId, contentHash, parserVersion], map: "ReservationSourceNote_content_version_key")
   @@unique([organizationId, propertyId, id])
@@ -1327,21 +1393,21 @@ model ReservationSourceNote {
 /// Append-only timeline for instruction status changes. The database trigger
 /// rejects UPDATE/DELETE/TRUNCATE.
 model InstructionEvent {
-  id             String               @id @default(uuid()) @db.Uuid
-  organizationId String               @db.Uuid
-  propertyId     String               @db.Uuid
-  instructionId  String               @db.Uuid
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @db.Uuid
+  propertyId     String                 @db.Uuid
+  instructionId  String                 @db.Uuid
   eventType      InstructionEventType
-  actorUserId    String?              @db.Uuid
+  actorUserId    String?                @db.Uuid
   fromStatus     InstructionStatus?
   toStatus       InstructionStatus?
   reason         String?
   metadata       Json?
-  occurredAt     DateTime             @default(now())
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  property       Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  occurredAt     DateTime               @default(now())
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  property       Property               @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   instruction    ReservationInstruction @relation(fields: [instructionId], references: [id], onDelete: Cascade)
-  actor          User?                @relation("InstructionEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actor          User?                  @relation("InstructionEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, propertyId, instructionId, occurredAt], map: "InstructionEvent_instruction_occurred_idx")
 }

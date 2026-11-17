@@ -1,5 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  FolioStatus,
   HousekeepingState,
   IncidentSeverity,
   IncidentStatus,
@@ -9,6 +16,9 @@ import {
   RoomOperationalState,
   StayStatus,
 } from '@prisma/client';
+import { PERMISSIONS } from '../access/permissions';
+import { money } from '../common/money/decimal';
+import { computeFolioTotals, type FolioTotals } from '../folio/folio-totals';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { addCalendarDays, propertyDayStart } from '../common/time/property-day';
@@ -34,6 +44,15 @@ import {
   NoShowDto,
   ResolveIncidentDto,
 } from './dto/front-office.dto';
+import {
+  activeRoomBlockWhere,
+  occupyingStayWhere,
+  overlappingReservationWhere,
+  roomMoveBlocker,
+  roomMoveWarnings,
+  staticRoomMoveBlockers,
+  type RoomMoveBlocker,
+} from './room-move';
 
 type Transaction = Prisma.TransactionClient;
 
@@ -240,6 +259,111 @@ export interface CheckInReadiness {
   currentRoomId: string | null;
   currentRoomEligible: boolean | null;
   rooms: CheckInRoomOption[];
+}
+
+interface FolioCheckoutRow {
+  id: string;
+  number: string;
+  status: FolioStatus;
+  currencyCode: string;
+  totals: FolioTotals;
+}
+
+export interface CheckoutFolioSummary {
+  id: string;
+  number: string;
+  status: FolioStatus;
+  currencyCode: string;
+  charges: string;
+  payments: string;
+  balance: string;
+}
+
+export interface CheckoutSummary {
+  folios: CheckoutFolioSummary[];
+  totals: { charges: string; payments: string; balance: string };
+  housekeeping: { from: HousekeepingState; to: HousekeepingState };
+  outstandingBalance: boolean;
+}
+
+/**
+ * Checkout closes the stay and the account together, then marks the room
+ * dirty. Account closure, stay checkout and housekeeping stay separate
+ * concepts, but they run inside one transaction so a failed closure never
+ * releases the room.
+ */
+export interface CheckOutResponse extends StayResponse {
+  checkout: CheckoutSummary;
+}
+
+export interface CheckoutReadiness {
+  stay: {
+    id: string;
+    status: StayStatus;
+    room: { id: string; number: string };
+    guest: { id: string; fullName: string };
+    reservation: { id: string; code: string };
+  };
+  folios: CheckoutFolioSummary[];
+  totals: { charges: string; payments: string; balance: string };
+  housekeeping: { current: HousekeepingState; target: HousekeepingState };
+  blockedReasons: Array<{ code: string; message: string }>;
+  warnings: Array<{ code: string; message: string }>;
+  canCheckOut: boolean;
+}
+
+export interface RoomMoveCandidateType {
+  id: string;
+  name: string;
+  code: string;
+  capacityAdults: number;
+  capacityChildren: number;
+}
+
+export interface RoomMoveCandidate {
+  id: string;
+  number: string;
+  floor: string | null;
+  building: string | null;
+  roomType: RoomMoveCandidateType;
+  housekeepingState: HousekeepingState;
+  operationalState: RoomOperationalState;
+  occupancy: 'VACANT' | 'OCCUPIED';
+  activeBlock: { id: string; type: string; endsAt: Date } | null;
+  eligible: boolean;
+  blockers: RoomMoveBlocker[];
+  warnings: Array<{ code: 'housekeeping_not_ready'; message: string }>;
+}
+
+/**
+ * Read model for the guided room-move flow. It mirrors the rules the
+ * transactional move applies, but never reserves or mutates a room.
+ */
+export interface RoomMoveCandidates {
+  stay: {
+    id: string;
+    status: StayStatus;
+    room: {
+      id: string;
+      number: string;
+      floor: string | null;
+      building: string | null;
+      housekeepingState: HousekeepingState;
+      roomType: RoomMoveCandidateType;
+    };
+    guest: { id: string; fullName: string };
+    reservation: {
+      id: string;
+      code: string;
+      status: ReservationStatus;
+      checkInDate: string;
+      checkOutDate: string;
+      nights: number;
+      adults: number;
+      children: number;
+    };
+  };
+  candidates: RoomMoveCandidate[];
 }
 
 /**
@@ -988,14 +1112,112 @@ export class FrontOfficeService {
     }
   }
 
-  async checkOut(context: TenantContext, stayId: string, dto: CheckOutDto): Promise<StayResponse> {
+  async checkoutReadiness(context: TenantContext, stayId: string): Promise<CheckoutReadiness> {
+    const propertyId = requirePropertyContext(context);
+    const stay = await this.prisma.stay.findFirst({
+      where: { id: stayId, organizationId: context.organizationId, propertyId },
+      select: STAY_SELECT,
+    });
+    if (stay === null) {
+      throw new NotFoundException({
+        code: 'stay_not_found',
+        message: 'Stay not found in the selected property.',
+      });
+    }
+
+    const folios = await this.readCheckoutFolios(
+      this.prisma,
+      context.organizationId,
+      propertyId,
+      stay,
+    );
+    const room = await this.prisma.room.findFirst({
+      where: { id: stay.roomId, organizationId: context.organizationId, propertyId },
+      select: { housekeepingState: true },
+    });
+    const housekeeping = room?.housekeepingState ?? HousekeepingState.DIRTY;
+    const summary = buildCheckoutSummary(folios, {
+      from: housekeeping,
+      to: HousekeepingState.DIRTY,
+    });
+
+    const outstanding = folios.filter(
+      (folio) => folio.status === FolioStatus.OPEN && !folio.totals.balance.isZero(),
+    );
+    const openFolios = folios.filter((folio) => folio.status === FolioStatus.OPEN);
+
+    const blockedReasons: Array<{ code: string; message: string }> = [];
+    if (stay.status !== StayStatus.IN_HOUSE) {
+      blockedReasons.push({
+        code: 'stay_not_in_house',
+        message: 'Only in-house stays can be checked out.',
+      });
+    }
+
+    const warnings: Array<{ code: string; message: string }> = [];
+    if (outstanding.length > 0) {
+      warnings.push({
+        code: 'folio_balance_outstanding',
+        message:
+          'The account has an outstanding balance. Settle it or authorize checkout with a balance.',
+      });
+    }
+    if (folios.length === 0) {
+      warnings.push({
+        code: 'no_folio',
+        message: 'This stay has no account. Checkout only releases the room.',
+      });
+    }
+    if (openFolios.length > 1) {
+      warnings.push({
+        code: 'multiple_open_folios',
+        message: 'More than one open account will be closed at checkout.',
+      });
+    }
+
+    return {
+      stay: {
+        id: stay.id,
+        status: stay.status,
+        room: { id: stay.room.id, number: stay.room.number },
+        guest: { id: stay.guest.id, fullName: stay.guest.fullName },
+        reservation: { id: stay.reservation.id, code: stay.reservation.code },
+      },
+      folios: summary.folios,
+      totals: summary.totals,
+      housekeeping: { current: housekeeping, target: HousekeepingState.DIRTY },
+      blockedReasons,
+      warnings,
+      canCheckOut: blockedReasons.length === 0,
+    };
+  }
+
+  async checkOut(
+    context: TenantContext,
+    stayId: string,
+    dto: CheckOutDto,
+  ): Promise<CheckOutResponse> {
     const propertyId = requirePropertyContext(context);
 
     return this.prisma.$transaction(async (transaction) => {
       const stay = await this.lockStay(transaction, context.organizationId, propertyId, stayId);
+      const folios = await this.readCheckoutFolios(
+        transaction,
+        context.organizationId,
+        propertyId,
+        stay,
+      );
+      const room = await transaction.room.findFirst({
+        where: { id: stay.roomId, organizationId: context.organizationId, propertyId },
+        select: { id: true, number: true, housekeepingState: true },
+      });
 
       if (stay.status === StayStatus.CHECKED_OUT) {
-        return mapStay(stay);
+        const housekeeping = room?.housekeepingState ?? HousekeepingState.DIRTY;
+        return {
+          ...mapStay(stay),
+          checkout: buildCheckoutSummary(folios, { from: housekeeping, to: housekeeping }),
+        };
       }
 
       if (stay.status !== StayStatus.IN_HOUSE) {
@@ -1006,7 +1228,77 @@ export class FrontOfficeService {
         });
       }
 
+      const closeFolios = dto.closeFolios ?? true;
+      if (closeFolios && !context.permissions.has(PERMISSIONS.FOLIO_MANAGE)) {
+        throw new ForbiddenException({
+          code: 'permission_denied',
+          message: 'Closing the account at checkout requires folio.manage.',
+        });
+      }
+
+      const allowOutstanding = dto.allowOutstandingBalance ?? false;
+      const balanceReason = (dto.balanceReason ?? '').trim();
+      const openFolios = folios.filter((folio) => folio.status === FolioStatus.OPEN);
+
+      if (closeFolios) {
+        const outstanding = openFolios.filter((folio) => !folio.totals.balance.isZero());
+        if (outstanding.length > 0) {
+          if (!allowOutstanding) {
+            throw new ConflictException({
+              code: 'folio_balance_outstanding',
+              message:
+                'The account still has an outstanding balance. Settle it or authorize checkout with a balance.',
+              details: {
+                folios: outstanding.map((folio) => ({
+                  id: folio.id,
+                  number: folio.number,
+                  balance: money(folio.totals.balance),
+                  currencyCode: folio.currencyCode,
+                })),
+              },
+            });
+          }
+          if (balanceReason.length < 3) {
+            throw new BadRequestException({
+              code: 'balance_reason_required',
+              message: 'A reason with at least 3 characters is required to check out with a balance.',
+            });
+          }
+        }
+      }
+
       const now = new Date();
+
+      if (closeFolios) {
+        for (const folio of openFolios) {
+          await transaction.folio.update({
+            where: { id: folio.id },
+            data: { status: FolioStatus.SETTLED, closedAt: now },
+          });
+          await this.audit.append(
+            {
+              organizationId: context.organizationId,
+              propertyId,
+              actorUserId: context.actor.id,
+              action: 'folio.closed_at_checkout',
+              entityType: 'Folio',
+              entityId: folio.id,
+              correlationId: context.correlationId,
+              reason: folio.totals.balance.isZero() ? undefined : balanceReason,
+              metadata: {
+                number: folio.number,
+                stayId: stay.id,
+                charges: money(folio.totals.charges),
+                payments: money(folio.totals.payments),
+                balance: money(folio.totals.balance),
+                currencyCode: folio.currencyCode,
+              },
+            },
+            transaction,
+          );
+        }
+      }
+
       const updated = await transaction.stay.update({
         where: { id: stay.id },
         data: {
@@ -1041,6 +1333,57 @@ export class FrontOfficeService {
         select: { id: true },
       });
 
+      // Occupancy is released by the stay status; housekeeping is a separate
+      // dimension and normally becomes DIRTY after a departure.
+      const fromHousekeeping = room?.housekeepingState ?? HousekeepingState.DIRTY;
+      if (room !== null && fromHousekeeping !== HousekeepingState.DIRTY) {
+        await transaction.room.update({
+          where: { id: room.id },
+          data: {
+            housekeepingState: HousekeepingState.DIRTY,
+            updatedByUserId: context.actor.id,
+          },
+        });
+        await transaction.roomStatusHistory.create({
+          data: {
+            organizationId: context.organizationId,
+            propertyId,
+            roomId: room.id,
+            category: 'HOUSEKEEPING',
+            fromState: fromHousekeeping,
+            toState: HousekeepingState.DIRTY,
+            reason: 'Checkout.',
+            actorUserId: context.actor.id,
+            correlationId: context.correlationId,
+          },
+          select: { id: true },
+        });
+        await this.audit.append(
+          {
+            organizationId: context.organizationId,
+            propertyId,
+            actorUserId: context.actor.id,
+            action: 'room.housekeeping_state_changed',
+            entityType: 'Room',
+            entityId: room.id,
+            correlationId: context.correlationId,
+            reason: 'Checkout.',
+            metadata: { roomNumber: room.number, from: fromHousekeeping, to: HousekeepingState.DIRTY },
+          },
+          transaction,
+        );
+      }
+
+      const summaryFolios = folios.map((folio) =>
+        closeFolios && folio.status === FolioStatus.OPEN
+          ? { ...folio, status: FolioStatus.SETTLED }
+          : folio,
+      );
+      const checkout = buildCheckoutSummary(summaryFolios, {
+        from: fromHousekeeping,
+        to: HousekeepingState.DIRTY,
+      });
+
       await this.audit.append(
         {
           organizationId: context.organizationId,
@@ -1054,13 +1397,176 @@ export class FrontOfficeService {
             code: stay.reservation.code,
             stayId: stay.id,
             roomId: stay.roomId,
+            foliosClosed: closeFolios ? openFolios.length : 0,
+            outstandingBalance: checkout.outstandingBalance,
+            balance: checkout.totals.balance,
+            currencyCode: folios[0]?.currencyCode ?? null,
           },
         },
         transaction,
       );
 
-      return mapStay(updated);
+      return { ...mapStay(updated), checkout };
     });
+  }
+
+  /**
+   * Read-only destination list for the guided room move. It exposes every room
+   * of the property with the same eligibility rules the transactional move
+   * applies, so the operator can see why a room is not selectable before
+   * submitting the change. It never reserves a room.
+   */
+  async roomMoveCandidates(
+    context: TenantContext,
+    stayId: string,
+  ): Promise<RoomMoveCandidates> {
+    const propertyId = requirePropertyContext(context);
+    const stay = await this.prisma.stay.findFirst({
+      where: { id: stayId, organizationId: context.organizationId, propertyId },
+      select: STAY_SELECT,
+    });
+    if (stay === null) {
+      throw new NotFoundException({
+        code: 'stay_not_found',
+        message: 'Stay not found in the selected property.',
+      });
+    }
+
+    const rooms = await this.prisma.room.findMany({
+      where: { organizationId: context.organizationId, propertyId },
+      orderBy: [{ number: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        number: true,
+        floor: true,
+        building: true,
+        roomTypeId: true,
+        housekeepingState: true,
+        operationalState: true,
+        status: true,
+        roomType: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            capacityAdults: true,
+            capacityChildren: true,
+          },
+        },
+      },
+    });
+    const currentRoom = rooms.find((room) => room.id === stay.roomId);
+    if (currentRoom === undefined) {
+      throw new ConflictException({
+        code: 'stay_inconsistent',
+        message: 'The stay references a room that is not available in the property.',
+      });
+    }
+
+    const destinations = rooms.filter((room) => room.id !== stay.roomId);
+    const roomIds = destinations.map((room) => room.id);
+    const now = new Date();
+    const [occupyingStays, blocks, overlapping] = await Promise.all([
+      this.prisma.stay.findMany({
+        where: occupyingStayWhere({
+          organizationId: context.organizationId,
+          propertyId,
+          roomId: { in: roomIds },
+        }),
+        select: { roomId: true },
+      }),
+      this.prisma.roomBlock.findMany({
+        where: activeRoomBlockWhere({
+          organizationId: context.organizationId,
+          propertyId,
+          roomId: { in: roomIds },
+          checkOutDate: stay.reservation.checkOutDate,
+          now,
+        }),
+        orderBy: [{ endsAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, roomId: true, type: true, endsAt: true },
+      }),
+      this.prisma.reservation.findMany({
+        where: overlappingReservationWhere({
+          organizationId: context.organizationId,
+          propertyId,
+          roomId: { in: roomIds },
+          reservation: stay.reservation,
+        }),
+        select: { roomId: true },
+      }),
+    ]);
+
+    const occupiedRooms = new Set(occupyingStays.map((row) => row.roomId));
+    const overlappingRooms = new Set(
+      overlapping
+        .map((row) => row.roomId)
+        .filter((value): value is string => value !== null),
+    );
+    const blockByRoom = new Map<string, (typeof blocks)[number]>();
+    for (const block of blocks) {
+      if (!blockByRoom.has(block.roomId)) {
+        blockByRoom.set(block.roomId, block);
+      }
+    }
+
+    const candidates: RoomMoveCandidate[] = destinations.map((room) => {
+      const blockers = staticRoomMoveBlockers(room, stay.reservation.roomType.id);
+      if (blockByRoom.has(room.id)) {
+        blockers.push(roomMoveBlocker('room_block_overlap'));
+      }
+      if (occupiedRooms.has(room.id)) {
+        blockers.push(roomMoveBlocker('room_occupied'));
+      }
+      if (overlappingRooms.has(room.id)) {
+        blockers.push(roomMoveBlocker('room_not_available'));
+      }
+      const block = blockByRoom.get(room.id);
+      return {
+        id: room.id,
+        number: room.number,
+        floor: room.floor,
+        building: room.building,
+        roomType: room.roomType,
+        housekeepingState: room.housekeepingState,
+        operationalState: room.operationalState,
+        occupancy: occupiedRooms.has(room.id) ? 'OCCUPIED' : 'VACANT',
+        activeBlock:
+          block === undefined
+            ? null
+            : { id: block.id, type: block.type, endsAt: block.endsAt },
+        eligible: blockers.length === 0,
+        blockers,
+        warnings: roomMoveWarnings(room.housekeepingState),
+      };
+    });
+
+    return {
+      stay: {
+        id: stay.id,
+        status: stay.status,
+        room: {
+          id: currentRoom.id,
+          number: currentRoom.number,
+          floor: currentRoom.floor,
+          building: currentRoom.building,
+          housekeepingState: currentRoom.housekeepingState,
+          roomType: currentRoom.roomType,
+        },
+        guest: { id: stay.guest.id, fullName: stay.guest.fullName },
+        reservation: {
+          id: stay.reservation.id,
+          code: stay.reservation.code,
+          status: stay.reservation.status,
+          checkInDate: formatCalendarDate(stay.reservation.checkInDate),
+          checkOutDate: formatCalendarDate(stay.reservation.checkOutDate),
+          nights: nightsBetween(stay.reservation.checkInDate, stay.reservation.checkOutDate),
+          adults: stay.reservation.adults,
+          children: stay.reservation.children,
+        },
+      },
+      candidates,
+    };
   }
 
   async moveRoom(
@@ -1088,35 +1594,23 @@ export class FrontOfficeService {
 
       const room = await this.lockRoom(transaction, context.organizationId, propertyId, dto.roomId);
 
-      if (room.status !== 'ACTIVE') {
+      const [staticBlocker] = staticRoomMoveBlockers(room, stay.reservation.roomType.id);
+      if (staticBlocker !== undefined) {
         throw new ConflictException({
-          code: 'room_inactive',
-          message: 'The selected room is not active.',
-        });
-      }
-      if (room.operationalState !== 'AVAILABLE') {
-        throw new ConflictException({
-          code: 'room_out_of_service',
-          message: 'The selected room is not operationally available.',
-        });
-      }
-      if (room.roomTypeId !== stay.reservation.roomType.id) {
-        throw new ConflictException({
-          code: 'room_type_mismatch',
-          message: 'The selected room does not belong to the reservation room type.',
+          code: staticBlocker.code,
+          message: staticBlocker.message,
         });
       }
 
       const now = new Date();
       const blocking = await transaction.roomBlock.findFirst({
-        where: {
+        where: activeRoomBlockWhere({
           organizationId: context.organizationId,
           propertyId,
           roomId: room.id,
-          status: 'ACTIVE',
-          startsAt: { lt: stay.reservation.checkOutDate },
-          endsAt: { gt: now },
-        },
+          checkOutDate: stay.reservation.checkOutDate,
+          now,
+        }),
         select: { id: true, type: true },
       });
       if (blocking !== null) {
@@ -1128,13 +1622,12 @@ export class FrontOfficeService {
       }
 
       const occupied = await transaction.stay.findFirst({
-        where: {
+        where: occupyingStayWhere({
           organizationId: context.organizationId,
           propertyId,
           roomId: room.id,
-          status: StayStatus.IN_HOUSE,
-          id: { not: stay.id },
-        },
+          stayId: stay.id,
+        }),
         select: { id: true, reservationId: true },
       });
       if (occupied !== null) {
@@ -1146,17 +1639,12 @@ export class FrontOfficeService {
       }
 
       const overlap = await transaction.reservation.findFirst({
-        where: {
+        where: overlappingReservationWhere({
           organizationId: context.organizationId,
           propertyId,
           roomId: room.id,
-          id: { not: stay.reservationId },
-          status: {
-            in: [ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN],
-          },
-          checkInDate: { lt: stay.reservation.checkOutDate },
-          checkOutDate: { gt: stay.reservation.checkInDate },
-        },
+          reservation: stay.reservation,
+        }),
         select: { id: true, code: true },
       });
       if (overlap !== null) {
@@ -1214,6 +1702,8 @@ export class FrontOfficeService {
             stayId: stay.id,
             fromRoomId: stay.roomId,
             toRoomId: room.id,
+            fromRoomNumber: stay.room.number,
+            toRoomNumber: room.number,
           },
         },
         transaction,
@@ -1513,6 +2003,39 @@ export class FrontOfficeService {
     });
   }
 
+  private async readCheckoutFolios(
+    client: Pick<Prisma.TransactionClient, 'folio'>,
+    organizationId: string,
+    propertyId: string,
+    stay: { id: string; reservationId: string },
+  ): Promise<FolioCheckoutRow[]> {
+    const rows = await client.folio.findMany({
+      where: {
+        organizationId,
+        propertyId,
+        status: { not: FolioStatus.CANCELLED },
+        OR: [{ stayId: stay.id }, { reservationId: stay.reservationId }],
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        currencyCode: true,
+        lines: { select: { amount: true, status: true } },
+        payments: { select: { amount: true, status: true } },
+      },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      number: row.number,
+      status: row.status,
+      currencyCode: row.currencyCode,
+      totals: computeFolioTotals(row.lines, row.payments),
+    }));
+  }
+
   private async loadProperty(organizationId: string, propertyId: string) {
     const property = await this.prisma.property.findFirst({
       where: { id: propertyId, organizationId, status: 'ACTIVE' },
@@ -1592,6 +2115,7 @@ export class FrontOfficeService {
     operationalState: string;
     housekeepingState: HousekeepingState;
     roomTypeId: string;
+    number: string;
   }> {
     await this.roomState.lockRoom(transaction, organizationId, propertyId, roomId);
     const room = await transaction.room.findFirst({
@@ -1602,6 +2126,7 @@ export class FrontOfficeService {
         operationalState: true,
         housekeepingState: true,
         roomTypeId: true,
+        number: true,
       },
     });
     if (room === null) {
@@ -1672,6 +2197,43 @@ function mapStay(row: StayRow): StayResponse {
       notes: row.reservation.notes,
       roomType: row.reservation.roomType,
     },
+  };
+}
+
+function buildCheckoutSummary(
+  folios: readonly FolioCheckoutRow[],
+  housekeeping: { from: HousekeepingState; to: HousekeepingState },
+): CheckoutSummary {
+  const totals = folios.reduce(
+    (acc, folio) => ({
+      charges: acc.charges.plus(folio.totals.charges),
+      payments: acc.payments.plus(folio.totals.payments),
+      balance: acc.balance.plus(folio.totals.balance),
+    }),
+    {
+      charges: new Prisma.Decimal(0),
+      payments: new Prisma.Decimal(0),
+      balance: new Prisma.Decimal(0),
+    },
+  );
+
+  return {
+    folios: folios.map((folio) => ({
+      id: folio.id,
+      number: folio.number,
+      status: folio.status,
+      currencyCode: folio.currencyCode,
+      charges: money(folio.totals.charges),
+      payments: money(folio.totals.payments),
+      balance: money(folio.totals.balance),
+    })),
+    totals: {
+      charges: money(totals.charges),
+      payments: money(totals.payments),
+      balance: money(totals.balance),
+    },
+    housekeeping,
+    outstandingBalance: !totals.balance.isZero(),
   };
 }
 

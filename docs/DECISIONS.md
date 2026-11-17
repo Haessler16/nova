@@ -1004,3 +1004,77 @@ These choices should be confirmed against the existing repository and current st
 - Validation required:
   - whether the pilot runs a single API instance or requires a broker on day one;
   - whether the rack should keep the 15 s poll while the stream is healthy as a cheap safety net.
+
+### ADR-054 — El catálogo de consumos es dato maestro por propiedad y el cargo guarda el precio aplicado
+
+- Status: accepted and implemented in Fase 4; catalog contents and tax treatment pending pilot validation.
+- Date: 2026-11-17.
+- Context: Caixa podía registrar cargos manuales con texto libre, pero no había catálogo de productos. Sin él, cada consumición de minibar se escribía a mano —con descripciones y precios inconsistentes— y no se podía auditar qué se vendió. La ficha pide un catálogo mínimo y prohíbe inventar reglas fiscales, stock o integraciones.
+- Options:
+  1. seguir sólo con cargos manuales (rechazado: no hay catálogo administrable ni precios controlados);
+  2. catálogo global por organización (rechazado: precios y surtido son por propiedad; Meals/unidades difieren);
+  3. catálogo por propiedad con snapshot de precio en cada línea de folio (elegido).
+- Decision:
+  - Nuevo modelo `FolioProduct` (`sku` único por propiedad, nombre, descripción, categoría, unidad, `unitAmount` DECIMAL(10,2), moneda, `isActive`) con FK compuestas a organización y propiedad y auditoría de creación/edición (`catalog.product_created`, `catalog.product_updated`).
+  - `FolioLine` gana `productId?`, `quantity` DECIMAL(10,2) default 1, `unitAmount?`, `unit?` y `source` (`MANUAL`, `MINIBAR`, `FRONT_DESK`, `PARKING`, `SERVICE`, `INTEGRATION`). Todos los campos son aditivos y con default, por lo que la migración es segura sobre datos existentes.
+  - `POST /folios/:id/charges` acepta `productId` + `quantity` o `description` + `amount`. Con `productId` el backend resuelve el precio desde PostgreSQL, calcula `unitAmount × quantity` con redondeo HALF_UP a dos decimales y descarta cualquier `amount` del cliente. La moneda del producto debe coincidir con la del folio.
+  - `sku` es inmutable: identifica el producto ante el hotel y cambiar el código de un artículo ya vendido complica la conciliación. El nombre, precio, categoría y estado sí se editan.
+  - Los permisos del catálogo reutilizan `folio.read` / `folio.manage`: el catálogo sólo existe para cargar cuentas y los roles de recepción y gerencia ya tienen exactamente ese par. No se introduce un permiso nuevo sin necesidad operativa.
+- Consequences:
+  - No hay control de stock, ni recetas, ni impuestos: crear cualquiera de ellos exige un módulo separado con requisitos confirmados.
+  - Un producto inactivo no puede cargarse, pero sus líneas históricas y sus precios quedan intactos.
+  - Editar un precio nunca reescribe cargos emitidos; el total del folio depende del snapshot, no del catálogo actual.
+  - No se admiten precios en cero (cortesías): hoy requieren un cargo manual con importe mínimo. Si el piloto necesita cortesías, se resuelve con una decisión de producto y no con un `amount` cliente.
+- Validation required:
+  - qué surtido inicial (minibar, estacionamiento, lavandería y servicios) y quién mantiene precios;
+  - si hacen falta cortesías/descuentos por línea y con qué aprobación;
+  - si el hotel requiere control de stock o consumo por habitación recurrente (fuera de esta fase).
+
+### ADR-055 — El checkout cierra cuenta y estancia en una transacción y el saldo pendiente es política explícita
+
+- Status: accepted and implemented in Fase 4; the pilot policy for departing with a balance is an OPEN QUESTION with a reversible default.
+- Date: 2026-11-17.
+- Context: el check-out anterior marcaba la estancia y la reserva como `CHECKED_OUT` y liberaba la habitación, pero no tocaba la cuenta ni housekeeping. Eso permitía liberar una habitación con cargos abiertos y dejaba el estado de limpieza sin actualizar. La ficha exige separar cierre de cuenta, checkout de estancia y limpieza, sin liberar la habitación si el cierre falla, y prohíbe inventar una regla universal sobre saldos.
+- Options:
+  1. un endpoint nuevo de checkout que duplique la lógica de estancia (rechazado: dos caminos con las mismas reglas);
+  2. encadenar llamadas desde el frontend (rechazado: una falla intermedia deja estados incoherentes y la habitación liberada);
+  3. extender `POST /front-office/stays/:id/check-out` para cerrar cuentas dentro de la misma transacción (elegido).
+- Decision:
+  - La transacción bloquea la estancia, lee sus cuentas (`stayId` o `reservationId`, sin `CANCELLED`), calcula saldo con `computeFolioTotals` (cargos `POSTED` − pagos `COMPLETED`) y, si `closeFolios` es `true`, actualiza cada cuenta `OPEN` a `SETTLED` con `closedAt`, marca la estancia y la reserva como `CHECKED_OUT`, escribe `ReservationHistory`, pasa la habitación a `DIRTY` con `RoomStatusHistory` y audita cada paso. Cualquier error revierte todo: la habitación no se libera y no queda sucia.
+  - Cerrar cuentas en el checkout exige `folio.manage` además de `front_office.manage`; sin ese permiso la operación responde `403 permission_denied` en lugar de cerrar cuentas ajenas al rol.
+  - Un saldo distinto de cero no se bloquea por defecto sin política: responde `409 folio_balance_outstanding` salvo que el operador envíe `allowOutstandingBalance` con `balanceReason` (≥ 3 caracteres). La razón queda en el `AuditEvent` `folio.closed_at_checkout`. Es una decisión por operación auditada, no una configuración de propiedad todavía.
+  - `GET /stays/:id/checkout-readiness` expone el resumen previo (cuentas, totales, housekeeping objetivo, advertencias) para que la UI muestre la consecuencia antes de confirmar.
+  - Housekeeping sólo se toca si no está ya `DIRTY`: repetir el checkout es idempotente y no genera transiciones espurias.
+- Consequences:
+  - Una cuenta con saldo puede cerrarse con autorización; el hotel conserva la deuda fuera del sistema. Si el piloto exige bloquear siempre, se cambia el default o se agrega configuración por propiedad.
+  - El checkout sigue sin integración de pagos: registrar el pago es una operación previa (`payment.manage`) y no se simula autorización.
+  - La habitación queda `DIRTY` de forma incondicional tras la salida; una política de “salida sin limpieza” (por ejemplo, salida el mismo día con reingreso) requiere decisión y se implementará con un flag explícito.
+  - El cierre de caja del día operativo sigue siendo independiente: el checkout no cierra la sesión de caja.
+- Validation required:
+  - ¿el hotel permite el checkout con saldo pendiente y quién lo autoriza?
+  - ¿la habitación de salida debe pasar siempre a `DIRTY` o el hotel usa otro estado de limpieza?
+  - ¿el checkout debe exigir un pago registrado o una preautorización cuando la política lo requiera?
+
+### ADR-056 — El cambio de habitación guiado comparte predicados con la transacción y housekeeping advierte sin bloquear
+
+- Status: accepted and implemented in Fase 5; pilot policy on housekeeping and who may move a stay pending.
+- Date: 2026-11-17.
+- Context: `POST /front-office/stays/:id/room-move` ya revalidaba tipo, bloqueo, ocupación y solapamiento dentro de una transacción, pero la UI sólo ofrecía un selector de habitación construido con el room rack. El operador no veía por qué una habitación no era válida hasta enviar el formulario, ni el housekeeping del destino, y un rechazo no refrescaba las alternativas. Duplicar las reglas en el cliente habría permitido que la lista de candidatas y la transacción divergieran.
+- Options:
+  1. filtrar candidatas en el frontend con el room rack (rechazado: dos fuentes de verdad y conflicto tardío);
+  2. exponer un endpoint nuevo de movimiento (rechazado: duplica la transacción existente y su auditoría);
+  3. read model `GET /stays/:id/room-move-candidates` alimentado por los mismos predicados que la transacción (elegido).
+- Decision:
+  - `apps/api/src/front-office/room-move.ts` concentra los predicados (`staticRoomMoveBlockers`, `activeRoomBlockWhere`, `occupyingStayWhere`, `overlappingReservationWhere`) y los códigos de bloqueo. Tanto `moveRoom` como `roomMoveCandidates` los usan, de modo que la lista no puede divergir de lo que la transacción acepta; el orden de los bloqueos también coincide con el primer error que devolvería la confirmación.
+  - `GET /front-office/stays/:id/room-move-candidates` exige sólo `front_office.read` y devuelve todas las habitaciones de la propiedad excepto la actual, cada una con tipo/capacidad, housekeeping, estado operativo, ocupación, bloqueo vigente, `eligible`, `blockers` y `warnings`. Es de solo lectura: no adquiere lease, no reserva y no sustituye la validación transaccional.
+  - El housekeeping del destino no bloquea el movimiento (la regla histórica lo permite), pero se expone como advertencia `housekeeping_not_ready` cuando el estado no es `CLEAN` ni `INSPECTED`, para que recepción confirme con gobernanta antes de mover al huésped.
+  - La UI (`/front-office`, acción «Mover» sobre la estancia) muestra la habitación actual, filtra por tipo, piso, ala, housekeeping y UH, oculta las no elegibles por defecto (con opción de mostrarlas y ver el motivo), compara origen y destino y exige un motivo de 3–500 caracteres. Tras un conflicto, refresca las alternativas y explica el código devuelto.
+  - El movimiento sigue siendo la misma transacción: bloquea estancia y habitación, revalida, actualiza `Stay.roomId` y `Reservation.roomId`, incrementa `moveCount`, escribe `ReservationHistory` y `AuditEvent reservation.room_moved` con motivo y números de habitación de origen y destino.
+- Consequences:
+  - El endpoint de candidatas devuelve el inventario completo de la propiedad en una sola respuesta; es aceptable mientras el inventario sea acotado (cientos de habitaciones). Si crece, se pagina sin cambiar la transacción.
+  - La lista puede quedar obsoleta entre la carga y la confirmación; el conflicto se resuelve en la transacción y la UI refresca, nunca al revés.
+  - No se usa el lease de asignación: el cambio de habitación es una operación de recepción sobre una estancia ya alojada y el destino no se reserva antes de confirmar.
+- Validation required:
+  - si el piloto exige que el destino esté limpio (bloqueo, no advertencia) o que inspección pendiente bloquee;
+  - qué roles pueden mover una estancia y si el motivo debe ser obligatorio siempre;
+  - si el cambio debe notificar a gobernanza o registrar consumos/llaves asociados al traslado.

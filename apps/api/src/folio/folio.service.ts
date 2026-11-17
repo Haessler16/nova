@@ -4,9 +4,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { FolioLineStatus, FolioStatus, Prisma } from '@prisma/client';
+import {
+  FolioLineSource,
+  FolioLineStatus,
+  FolioProductCategory,
+  FolioStatus,
+  Prisma,
+} from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
+import { computeFolioTotals } from './folio-totals';
 import { TenantContext } from '../common/http/request-context';
 import { money, parseMoney } from '../common/money/decimal';
 import {
@@ -35,9 +42,24 @@ const LINE_SELECT = Prisma.validator<Prisma.FolioLineSelect>()({
   postedAt: true,
   voidedAt: true,
   voidReason: true,
+  productId: true,
+  quantity: true,
+  unitAmount: true,
+  unit: true,
+  source: true,
   createdByUserId: true,
   createdAt: true,
 });
+
+/** Default provenance for a catalog consumption, derived from its category. */
+const CATEGORY_SOURCE: Record<FolioProductCategory, FolioLineSource> = {
+  MINIBAR: FolioLineSource.MINIBAR,
+  FOOD_BEVERAGE: FolioLineSource.FRONT_DESK,
+  PARKING: FolioLineSource.PARKING,
+  LAUNDRY: FolioLineSource.SERVICE,
+  SERVICE: FolioLineSource.SERVICE,
+  OTHER: FolioLineSource.FRONT_DESK,
+};
 
 const PAYMENT_SELECT = Prisma.validator<Prisma.PaymentSelect>()({
   id: true,
@@ -83,6 +105,11 @@ export interface FolioLineResponse {
   postedAt: Date;
   voidedAt: Date | null;
   voidReason: string | null;
+  productId: string | null;
+  quantity: string;
+  unitAmount: string | null;
+  unit: string | null;
+  source: FolioLineSource;
   createdByUserId: string | null;
 }
 
@@ -122,14 +149,7 @@ interface FolioTotals {
 }
 
 function computeTotals(lines: readonly LineRow[], payments: readonly PaymentRow[]): FolioTotals {
-  const charges = lines
-    .filter((line) => line.status === FolioLineStatus.POSTED)
-    .reduce((total, line) => total.plus(line.amount), new Prisma.Decimal(0));
-  const paid = payments
-    .filter((payment) => payment.status === 'COMPLETED')
-    .reduce((total, payment) => total.plus(payment.amount), new Prisma.Decimal(0));
-
-  return { charges, payments: paid, balance: charges.minus(paid) };
+  return computeFolioTotals(lines, payments);
 }
 
 function mapLine(line: LineRow): FolioLineResponse {
@@ -142,6 +162,11 @@ function mapLine(line: LineRow): FolioLineResponse {
     postedAt: line.postedAt,
     voidedAt: line.voidedAt,
     voidReason: line.voidReason,
+    productId: line.productId,
+    quantity: line.quantity.toFixed(2),
+    unitAmount: line.unitAmount === null ? null : money(line.unitAmount),
+    unit: line.unit,
+    source: line.source,
     createdByUserId: line.createdByUserId,
   };
 }
@@ -217,6 +242,8 @@ export class FolioService {
         { reservation: { code: { contains: search, mode: 'insensitive' } } },
         { reservation: { guest: { fullName: { contains: search, mode: 'insensitive' } } } },
         { stay: { guest: { fullName: { contains: search, mode: 'insensitive' } } } },
+        { stay: { room: { number: { contains: search, mode: 'insensitive' } } } },
+        { reservation: { room: { number: { contains: search, mode: 'insensitive' } } } },
       ];
     }
     if (query.date !== undefined) {
@@ -357,7 +384,16 @@ export class FolioService {
     dto: AddFolioChargeDto,
   ): Promise<FolioResponse> {
     const propertyId = requirePropertyContext(context);
-    const amount = parseMoney(dto.amount, 'amount');
+    const productId = dto.productId ?? null;
+    const quantity =
+      dto.quantity === undefined ? new Prisma.Decimal(1) : this.parseQuantity(dto.quantity);
+
+    if (productId === null && (dto.description === undefined || dto.amount === undefined)) {
+      throw new BadRequestException({
+        code: 'charge_payload_required',
+        message: 'A charge requires either a productId or a description with an amount.',
+      });
+    }
 
     const replay = await this.prisma.folioLine.findFirst({
       where: {
@@ -365,14 +401,23 @@ export class FolioService {
         propertyId,
         idempotencyKey: dto.idempotencyKey,
       },
-      select: { id: true, folioId: true, description: true, amount: true, currencyCode: true },
+      select: {
+        id: true,
+        folioId: true,
+        description: true,
+        amount: true,
+        productId: true,
+        quantity: true,
+      },
     });
     if (replay !== null) {
-      if (
-        replay.folioId !== folioId ||
-        replay.description !== dto.description ||
-        !replay.amount.equals(amount)
-      ) {
+      const sameProduct = (replay.productId ?? null) === productId;
+      const sameQuantity = replay.quantity.equals(quantity);
+      const sameManualPayload =
+        productId !== null ||
+        (replay.description === (dto.description ?? '').trim() &&
+          replay.amount.equals(parseMoney(dto.amount ?? '', 'amount')));
+      if (replay.folioId !== folioId || !sameProduct || !sameQuantity || !sameManualPayload) {
         throw this.idempotencyReuse('charge');
       }
       return this.get(context, folioId);
@@ -393,15 +438,31 @@ export class FolioService {
         });
       }
 
+      const charge = await this.resolveCharge(transaction, {
+        organizationId: context.organizationId,
+        propertyId,
+        productId,
+        quantity,
+        description: dto.description,
+        amount: dto.amount,
+        source: dto.source,
+        folioCurrencyCode: folio.currencyCode,
+      });
+
       const line = await transaction.folioLine.create({
         data: {
           organizationId: context.organizationId,
           propertyId,
           folioId,
-          description: dto.description,
-          amount,
+          description: charge.description,
+          amount: charge.amount,
           currencyCode: folio.currencyCode,
           status: FolioLineStatus.POSTED,
+          productId,
+          quantity,
+          unitAmount: charge.unitAmount,
+          unit: charge.unit,
+          source: charge.source,
           idempotencyKey: dto.idempotencyKey,
           createdByUserId: context.actor.id,
         },
@@ -422,6 +483,10 @@ export class FolioService {
             description: line.description,
             amount: money(line.amount),
             currencyCode: folio.currencyCode,
+            productId,
+            quantity: quantity.toFixed(2),
+            unitAmount: charge.unitAmount === null ? null : money(charge.unitAmount),
+            source: charge.source,
           },
         },
         transaction,
@@ -676,6 +741,121 @@ export class FolioService {
     return this.get(context, folioId);
   }
 
+  private parseQuantity(value: string): Prisma.Decimal {
+    const quantity = new Prisma.Decimal(value);
+    if (quantity.lessThanOrEqualTo(0) || quantity.greaterThan(new Prisma.Decimal('9999'))) {
+      throw new BadRequestException({
+        code: 'invalid_quantity',
+        message: 'quantity must be greater than zero and at most 9999.',
+      });
+    }
+    return quantity.toDecimalPlaces(2);
+  }
+
+  /**
+   * Resolves the charge payload. A catalog consumption always uses the price
+   * stored in PostgreSQL at posting time (never a client-supplied amount) and
+   * snapshots unit and description on the line.
+   */
+  private async resolveCharge(
+    transaction: Transaction,
+    input: {
+      organizationId: string;
+      propertyId: string;
+      productId: string | null;
+      quantity: Prisma.Decimal;
+      description?: string;
+      amount?: string;
+      source?: FolioLineSource;
+      folioCurrencyCode: string;
+    },
+  ): Promise<{
+    description: string;
+    amount: Prisma.Decimal;
+    unitAmount: Prisma.Decimal | null;
+    unit: string | null;
+    source: FolioLineSource;
+  }> {
+    const requestedDescription = (input.description ?? '').trim();
+
+    if (input.productId === null) {
+      if (requestedDescription.length === 0) {
+        throw new BadRequestException({
+          code: 'charge_payload_required',
+          message: 'A manual charge requires a description.',
+        });
+      }
+      return {
+        description: requestedDescription,
+        amount: parseMoney(input.amount ?? '', 'amount'),
+        unitAmount: null,
+        unit: null,
+        source: input.source ?? FolioLineSource.MANUAL,
+      };
+    }
+
+    const product = await transaction.folioProduct.findFirst({
+      where: {
+        id: input.productId,
+        organizationId: input.organizationId,
+        propertyId: input.propertyId,
+      },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        unitAmount: true,
+        currencyCode: true,
+        category: true,
+        isActive: true,
+      },
+    });
+    if (product === null) {
+      throw new NotFoundException({
+        code: 'product_not_found',
+        message: 'Product not found in this property.',
+      });
+    }
+    if (!product.isActive) {
+      throw new ConflictException({
+        code: 'product_inactive',
+        message: 'This product is inactive and cannot be posted to a folio.',
+      });
+    }
+    if (product.currencyCode !== input.folioCurrencyCode) {
+      throw new BadRequestException({
+        code: 'currency_mismatch',
+        message: `This folio uses ${input.folioCurrencyCode}.`,
+      });
+    }
+
+    const amount = product.unitAmount
+      .times(input.quantity)
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    if (amount.isZero()) {
+      throw new BadRequestException({
+        code: 'invalid_money_amount',
+        message: 'The charge amount must be greater than zero.',
+      });
+    }
+
+    const description = requestedDescription === '' ? product.name : requestedDescription;
+    if (description.length > 120) {
+      throw new BadRequestException({
+        code: 'charge_description_too_long',
+        message: 'The charge description must have at most 120 characters.',
+      });
+    }
+
+    return {
+      description,
+      amount,
+      unitAmount: product.unitAmount,
+      unit: product.unit,
+      source: input.source ?? CATEGORY_SOURCE[product.category],
+    };
+  }
+
   private async loadProperty(
     organizationId: string,
     propertyId: string,
@@ -810,12 +990,7 @@ export class FolioService {
       }),
     ]);
 
-    const charges = lines.reduce((total, line) => total.plus(line.amount), new Prisma.Decimal(0));
-    const paid = payments.reduce(
-      (total, payment) => total.plus(payment.amount),
-      new Prisma.Decimal(0),
-    );
-    return { charges, payments: paid, balance: charges.minus(paid) };
+    return computeFolioTotals(lines, payments);
   }
 
   private generateNumber(timezone: string): string {
