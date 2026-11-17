@@ -45,6 +45,11 @@ import {
   ResolveIncidentDto,
 } from './dto/front-office.dto';
 import {
+  groupOccupyingReservations,
+  occupiedRoomIds,
+  overlappingRoomIds,
+} from './room-occupancy';
+import {
   activeRoomBlockWhere,
   occupyingStayWhere,
   overlappingReservationWhere,
@@ -743,7 +748,7 @@ export class FrontOfficeService {
           roomId: { in: roomIds },
           status: StayStatus.IN_HOUSE,
         },
-        select: { roomId: true },
+        select: { roomId: true, reservationId: true },
       }),
       this.prisma.roomBlock.findMany({
         where: {
@@ -767,14 +772,13 @@ export class FrontOfficeService {
           checkInDate: { lt: reservation.checkOutDate },
           checkOutDate: { gt: reservation.checkInDate },
         },
-        select: { roomId: true },
+        select: { id: true, roomId: true },
       }),
     ]);
 
-    const occupiedRooms = new Set(stays.map((stay) => stay.roomId));
-    const overlappingRooms = new Set(
-      overlapping.map((row) => row.roomId).filter((value): value is string => value !== null),
-    );
+    const occupyingReservations = groupOccupyingReservations(stays);
+    const occupiedRooms = occupiedRoomIds(occupyingReservations);
+    const overlappingRooms = overlappingRoomIds(overlapping, occupyingReservations);
     const blockByRoom = new Map<string, (typeof blocks)[number]>();
     for (const block of blocks) {
       if (!blockByRoom.has(block.roomId)) {
@@ -1431,6 +1435,16 @@ export class FrontOfficeService {
         message: 'Stay not found in the selected property.',
       });
     }
+    // Same rule as the transactional move: a stay that is no longer in house
+    // cannot change rooms, so the read model must not offer destinations for
+    // it. Otherwise a stale tab lists eligible rooms that can never succeed.
+    if (stay.status !== StayStatus.IN_HOUSE) {
+      throw new ConflictException({
+        code: 'stay_not_in_house',
+        message: 'Only in-house stays can change rooms.',
+        details: { status: stay.status },
+      });
+    }
 
     const rooms = await this.prisma.room.findMany({
       where: { organizationId: context.organizationId, propertyId },
@@ -1473,7 +1487,7 @@ export class FrontOfficeService {
           propertyId,
           roomId: { in: roomIds },
         }),
-        select: { roomId: true },
+        select: { roomId: true, reservationId: true },
       }),
       this.prisma.roomBlock.findMany({
         where: activeRoomBlockWhere({
@@ -1493,16 +1507,15 @@ export class FrontOfficeService {
           roomId: { in: roomIds },
           reservation: stay.reservation,
         }),
-        select: { roomId: true },
+        select: { id: true, roomId: true },
       }),
     ]);
 
-    const occupiedRooms = new Set(occupyingStays.map((row) => row.roomId));
-    const overlappingRooms = new Set(
-      overlapping
-        .map((row) => row.roomId)
-        .filter((value): value is string => value !== null),
-    );
+    // Occupied rooms report their own in-house reservation once; see
+    // `room-occupancy.ts` for the shared rule with the check-in readiness.
+    const occupyingReservations = groupOccupyingReservations(occupyingStays);
+    const occupiedRooms = occupiedRoomIds(occupyingReservations);
+    const overlappingRooms = overlappingRoomIds(overlapping, occupyingReservations);
     const blockByRoom = new Map<string, (typeof blocks)[number]>();
     for (const block of blocks) {
       if (!blockByRoom.has(block.roomId)) {

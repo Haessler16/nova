@@ -57,6 +57,7 @@ describe('Front Office (E2E)', () => {
   let roomBId: string;
   let dirtyRoomId: string;
   let dirtyCheckInRoomId: string;
+  let occupiedCheckInRoomId: string;
   let blockedRoomId: string;
   let deluxeRoomId: string;
 
@@ -69,7 +70,8 @@ describe('Front Office (E2E)', () => {
 
     // The seed intentionally fills the demo rooms with in-house stays. Dedicated
     // rooms keep this suite deterministic without mutating demo data.
-    const [roomA, roomB, dirtyRoom, dirtyCheckInRoom, blockedRoom, deluxeRoom] = await Promise.all([
+    const [roomA, roomB, dirtyRoom, dirtyCheckInRoom, blockedRoom, deluxeRoom, occupiedRoom] =
+      await Promise.all([
       prisma.room.create({
         data: {
           organizationId: ORG_A,
@@ -142,11 +144,24 @@ describe('Front Office (E2E)', () => {
         },
         select: { id: true },
       }),
+      prisma.room.create({
+        data: {
+          organizationId: ORG_A,
+          propertyId: PROPERTY_CENTRO,
+          roomTypeId: ROOM_TYPE_STD,
+          number: `E2E-${suffix.slice(-4)}-G`,
+          floor: '9',
+          building: 'E2E',
+          housekeepingState: HousekeepingState.CLEAN,
+        },
+        select: { id: true },
+      }),
     ]);
     roomAId = roomA.id;
     roomBId = roomB.id;
     dirtyRoomId = dirtyRoom.id;
     dirtyCheckInRoomId = dirtyCheckInRoom.id;
+    occupiedCheckInRoomId = occupiedRoom.id;
     blockedRoomId = blockedRoom.id;
     deluxeRoomId = deluxeRoom.id;
   });
@@ -210,6 +225,37 @@ describe('Front Office (E2E)', () => {
       })
       .expect(201);
 
+    // An in-house stay makes its room occupied; its own reservation also
+    // overlaps the readiness dates, so the read model must report the single
+    // fact (`ROOM_OCCUPIED`) the transactional check-in would return.
+    const occupiedReservation = await prisma.reservation.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        code: `RDY${suffix.slice(-10)}`,
+        status: ReservationStatus.CHECKED_IN,
+        checkInDate: new Date(instant(dayAfter)),
+        checkOutDate: new Date(instant(readinessOut)),
+        adults: 1,
+        guestId: GUEST_ANA,
+        roomTypeId: ROOM_TYPE_STD,
+        roomId: occupiedCheckInRoomId,
+      },
+      select: { id: true },
+    });
+    await prisma.stay.create({
+      data: {
+        organizationId: ORG_A,
+        propertyId: PROPERTY_CENTRO,
+        reservationId: occupiedReservation.id,
+        guestId: GUEST_ANA,
+        roomId: occupiedCheckInRoomId,
+        status: StayStatus.IN_HOUSE,
+        checkedInAt: new Date(instant(today)),
+      },
+      select: { id: true },
+    });
+
     const readiness = await request(app.getHttpServer())
       .get(`/api/v1/front-office/reservations/${created.body.id}/check-in-readiness`)
       .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
@@ -239,6 +285,10 @@ describe('Front Office (E2E)', () => {
     expect(byId.get(blockedRoomId)?.reasons).toEqual(
       expect.arrayContaining(['ROOM_BLOCKED', 'ROOM_OUT_OF_SERVICE']),
     );
+
+    const occupied = byId.get(occupiedCheckInRoomId);
+    expect(occupied?.eligible).toBe(false);
+    expect(occupied?.reasons).toEqual(['ROOM_OCCUPIED']);
   });
 
   it('reports an open check-in window for a today arrival', async () => {
@@ -636,7 +686,10 @@ describe('Front Office (E2E)', () => {
     const taken = byId.get(roomAId);
     expect(taken?.occupancy).toBe('OCCUPIED');
     expect(taken?.eligible).toBe(false);
-    expect(taken?.blockers.map((item) => item.code)).toContain('room_occupied');
+    // The occupying stay's own reservation is not reported again as an
+    // overlapping booking: the list repeats the single fact the transaction
+    // returns (`room_occupied`).
+    expect(taken?.blockers.map((item) => item.code)).toEqual(['room_occupied']);
 
     const rejected = await request(app.getHttpServer())
       .post(`/api/v1/front-office/stays/${stayId}/room-move`)
@@ -729,6 +782,27 @@ describe('Front Office (E2E)', () => {
     expect(overview.body.inHouse.map((item: { id: string }) => item.id)).not.toContain(stayId);
     const rackRoomB = overview.body.roomRack.find((room: { id: string }) => room.id === roomBId);
     expect(rackRoomB.occupancy).toBe('VACANT');
+  });
+
+  it('rejects room-move candidates for a stay that already checked out', async () => {
+    const candidates = await request(app.getHttpServer())
+      .get(`/api/v1/front-office/stays/${stayId}/room-move-candidates`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .expect(409);
+
+    expect(candidates.body.code).toBe('stay_not_in_house');
+    expect(candidates.body.details.status).toBe(StayStatus.CHECKED_OUT);
+
+    // The move endpoint answers the same code, so the read model no longer
+    // offers destinations the transaction can never accept.
+    await request(app.getHttpServer())
+      .post(`/api/v1/front-office/stays/${stayId}/room-move`)
+      .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+      .send({ roomId: roomAId, reason: 'Synthetic move after checkout' })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body.code).toBe('stay_not_in_house');
+      });
   });
 
   it('returns arrivals, in-house stays and check-outs for a past operational day', async () => {

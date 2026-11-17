@@ -1853,13 +1853,14 @@ function FrontOfficeContent() {
                         </Text>
                       ) : (
                         <TableContainer
-                          maxH="280px"
+                          maxH="320px"
+                          overflowX="auto"
                           overflowY="auto"
                           borderWidth="1px"
                           borderColor="line"
                           borderRadius="md"
                         >
-                          <Table size="sm">
+                          <Table size="sm" minW="720px">
                             <Thead>
                               <Tr>
                                 <Th>UH</Th>
@@ -1867,7 +1868,16 @@ function FrontOfficeContent() {
                                 <Th>Piso / ala</Th>
                                 <Th>Housekeeping</Th>
                                 <Th>Estado</Th>
-                                <Th />
+                                <Th
+                                  position="sticky"
+                                  right={0}
+                                  zIndex={1}
+                                  bg="surface"
+                                  borderLeftWidth="1px"
+                                  borderLeftColor="line"
+                                >
+                                  Acción
+                                </Th>
                               </Tr>
                             </Thead>
                             <Tbody>
@@ -1910,7 +1920,14 @@ function FrontOfficeContent() {
                                       </Text>
                                     ))}
                                   </Td>
-                                  <Td isNumeric>
+                                  <Td
+                                    isNumeric
+                                    position="sticky"
+                                    right={0}
+                                    bg="surface"
+                                    borderLeftWidth="1px"
+                                    borderLeftColor="line"
+                                  >
                                     <Button
                                       size="xs"
                                       variant={moveRoomId === room.id ? 'solid' : 'outline'}

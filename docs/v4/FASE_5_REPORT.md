@@ -31,6 +31,7 @@ confirmación. No se creó un endpoint de movimiento paralelo.
 | Filtros por tipo/capacidad/piso/ala/estado | Ninguno | Tipo (con capacidad visible), piso, ala/edificio, housekeeping y búsqueda por UH, combinables |
 | Excluir destinos no elegibles | No se sabía hasta enviar el formulario | Ocultas por defecto; «Mostrar no elegibles» las lista con su bloqueo (`ROOM_MOVE_BLOCKER_LABELS`) |
 | Mostrar diferencias y advertencias | Ninguna | Panel de comparación actual/destino con housekeeping y advertencia `housekeeping_not_ready` |
+| Motivos de rechazo sin duplicados | n/a | Una habitación ocupada reporta sólo `room_occupied`; la reserva de la estancia ocupante no se repite como `room_not_available` |
 | Solicitar motivo | Opcional | Obligatorio en UI (3–500) y opcional en API con default `Room move.` |
 | Confirmar | `POST` con `roomId` | Igual, con revalidación transaccional; conflicto explicado y alternativas refrescadas |
 | Mostrar resultado y habitación nueva | Toast genérico | Panel «Cambio registrado» con `Hab. origen → Hab. destino` y nota de auditoría |
@@ -71,9 +72,10 @@ mismo room type que la reserva; sin bloqueo activo que se solape con la estancia
 sin otra estancia in-house; sin reserva solapada. Mover a la habitación actual es idempotente y no
 incrementa `moveCount` ni audita.
 
-Errores de conflicto: `stay_not_in_house`, `room_inactive`, `room_out_of_service`,
-`room_type_mismatch`, `room_block_overlap`, `room_occupied`, `room_not_available`; `404 stay_not_found`
-fuera del contexto autorizado.
+Errores de conflicto: `stay_not_in_house` (tanto en el read model como en el movimiento cuando la
+estancia dejó de estar `IN_HOUSE`), `room_inactive`, `room_out_of_service`, `room_type_mismatch`,
+`room_block_overlap`, `room_occupied`, `room_not_available`; `404 stay_not_found` fuera del contexto
+autorizado.
 
 ---
 
@@ -87,6 +89,9 @@ fuera del contexto autorizado.
   otro tipo está prohibido por la regla actual.
 - Tabla de destinos con UH, tipo/capacidad, piso/ala, housekeeping, ocupación, estado operativo, bloqueo
   vigente y motivo de inelegibilidad. Las filas no elegibles se atenúan y su botón queda deshabilitado.
+  La columna «Acción» es sticky a la derecha y la tabla tiene un ancho mínimo con scroll horizontal
+  explícito, de modo que los botones «Elegir»/«Elegida» quedan siempre visibles y clicables en desktop
+  y tablet aunque los motivos de rechazo alarguen la fila.
 - Panel de comparación con la habitación actual y el destino elegido, más la advertencia de
   housekeeping cuando corresponde.
 - Motivo obligatorio en UI; el backend mantiene el default para clientes que no lo envían.
@@ -124,6 +129,9 @@ pendiente que usa la prueba de check-in en habitación sucia:
 4. `marks a room taken by another in-house stay as ineligible and rejects the move` — una segunda
    estancia in-house ocupa el destino: `occupancy: OCCUPIED`, `room_occupied` en `blockers`, `409` al
    confirmar y estancia original intacta.
+5. `rejects room-move candidates for a stay that already checked out` — tras el check-out, el read
+   model responde `409 stay_not_in_house` con `details.status = CHECKED_OUT` y el movimiento devuelve
+   el mismo código, de modo que la lista no ofrece destinos que la transacción nunca aceptaría.
 
 ### Comandos ejecutados
 
