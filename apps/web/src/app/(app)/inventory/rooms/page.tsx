@@ -45,8 +45,9 @@ import {
   SectionCard,
   StatusBadge,
 } from '@/components/ui';
+import { RowActionButton } from '@/components/ui';
 import { useSession } from '@/context/session';
-import { api, errorMessage } from '@/lib/api';
+import { api, apiEventStream, errorMessage } from '@/lib/api';
 import {
   BLOCK_STATUS_LABELS,
   BLOCK_TYPE_LABELS,
@@ -158,10 +159,80 @@ function RoomsContent() {
     `${tenant.organizationId}:${tenant.propertyId}:rooms:${JSON.stringify(filters)}`,
   );
 
+  // The SSE stream refreshes the rack as soon as another session changes a
+  // room. When it cannot connect, polling every 15s keeps the rack usable.
+  const [liveMode, setLiveMode] = useState<'connecting' | 'live' | 'polling'>('connecting');
+  const organizationId = tenant.organizationId;
+  const propertyId = tenant.propertyId;
+
   useEffect(() => {
+    const controller = new AbortController();
+    let disposed = false;
+    let attempts = 0;
+    let retryTimer: number | undefined;
+    let refreshTimer: number | undefined;
+
+    function scheduleRefresh(): void {
+      if (refreshTimer !== undefined) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        reloadSilent();
+      }, 250);
+    }
+
+    async function run(): Promise<void> {
+      try {
+        setLiveMode('connecting');
+        for await (const event of apiEventStream(
+          '/api/v1/inventory/rooms/updates',
+          { organizationId, propertyId },
+          controller.signal,
+        )) {
+          attempts = 0;
+          setLiveMode('live');
+          if (event.type === 'ready' || event.type === 'room.updated' ||
+              event.type === 'room.housekeeping' || event.type === 'room.block_changed' ||
+              event.type === 'room.lease_changed') {
+            scheduleRefresh();
+          }
+        }
+      } catch {
+        // Offline, expired session or a proxy that buffers streams.
+      }
+      if (disposed) {
+        return;
+      }
+      setLiveMode('polling');
+      attempts += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void run();
+      }, Math.min(2_000 * attempts, 30_000));
+    }
+
+    void run();
+
+    return () => {
+      disposed = true;
+      controller.abort();
+      if (retryTimer !== undefined) {
+        window.clearTimeout(retryTimer);
+      }
+      if (refreshTimer !== undefined) {
+        window.clearTimeout(refreshTimer);
+      }
+    };
+  }, [organizationId, propertyId, reloadSilent]);
+
+  useEffect(() => {
+    if (liveMode === 'live') {
+      return undefined;
+    }
     const timer = window.setInterval(() => reloadSilent(), 15_000);
     return () => window.clearInterval(timer);
-  }, [reloadSilent]);
+  }, [liveMode, reloadSilent]);
 
   const createModal = useDisclosure();
   const editModal = useDisclosure();
@@ -172,6 +243,8 @@ function RoomsContent() {
   const [transitioning, setTransitioning] = useState(false);
   const [blockSaving, setBlockSaving] = useState(false);
   const [leaseBusy, setLeaseBusy] = useState(false);
+  const [forceOpen, setForceOpen] = useState(false);
+  const [forceReason, setForceReason] = useState('');
   const [incidentSaving, setIncidentSaving] = useState(false);
   const [createErrors, setCreateErrors] = useState<FieldErrors>({});
   const [editErrors, setEditErrors] = useState<FieldErrors>({});
@@ -533,6 +606,45 @@ function RoomsContent() {
     }
   }
 
+  async function forceReleaseLease(): Promise<void> {
+    const lease = selectedRoom?.lease;
+    if (selectedRoomId === null || lease === null || lease === undefined) {
+      return;
+    }
+    if (forceReason.trim() === '') {
+      setForceOpen(true);
+      return;
+    }
+    setLeaseBusy(true);
+    try {
+      await api<{ released: boolean }>(
+        `/api/v1/inventory/rooms/${selectedRoomId}/lease-release`,
+        {
+          method: 'POST',
+          tenant,
+          body: { leaseId: lease.leaseId, reason: forceReason.trim() },
+        },
+      );
+      toast({
+        title: 'Selección liberada',
+        description: 'Se registró el motivo en la auditoría.',
+        status: 'success',
+      });
+      setForceReason('');
+      setForceOpen(false);
+      reloadSilent();
+    } catch (cause) {
+      toast({
+        title: 'No se pudo liberar la selección',
+        description: errorMessage(cause),
+        status: 'error',
+      });
+      reloadSilent();
+    } finally {
+      setLeaseBusy(false);
+    }
+  }
+
   async function releaseLease(): Promise<void> {
     const lease = selectedRoom?.lease;
     if (selectedRoomId === null || lease === null || lease === undefined) {
@@ -855,13 +967,17 @@ function RoomsContent() {
                       borderLeftWidth="1px"
                       borderLeftColor="gray.100"
                     >
-                      <HStack spacing={1} justify="flex-end">
-                        <Button size="xs" variant="ghost" onClick={() => openDetail(room)}>
+                      <HStack spacing={1} justify="flex-end" wrap="nowrap">
+                        <RowActionButton
+                          onClick={() => openDetail(room)}
+                        >
                           Detalle
-                        </Button>
-                        <Button size="xs" variant="ghost" onClick={() => openEdit(room)}>
+                        </RowActionButton>
+                        <RowActionButton
+                          onClick={() => openEdit(room)}
+                        >
                           Editar
-                        </Button>
+                        </RowActionButton>
                       </HStack>
                     </Td>
                   </Tr>
@@ -1123,7 +1239,7 @@ function RoomsContent() {
                         En selección por <strong>{selectedRoom.lease.ownerDisplayName}</strong>{' '}
                         hasta {formatDateTime(selectedRoom.lease.expiresAt)}.
                       </Text>
-                      {selectedRoom.lease.ownerUserId === actor?.id && (
+                      {selectedRoom.lease.ownerUserId === actor?.id ? (
                         <HStack>
                           <Button
                             size="sm"
@@ -1142,6 +1258,51 @@ function RoomsContent() {
                             Liberar
                           </Button>
                         </HStack>
+                      ) : (
+                        <Stack spacing={2}>
+                          {forceOpen ? (
+                            <>
+                              <Input
+                                size="sm"
+                                placeholder="Motivo de la liberación"
+                                value={forceReason}
+                                onChange={(event) => setForceReason(event.target.value)}
+                              />
+                              <HStack>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  isLoading={leaseBusy}
+                                  isDisabled={forceReason.trim() === ''}
+                                  onClick={() => void forceReleaseLease()}
+                                >
+                                  Confirmar liberación
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  isDisabled={leaseBusy}
+                                  onClick={() => {
+                                    setForceOpen(false);
+                                    setForceReason('');
+                                  }}
+                                >
+                                  Cancelar
+                                </Button>
+                              </HStack>
+                            </>
+                          ) : (
+                            <Button
+                              size="sm"
+                              alignSelf="flex-start"
+                              variant="ghost"
+                              isLoading={leaseBusy}
+                              onClick={() => setForceOpen(true)}
+                            >
+                              Liberar selección forzada
+                            </Button>
+                          )}
+                        </Stack>
                       )}
                     </Stack>
                   ) : (

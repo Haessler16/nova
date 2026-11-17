@@ -38,8 +38,7 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  /**
-   * Fixed-window counter used for authentication abuse limiting. Redis is
+  /** Fixed-window counter used for authentication abuse limiting. Redis is
    * auxiliary here: if it is unavailable the caller decides how to degrade.
    */
   async incrementWindow(key: string, ttlSeconds: number): Promise<number | null> {
@@ -55,9 +54,7 @@ export class RedisService implements OnModuleDestroy {
       return count;
     } catch (error) {
       this.logger.warn(
-        `Redis rate-limit increment failed: ${
-          error instanceof Error ? error.message : 'unknown error'
-        }`,
+        `Redis rate-limit increment failed: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
       return null;
     }
@@ -105,6 +102,12 @@ export class RedisService implements OnModuleDestroy {
   async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
     await this.ensureConnected();
     return this.withTimeout(this.client.eval(script, keys.length, ...keys, ...args));
+  }
+
+  /** Delete a key. Returns the number of keys deleted (0 or 1). */
+  async del(key: string): Promise<number> {
+    await this.ensureConnected();
+    return this.withTimeout(this.client.del(key));
   }
 
   async onModuleDestroy(): Promise<void> {

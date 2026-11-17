@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoomBlockDto, ReleaseRoomBlockDto } from './dto/room-block.dto';
+import { RoomEventsService } from './room-events.service';
 import { requirePropertyContext, RoomStateService } from './room-state.service';
 
 export interface RoomBlockResponse {
@@ -53,6 +54,7 @@ export class RoomBlocksService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly roomState: RoomStateService,
+    private readonly events: RoomEventsService,
   ) {}
 
   async list(context: TenantContext, roomId: string): Promise<{ items: RoomBlockResponse[] }> {
@@ -77,7 +79,7 @@ export class RoomBlocksService {
     const propertyId = requirePropertyContext(context);
     this.validateInterval(dto.startsAt, dto.endsAt);
 
-    return this.prisma.$transaction(async (transaction) => {
+    const created = await this.prisma.$transaction(async (transaction) => {
       const room = await this.roomState.lockRoom(
         transaction,
         context.organizationId,
@@ -138,6 +140,12 @@ export class RoomBlocksService {
 
       return block;
     });
+
+    this.events.publish(context.organizationId, propertyId, {
+      roomId,
+      type: 'room.block_changed',
+    });
+    return created;
   }
 
   async release(
@@ -148,7 +156,7 @@ export class RoomBlocksService {
   ): Promise<RoomBlockResponse> {
     const propertyId = requirePropertyContext(context);
 
-    return this.prisma.$transaction(async (transaction) => {
+    const result = await this.prisma.$transaction(async (transaction) => {
       const room = await this.roomState.lockRoom(
         transaction,
         context.organizationId,
@@ -223,6 +231,12 @@ export class RoomBlocksService {
 
       return released;
     });
+
+    this.events.publish(context.organizationId, propertyId, {
+      roomId,
+      type: 'room.block_changed',
+    });
+    return result;
   }
 
   private validateInterval(startsAt: Date, endsAt: Date): void {

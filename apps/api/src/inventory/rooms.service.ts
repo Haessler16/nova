@@ -9,6 +9,7 @@ import { CreateRoomDto, ListRoomsQueryDto, UpdateRoomDto } from './dto/room.dto'
 import { HousekeepingTransitionDto } from './dto/housekeeping-transition.dto';
 import { ListRoomHistoryQueryDto } from './dto/room-block.dto';
 import { assertHousekeepingTransition } from './housekeeping-transitions';
+import { RoomEventsService } from './room-events.service';
 import {
   RoomAssignmentLease,
   RoomAssignmentLeasesService,
@@ -144,6 +145,7 @@ export class RoomsService {
     private readonly audit: AuditService,
     private readonly roomState: RoomStateService,
     private readonly leases: RoomAssignmentLeasesService,
+    private readonly events: RoomEventsService,
   ) {}
 
   async list(context: TenantContext, query: ListRoomsQueryDto): Promise<RoomListResponse> {
@@ -396,7 +398,7 @@ export class RoomsService {
     data.updatedByUserId = context.actor.id;
 
     try {
-      return await this.prisma.$transaction(async (transaction) => {
+      const result = await this.prisma.$transaction(async (transaction) => {
         await this.roomState.lockRoom(transaction, context.organizationId, propertyId, roomId);
 
         const before = await transaction.room.findFirst({
@@ -450,6 +452,12 @@ export class RoomsService {
 
         return this.withEmptyRelations(updated);
       });
+
+      this.events.publish(context.organizationId, propertyId, {
+        roomId,
+        type: 'room.updated',
+      });
+      return result;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException({
@@ -468,7 +476,7 @@ export class RoomsService {
   ): Promise<RoomResponse> {
     const propertyId = requirePropertyContext(context);
 
-    return this.prisma.$transaction(async (transaction) => {
+    const result = await this.prisma.$transaction(async (transaction) => {
       await this.roomState.lockRoom(transaction, context.organizationId, propertyId, roomId);
 
       const before = await transaction.room.findFirst({
@@ -530,6 +538,12 @@ export class RoomsService {
 
       return this.withEmptyRelations(updated);
     });
+
+    this.events.publish(context.organizationId, propertyId, {
+      roomId,
+      type: 'room.housekeeping',
+    });
+    return result;
   }
 
   async listHistory(

@@ -379,13 +379,23 @@ export const CashIcon = createIcon({
   ),
 });
 
-export const NightAuditIcon = createIcon({
-  displayName: 'NightAuditIcon',
+export const MoonIcon = createIcon({
+  displayName: 'MoonIcon',
   viewBox: '0 0 24 24',
   path: (
     <>
-      <path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5z" {...strokeProps} />
-      <path d="M17 4v3M15.5 5.5h3" {...strokeProps} />
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79zM8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" {...strokeProps} />
+    </>
+  ),
+});
+
+export const SunIcon = createIcon({
+  displayName: 'SunIcon',
+  viewBox: '0 0 24 24',
+  path: (
+    <>
+      <circle cx="12" cy="12" r="5" {...strokeProps} />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" {...strokeProps} />
     </>
   ),
 });

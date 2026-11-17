@@ -959,3 +959,48 @@ These choices should be confirmed against the existing repository and current st
   - pilot TTL and whether an authorized supervisor may force-release a lease;
   - whether room move should require the same lease and whether incidents need a lease at all;
   - whether the room rack should move from 15 s polling to realtime events.
+
+### ADR-052 — Lease override and lease transfer are explicit, audited coordination actions
+
+- Status: accepted and implemented for Fase 3 Sprint 1–2; pilot policy for who may force-release pending.
+- Date: 2026-11-16.
+- Context: ADR-051 left two gaps. A lost browser or closed tab kept a room blocked until TTL expiry with no operator remedy, and two reception sessions could not hand a selected room over without dropping the selection and racing for the destination. Both are purely ephemeral UX concerns, so both had to stay outside PostgreSQL while still leaving an audit trail.
+- Options:
+  1. let any session delete any lease silently (rejected: no traceability, trivially abusable);
+  2. force-release with an explicit endpoint, mandatory permission and audit (chosen);
+  3. make leases durable in PostgreSQL so they become queryable/auditable state (rejected: writes and cleanup for non-authoritative data).
+- Decision:
+  - `POST /inventory/rooms/:id/lease-release` accepts `{ leaseId, reason? }`, requires `front_office.manage` and never checks ownership. It reads the current lease for the audit, deletes the Redis key and always appends `room_lease_released_forced` with the requested `leaseId`, the previous owner and the reason. A missing lease is not an error: it returns `200` with `released: false` so the UI is idempotent.
+  - Audit failures never block the release; a Redis failure leaves the TTL as the cleanup path, and the audit still records the attempt.
+  - `POST /inventory/rooms/:id/assignment-leases/transfer` acquires the destination lease first and releases the origin only when the actor owns it. The order guarantees a failed transfer keeps the current claim. A destination held by another session returns `409 room_lease_held` unchanged.
+  - Room move itself remains `POST /reservations/:id/room-assignment`: it revalidates room type, overlap and blocks in PostgreSQL inside a transaction and writes `reservationHistory` plus audit. Inventory does not duplicate those rules, and the transfer endpoint is named for what it does (lease transfer), not for a move it does not perform.
+- Consequences:
+  - Any user with `front_office.manage` can unblock a room; the audit names the actor, the previous owner and the reason. Narrowing this to a supervisor role is a pilot decision.
+  - The forced release cannot distinguish "stale lease" from "active selection", so the UI must ask for a reason before calling it.
+  - A transfer that fails after acquiring the destination keeps the destination lease: the operator can retry the transfer or release it explicitly. Nothing in PostgreSQL changed, so no data is inconsistent.
+- Validation required:
+  - which role may force-release a lease (reception, supervisor, admin) and whether a reason is mandatory;
+  - whether room move should transfer the lease automatically from Front Office instead of requiring two calls.
+
+### ADR-053 — Room rack updates use an in-process SSE stream with polling as the fallback
+
+- Status: accepted and implemented for Fase 3 Sprint 3; multi-instance broker pending.
+- Date: 2026-11-16.
+- Context: the rack refreshed every 15 s, so two sessions could disagree for up to 15 s about housekeeping, blocks or who is selecting a room. Realtime was desirable but PostgreSQL must remain the only authority, and the current deployment is a single API instance.
+- Options:
+  1. keep polling only (rejected: visible staleness on a shared front desk);
+  2. add a shared broker (Redis pub/sub or Durable Objects) now (rejected: new infrastructure before a pilot needs it);
+  3. in-process SSE fan-out per organization/property, with the existing 15 s poll as fallback (chosen).
+- Decision:
+  - `RoomEventsService` keeps a set of RxJS `Subject`s per `organizationId:propertyId` and a monotonic per-instance counter, so every open tab of a tenant receives each event: a new subscriber is added to the set instead of replacing the previous one. The entry is removed when its last subscriber unsubscribes. Publishing happens after the PostgreSQL transaction commits, for room updates, housekeeping transitions, block create/release and lease acquire/release/force/transfer.
+  - `GET /inventory/rooms/updates` is an SSE route declared before `rooms/:id` so the literal path is not parsed as a UUID. It requires `inventory.read` and a resolved property context from the authenticated tenant, never from a query parameter.
+  - Frames carry notification only: `{ type, roomId, at }`. Clients refetch the rack, debounced at 250 ms, so a missed or duplicated event costs one request and never loses state.
+  - `ready` carries the instance cursor. Past events are not replayed; a reconnecting client refetches instead of replaying a partial history.
+  - The web client consumes the stream with `fetch` and a frame parser because `EventSource` cannot send the identity and tenant headers the API requires. On any failure it polls every 15 s and retries the stream with exponential backoff capped at 30 s.
+- Consequences:
+  - With more than one API instance, a subscriber only receives events published by its own instance; the poll still converges within 15 s. A shared broker is required before horizontal scaling.
+  - Lease TTL expiry produces no event, so the rack converges through polling; this is why the fallback interval stays.
+  - Proxies that buffer responses break SSE; the client detects the stalled stream and falls back without user action.
+- Validation required:
+  - whether the pilot runs a single API instance or requires a broker on day one;
+  - whether the rack should keep the 15 s poll while the stream is healthy as a cheap safety net.

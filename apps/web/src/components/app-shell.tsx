@@ -407,8 +407,7 @@ function Topbar({
   return (
     <Flex
       as="header"
-      bg="rgba(255, 255, 255, 0.92)"
-      backdropFilter="blur(10px)"
+      bg="canvas"
       borderBottomWidth="1px"
       borderColor="line"
       px={{ base: 4, md: 6, lg: 8 }}
@@ -427,13 +426,16 @@ function Topbar({
           onClick={onOpenNavigation}
           variant="outline"
           size="sm"
+          color="textSecondary"
+          borderColor="line"
+          _hover={{ bg: 'canvasAlt', color: 'textPrimary' }}
           display={{ base: 'inline-flex', lg: 'none' }}
         />
         <Box minW={0}>
           <Text fontSize="xs" color="textSecondary" noOfLines={1}>
             {current?.section ?? 'NOVA PMS'}
           </Text>
-          <Text fontSize="sm" fontWeight="semibold" noOfLines={1}>
+          <Text fontSize="sm" fontWeight="semibold" noOfLines={1} color="textPrimary">
             {current?.label ?? 'Panel'}
           </Text>
         </Box>
@@ -450,7 +452,9 @@ function Topbar({
             size="sm"
             px={2}
             borderRadius="full"
+            color="textPrimary"
             rightIcon={<ChevronDownIcon boxSize={3.5} color="textSecondary" />}
+            _hover={{ bg: 'canvasAlt' }}
           >
             <HStack spacing={2}>
               <Avatar
@@ -461,7 +465,7 @@ function Topbar({
                 fontWeight="bold"
               />
               <Box display={{ base: 'none', md: 'block' }} textAlign="left">
-                <Text fontSize="sm" fontWeight="semibold" lineHeight="1.2">
+                <Text fontSize="sm" fontWeight="semibold" lineHeight="1.2" color="textPrimary">
                   {actor?.name}
                 </Text>
                 <Text fontSize="10px" color="textSecondary" lineHeight="1.2">
@@ -474,7 +478,7 @@ function Topbar({
             <MenuItem as={NextLink} href="/account" icon={<AccountIcon boxSize={4} />}>
               Mi cuenta
             </MenuItem>
-            <MenuItem icon={<LogoutIcon boxSize={4} />} onClick={onLogout} isDisabled={loggingOut}>
+            <MenuItem icon={<LogoutIcon boxSize={4} />} onClick={onLogout} isDisabled={loggingOut} color="textPrimary" _hover={{ bg: 'canvasAlt' }}>
               Cerrar sesión
             </MenuItem>
           </MenuList>

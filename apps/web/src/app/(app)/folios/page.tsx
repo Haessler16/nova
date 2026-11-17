@@ -34,6 +34,7 @@ import { useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { DownloadIcon } from '@/components/icons';
 import { Field, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
+import { RowActionLink } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api, downloadCsv, errorMessage } from '@/lib/api';
 import {
@@ -245,15 +246,12 @@ function FoliosContent() {
                       </Td>
                       <Td>{formatDateTime(folio.createdAt)}</Td>
                       <Td isNumeric>
-                        <Link
-                          as={NextLink}
+                        <RowActionLink
                           href={`/folios/${folio.id}`}
-                          color="brand.700"
-                          fontWeight="semibold"
-                          fontSize="sm"
+                          label={`Abrir folio ${folio.number}`}
                         >
                           Abrir
-                        </Link>
+                        </RowActionLink>
                       </Td>
                     </Tr>
                   );

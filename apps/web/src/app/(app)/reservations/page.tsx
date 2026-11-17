@@ -63,6 +63,10 @@ import {
   nightsBetween,
   todayISO,
 } from '@/lib/format';
+import {
+  RowActionButton,
+  RowActionLink,
+} from '@/components/ui';
 import type {
   Availability,
   AvailabilityItem,
@@ -906,8 +910,11 @@ function ReservationsContent() {
               onChange={(event) => setFilters({ ...filters, status: event.target.value })}
             >
               <option value="">Todos los estados</option>
-              <option value="CONFIRMED">Confirmadas</option>
-              <option value="CANCELLED">Canceladas</option>
+              {Object.entries(RESERVATION_STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
             </Select>
             <HStack spacing={1}>
               <Text fontSize="xs" color="gray.500">
@@ -1021,28 +1028,31 @@ function ReservationsContent() {
                       />
                     </Td>
                     <Td>
-                      <HStack spacing={1} justify="flex-end">
-                        <Button size="xs" variant="ghost" onClick={() => openDetail(reservation)}>
+                      <HStack spacing={1} justify="flex-end" wrap="nowrap">
+                        <RowActionLink
+                          href={`/reservations?reservation=${reservation.id}`}
+                          label={`Abrir reserva ${reservation.code}`}
+                        >
                           Detalle
-                        </Button>
+                        </RowActionLink>
                         {reservation.status === 'CONFIRMED' && (
                           <>
-                            <Button size="xs" variant="ghost" onClick={() => openEdit(reservation)}>
+                            <RowActionButton
+                              onClick={() => openEdit(reservation)}
+                            >
                               Editar
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              colorScheme="danger"
+                            </RowActionButton>
+                            <RowActionButton
                               onClick={() => {
                                 setSelectedId(reservation.id);
                                 setCancelReason('');
                                 setCancelErrors({});
                                 cancelModal.onOpen();
                               }}
+                              colorScheme="danger"
                             >
                               Cancelar
-                            </Button>
+                            </RowActionButton>
                           </>
                         )}
                       </HStack>

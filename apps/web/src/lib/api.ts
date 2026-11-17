@@ -490,3 +490,81 @@ export function errorMessage(error: unknown): string {
 export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
+
+export interface ApiStreamEvent {
+  type: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Reads a server-sent event stream. `EventSource` cannot send the dev identity
+ * or tenant headers, so the stream is driven with fetch and parsed frame by
+ * frame. Errors are thrown so the caller can fall back to polling.
+ */
+export async function* apiEventStream(
+  path: string,
+  tenant: TenantSelection,
+  signal: AbortSignal,
+): AsyncGenerator<ApiStreamEvent> {
+  const headers: Record<string, string> = { Accept: 'text/event-stream' };
+  if (tenant.organizationId !== undefined && tenant.organizationId !== null) {
+    headers['X-Organization-Id'] = tenant.organizationId;
+  }
+  if (tenant.propertyId !== undefined && tenant.propertyId !== null) {
+    headers['X-Property-Id'] = tenant.propertyId;
+  }
+  const currentDevUser = readDevUser();
+  if (currentDevUser !== null) {
+    headers['X-Dev-User-Id'] = currentDevUser;
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+    signal,
+  });
+
+  if (response.status === 401) {
+    notifyUnauthorized();
+  }
+  if (!response.ok || response.body === null) {
+    throw await parseError(response);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (!signal.aborted) {
+      const { value, done } = await reader.read();
+      if (done) {
+        return;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf('\n\n');
+        const data = frame
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('\n');
+        if (data === '') {
+          continue;
+        }
+        try {
+          yield JSON.parse(data) as ApiStreamEvent;
+        } catch {
+          // A malformed frame is skipped: the next event still arrives.
+        }
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}

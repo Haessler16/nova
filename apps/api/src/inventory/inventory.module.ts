@@ -7,6 +7,7 @@ import { InventoryController } from './inventory.controller';
 import { RoomAssignmentLeasesService } from './room-assignment-leases.service';
 import { RoomBlockExpiryScheduler } from './room-block-expiry.scheduler';
 import { RoomBlocksService } from './room-blocks.service';
+import { RoomEventsService } from './room-events.service';
 import { RoomStateService } from './room-state.service';
 import { RoomTypesService } from './room-types.service';
 import { RoomsService } from './rooms.service';
@@ -15,6 +16,7 @@ import { RoomsService } from './rooms.service';
   imports: [AuthModule, TenancyModule, AuditModule, ObservabilityModule],
   controllers: [InventoryController],
   providers: [
+    RoomEventsService,
     RoomStateService,
     RoomTypesService,
     RoomsService,
@@ -22,6 +24,11 @@ import { RoomsService } from './rooms.service';
     RoomAssignmentLeasesService,
     RoomBlockExpiryScheduler,
   ],
-  exports: [RoomStateService, RoomAssignmentLeasesService, RoomBlockExpiryScheduler],
+  exports: [
+    RoomEventsService,
+    RoomStateService,
+    RoomAssignmentLeasesService,
+    RoomBlockExpiryScheduler,
+  ],
 })
 export class InventoryModule {}

@@ -36,6 +36,40 @@ const ACCENT_STYLES: Record<Accent, { bg: string; color: string; bar: string }> 
   danger: { bg: 'danger.50', color: 'danger.600', bar: 'danger.500' },
 };
 
+function ArrowRightIcon(props?: Record<string, unknown>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function CaretDownIcon(props?: Record<string, unknown>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 export function PageHeader({
   title,
   description,
@@ -78,11 +112,74 @@ export function PageHeader({
         )}
       </Box>
       {actions !== undefined && (
-        <HStack spacing={2} wrap="wrap">
+        <HStack spacing={2} wrap="wrap" align="center">
           {actions}
         </HStack>
       )}
     </Flex>
+  );
+}
+
+export function RowActionLink({
+  href,
+  children,
+  label,
+}: {
+  href: string;
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <Link
+      as={NextLink}
+      href={href}
+      display="inline-flex"
+      alignItems="center"
+      gap={2}
+      px={2.5}
+      py={1.5}
+      borderRadius="md"
+      fontSize="sm"
+      fontWeight="semibold"
+      textDecoration="none"
+      color="textPrimary"
+      bg="gray.100"
+      _hover={{ bg: 'gray.200', textDecoration: 'none' }}
+      _focusVisible={{ boxShadow: 'focus' }}
+      aria-label={label}
+    >
+      {children}
+      <ArrowRightIcon boxSize={4} />
+    </Link>
+  );
+}
+
+export function RowActionButton({
+  children,
+  onClick,
+  colorScheme = 'gray',
+  isLoading = false,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  colorScheme?: 'gray' | 'brand' | 'sky' | 'mint' | 'warning' | 'danger';
+  isLoading?: boolean;
+}) {
+  const label =
+    typeof children === 'string' ? children : undefined;
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      colorScheme={colorScheme}
+      onClick={onClick}
+      isLoading={isLoading}
+      fontWeight="semibold"
+      aria-label={label}
+    >
+      {children}
+      <CaretDownIcon boxSize={3.5} ml={1} />
+    </Button>
   );
 }
 
@@ -115,7 +212,8 @@ export function Field({
   helper?: string;
   error?: string | null;
 }) {
-  const hasError = error !== undefined && error !== null && error !== '';
+  const hasError =
+    error !== undefined && error !== null && error !== '';
   return (
     <FormControl isRequired={isRequired} isInvalid={hasError}>
       <FormLabel fontSize="sm" fontWeight="semibold" mb={1}>

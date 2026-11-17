@@ -401,6 +401,118 @@ describe('Property settings and inventory (E2E)', () => {
     });
   });
 
+  describe('forced lease release and lease transfer', () => {
+    let destinationRoomId: string;
+
+    beforeAll(async () => {
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/inventory/rooms')
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({
+          number: `T${suffix.slice(-8)}`,
+          roomTypeId,
+          floor: '11',
+          building: 'E2E',
+        })
+        .expect(201);
+      destinationRoomId = created.body.id;
+    });
+
+    it('releases another session lease and records the reason in the audit trail', async () => {
+      const acquired = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases`)
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .send({})
+        .expect(201);
+
+      const forced = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/lease-release`)
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({ leaseId: acquired.body.leaseId, reason: 'Reception session closed' })
+        .expect(200);
+
+      expect(forced.body.released).toBe(true);
+      expect(forced.body.previousOwnerDisplayName).toEqual(expect.any(String));
+
+      const audit = await request(app.getHttpServer())
+        .get('/api/v1/audit-events')
+        .query({ action: 'room_lease_released_forced', entityId: roomId })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+
+      expect(audit.body.items).toHaveLength(1);
+      expect(audit.body.items[0].actorUserId).toBe(ADMIN);
+      expect(audit.body.items[0].reason).toBe('Reception session closed');
+      expect(audit.body.items[0].metadata.previousOwnerUserId).toBe(RECEPTION);
+
+      const list = await request(app.getHttpServer())
+        .get('/api/v1/inventory/rooms')
+        .query({ search: `E${suffix.slice(-8)}`, limit: 10 })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(list.body.items.find((item: { id: string }) => item.id === roomId).lease).toBeNull();
+
+      const repeated = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/lease-release`)
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({ leaseId: acquired.body.leaseId })
+        .expect(200);
+      expect(repeated.body.released).toBe(false);
+    });
+
+    it('denies a forced release without front office management', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/lease-release`)
+        .set(headers(HOUSEKEEPER, ORG_A, PROPERTY_CENTRO))
+        .send({ leaseId: '00000000-0000-4000-8000-00000000beef' })
+        .expect(403);
+
+      expect(response.body.code).toBe('permission_denied');
+    });
+
+    it('transfers the selection to another room and keeps it on a conflict', async () => {
+      const acquired = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases`)
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .send({})
+        .expect(201);
+
+      const transferred = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases/transfer`)
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .send({ toRoomId: destinationRoomId, reason: 'Guest prefers a quiet room' })
+        .expect(200);
+
+      expect(transferred.body.from.leaseId).toBe(acquired.body.leaseId);
+      expect(transferred.body.to.roomId).toBe(destinationRoomId);
+      expect(transferred.body.to.ownerUserId).toBe(RECEPTION);
+
+      const conflict = await request(app.getHttpServer())
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases/transfer`)
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .send({ toRoomId: destinationRoomId })
+        .expect(409);
+      expect(conflict.body.code).toBe('room_lease_held');
+
+      const list = await request(app.getHttpServer())
+        .get('/api/v1/inventory/rooms')
+        .query({ search: `T${suffix.slice(-8)}`, limit: 10 })
+        .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
+        .expect(200);
+      expect(
+        list.body.items.find((item: { id: string }) => item.id === destinationRoomId).lease
+          .ownerUserId,
+      ).toBe(RECEPTION);
+
+      await request(app.getHttpServer())
+        .delete(
+          `/api/v1/inventory/rooms/${destinationRoomId}/assignment-leases/${transferred.body.to.leaseId}`,
+        )
+        .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
+        .expect(204);
+    });
+  });
+
   describe('out-of-order and out-of-service blocks', () => {
     it('creates an out-of-order block, prevents overlap and releases it', async () => {
       const startsAt = new Date(Date.now() - 60_000).toISOString();

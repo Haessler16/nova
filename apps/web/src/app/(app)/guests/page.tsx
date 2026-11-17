@@ -40,6 +40,9 @@ import {
   formatDateTime,
   todayISO,
 } from '@/lib/format';
+import {
+  RowActionButton,
+} from '@/components/ui';
 import type { Guest, GuestDocumentType } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 import { hasErrors, validateGuest, type FieldErrors } from '@/lib/validation';
@@ -355,24 +358,27 @@ function GuestsContent() {
                       </Text>
                     </Td>
                     <Td>
-                      <HStack spacing={1} justify="flex-end">
+                      <HStack spacing={1} justify="flex-end" wrap="nowrap">
                         <GuestDocuments guestId={guest.id} guestName={guest.fullName} />
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          onClick={() => {
-                            setNotesTarget(guest);
-                            notesModal.onOpen();
-                          }}
-                        >
-                          Notas
-                        </Button>
-                        <Button size="xs" variant="ghost" onClick={() => openEdit(guest)}>
-                          Editar
-                        </Button>
-                        <Button size="xs" variant="ghost" onClick={() => void toggleStatus(guest)}>
-                          {guest.status === 'ACTIVE' ? 'Deshabilitar' : 'Reactivar'}
-                        </Button>
+                                                  <RowActionButton
+                            onClick={() => {
+                              setNotesTarget(guest);
+                              notesModal.onOpen();
+                            }}
+                          >
+                            Notas
+                          </RowActionButton>
+                          <RowActionButton
+                            onClick={() => openEdit(guest)}
+                          >
+                            Editar
+                          </RowActionButton>
+                          <RowActionButton
+                            onClick={() => void toggleStatus(guest)}
+                            colorScheme={guest.status === 'ACTIVE' ? 'warning' : 'sky'}
+                          >
+                            {guest.status === 'ACTIVE' ? 'Deshabilitar' : 'Reactivar'}
+                          </RowActionButton>
                       </HStack>
                     </Td>
                   </Tr>

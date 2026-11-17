@@ -181,6 +181,9 @@ Filtros: `action`, `entityType`, `entityId`, `actorUserId`, `fromDate`, `toDate`
 | POST   | `/api/v1/inventory/rooms/:id/assignment-leases`        | auth + tenant | `front_office.manage` | 201    |
 | POST   | `/api/v1/inventory/rooms/:id/assignment-leases/:leaseId/renew` | auth + tenant | `front_office.manage` | 200 |
 | DELETE | `/api/v1/inventory/rooms/:id/assignment-leases/:leaseId` | auth + tenant | `front_office.manage` | 204   |
+| POST   | `/api/v1/inventory/rooms/:id/assignment-leases/transfer` | auth + tenant | `front_office.manage` | 200   |
+| POST   | `/api/v1/inventory/rooms/:id/lease-release`            | auth + tenant | `front_office.manage` | 200    |
+| GET    | `/api/v1/inventory/rooms/updates`                      | auth + tenant | `inventory.read`      | 200 (SSE) |
 
 Notas:
 
@@ -193,6 +196,9 @@ Notas:
 - Los cambios de estado de habitación (operativo y housekeeping) escriben `RoomStatusHistory` (append-only) y auditoría.
 - Los bloqueos activos de una misma habitación no pueden solaparse: `409 room_block_overlap`; la garantía final es una exclusion constraint PostgreSQL.
 - `POST /rooms/:id/blocks/:blockId/release` responde `200` y exige que el bloque esté `ACTIVE`.
+- `POST /rooms/:id/lease-release` libera el lease de otra sesión sin exigir propiedad sobre él: body `{ leaseId, reason? }` y respuesta `{ roomId, released, previousOwnerDisplayName }`. Siempre escribe `AuditEvent` con acción `room_lease_released_forced`, el `leaseId` solicitado, el dueño anterior y la razón. Si Redis falla, el TTL sigue limpiando el lease y la auditoría se registra igual; si no había lease, responde `200` con `released: false`.
+- `POST /rooms/:id/assignment-leases/transfer` mueve la selección de la sesión actual a `toRoomId`: primero adquiere el destino (falla con `409 room_lease_held` si otra sesión lo mantiene) y solo después libera el origen, únicamente si pertenece al actor. Responde `{ from, to }` y audita `room_selection_transferred` cuando hubo origen propio. No mueve la reserva ni la estancia: eso sigue siendo `POST /reservations/:id/room-assignment`, que revalida en PostgreSQL.
+- `GET /inventory/rooms/updates` es un stream SSE (`text/event-stream`) por organización y propiedad. Emite `{ type: 'ready', cursor }` al conectar y luego `room.updated`, `room.housekeeping`, `room.block_changed` y `room.lease_changed`. Los eventos son notificaciones, no estado: el cliente refresca el rack y PostgreSQL sigue siendo la autoridad. No se reproducen eventos pasados; al reconectar el cliente compara `cursor` y refetchea. `EventSource` no puede enviar cabeceras de tenant, así que el cliente consume el stream con `fetch`.
 
 ### Guests
 

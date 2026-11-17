@@ -142,10 +142,12 @@ export function DateField({
           </HStack>
         </Button>
       </PopoverTrigger>
+
       <Portal>
         <PopoverContent
           width="312px"
           p={3}
+          bg="white"
           borderRadius="xl"
           aria-label="Calendario"
           borderColor="gray.200"
@@ -217,12 +219,12 @@ export function DateField({
                       : disabled
                         ? 'gray.400'
                         : cell.inMonth
-                          ? 'gray.800'
-                          : 'gray.400'
+                          ? 'gray.400'
+                          : 'gray.800'
                   }
-                  bg={selected ? 'brand.600' : isToday ? 'brand.50' : undefined}
+                  bg={selected ? 'brand.800' : isToday ? 'brand.700' : undefined}
                   borderWidth={isToday && !selected ? '1px' : undefined}
-                  borderColor="brand.300"
+                  borderColor="brand.400"
                   isDisabled={disabled}
                   aria-label={capitalize(DAY_FORMATTER.format(parseCalendar(cell.iso)))}
                   aria-pressed={selected}
@@ -230,9 +232,9 @@ export function DateField({
                     disabled
                       ? undefined
                       : {
-                          bg: selected ? 'brand.700' : 'brand.50',
-                          color: selected ? 'white' : 'brand.700',
-                        }
+                        bg: selected ? 'brand.700' : 'brand.50',
+                        color: selected ? 'white' : 'brand.700',
+                      }
                   }
                   _disabled={{ opacity: 0.6, cursor: 'not-allowed' }}
                   onClick={() => selectDate(cell.iso)}

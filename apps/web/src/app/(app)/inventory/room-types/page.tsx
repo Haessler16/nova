@@ -27,6 +27,7 @@ import {
 import { useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { Field, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
+import { RowActionButton } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
 import { RECORD_STATUS_COLORS, RECORD_STATUS_LABELS } from '@/lib/format';
@@ -226,9 +227,11 @@ function RoomTypesContent() {
                       />
                     </Td>
                     <Td>
-                      <Button size="xs" variant="ghost" onClick={() => openEdit(roomType)}>
-                        Editar
-                      </Button>
+                                              <RowActionButton
+                          onClick={() => openEdit(roomType)}
+                        >
+                          Editar
+                        </RowActionButton>
                     </Td>
                   </Tr>
                 ))}

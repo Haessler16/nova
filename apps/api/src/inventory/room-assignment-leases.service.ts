@@ -11,6 +11,8 @@ import { TenantContext } from '../common/http/request-context';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { requirePropertyContext } from './room-state.service';
+import { AuditService } from '../audit/audit.service';
+import { RoomEventsService } from './room-events.service';
 
 export interface RoomAssignmentLease {
   leaseId: string;
@@ -49,6 +51,8 @@ export class RoomAssignmentLeasesService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     config: ConfigService,
+    private readonly audit: AuditService,
+    private readonly events: RoomEventsService,
   ) {
     const configured = Number(config.get<string>('ROOM_ASSIGNMENT_LEASE_TTL_SECONDS', '120'));
     const seconds = Number.isFinite(configured) ? Math.min(Math.max(configured, 1), 600) : 120;
@@ -125,6 +129,7 @@ export class RoomAssignmentLeasesService {
       });
     }
 
+    this.publishLeaseChange(context, propertyId, roomId);
     return lease;
   }
 
@@ -177,6 +182,131 @@ export class RoomAssignmentLeasesService {
     } catch {
       // Releasing is best effort; the TTL still removes an orphan.
     }
+
+    this.publishLeaseChange(context, propertyId, roomId);
+  }
+
+  async releaseForced(
+    context: TenantContext,
+    roomId: string,
+    leaseId: string,
+    reason?: string,
+  ): Promise<{ roomId: string; released: boolean; previousOwnerDisplayName: string | null }> {
+    const propertyId = requirePropertyContext(context);
+    const key = this.key(context, propertyId, roomId);
+
+    // A forced release ignores ownership, so read first to keep the audit honest.
+    let previous: RoomAssignmentLease | null = null;
+    try {
+      previous = this.parse(await this.redis.get(key));
+      await this.redis.del(key);
+    } catch {
+      // If Redis fails the TTL still removes the orphan; the audit below records it.
+    }
+
+    try {
+      await this.audit.append({
+        organizationId: context.organizationId,
+        propertyId,
+        actorUserId: context.actor.id,
+        action: 'room_lease_released_forced',
+        entityType: 'room',
+        entityId: roomId,
+        correlationId: context.correlationId,
+        reason: reason?.trim() ?? 'No reason provided',
+        metadata: {
+          requestedLeaseId: leaseId,
+          releasedLeaseId: previous?.leaseId ?? null,
+          previousOwnerUserId: previous?.ownerUserId ?? null,
+          previousOwnerDisplayName: previous?.ownerDisplayName ?? null,
+          releasedBy: context.actor.id,
+          releasedByName: context.actor.name,
+        },
+      });
+    } catch {
+      // Audit failure is non-critical; the lease is still released.
+    }
+
+    this.publishLeaseChange(context, propertyId, roomId);
+
+    return {
+      roomId,
+      released: previous !== null,
+      previousOwnerDisplayName: previous?.ownerDisplayName ?? null,
+    };
+  }
+
+  /**
+   * Moves this session's selection from one room to another. This is the
+   * coordination half of a room move: the destination is claimed first (it
+   * fails with `room_lease_held` when another session holds it) and the origin
+   * is released only if this actor owns it. The authoritative reassignment
+   * stays in PostgreSQL through the reservations module.
+   */
+  async transfer(
+    context: TenantContext,
+    fromRoomId: string,
+    toRoomId: string,
+    reason?: string,
+  ): Promise<{ from: RoomAssignmentLease | null; to: RoomAssignmentLease }> {
+    const propertyId = requirePropertyContext(context);
+    if (fromRoomId === toRoomId) {
+      const lease = await this.acquire(context, toRoomId);
+      return { from: lease, to: lease };
+    }
+
+    // Destination first: never drop the current claim before the new one exists.
+    const to = await this.acquire(context, toRoomId);
+
+    const fromKey = this.key(context, propertyId, fromRoomId);
+    const previous = this.parse(await this.redis.get(fromKey));
+    if (previous !== null && previous.ownerUserId === context.actor.id) {
+      try {
+        await this.redis.eval(
+          MUTATE_SCRIPT,
+          [fromKey],
+          [previous.leaseId, 'release', String(this.ttlMs), ''],
+        );
+      } catch {
+        // Releasing is best effort; the origin TTL removes the orphan.
+      }
+
+      try {
+        await this.audit.append({
+          organizationId: context.organizationId,
+          propertyId,
+          actorUserId: context.actor.id,
+          action: 'room_selection_transferred',
+          entityType: 'room',
+          entityId: fromRoomId,
+          correlationId: context.correlationId,
+          reason: reason ?? 'Room selection transferred.',
+          metadata: {
+            fromRoomId,
+            toRoomId,
+            fromLeaseId: previous.leaseId,
+            toLeaseId: to.leaseId,
+          },
+        });
+      } catch {
+        // Audit failure does not roll back the ephemeral transfer.
+      }
+    }
+
+    this.publishLeaseChange(context, propertyId, fromRoomId);
+    this.publishLeaseChange(context, propertyId, toRoomId);
+    return { from: previous, to };
+  }
+
+  private publishLeaseChange(
+    context: TenantContext,
+    propertyId: string,
+    roomId: string,
+  ): void {
+    this.events.publish(context.organizationId, propertyId, {
+      roomId,
+      type: 'room.lease_changed',
+    });
   }
 
   private async renewLease(

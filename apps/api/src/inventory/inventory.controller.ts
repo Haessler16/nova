@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  Sse,
   UseGuards,
 } from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
@@ -33,8 +34,12 @@ import {
 } from './dto/room-block.dto';
 import { CreateRoomDto, ListRoomsQueryDto, UpdateRoomDto } from './dto/room.dto';
 import { CreateRoomAssignmentLeaseDto } from './dto/room-assignment-lease.dto';
+import { ReleaseRoomAssignmentLeaseDto } from './dto/room-assignment-lease.dto';
+import { TransferRoomAssignmentLeaseDto } from './dto/room-assignment-lease.dto';
 import { CreateRoomTypeDto, ListRoomTypesQueryDto, UpdateRoomTypeDto } from './dto/room-type.dto';
+import { requirePropertyContext } from './room-state.service';
 import { RoomAssignmentLeasesService } from './room-assignment-leases.service';
+import { RoomEventsService } from './room-events.service';
 import { RoomBlocksService } from './room-blocks.service';
 import { RoomTypesService } from './room-types.service';
 import { RoomsService } from './rooms.service';
@@ -51,6 +56,7 @@ export class InventoryController {
     private readonly rooms: RoomsService,
     private readonly blocks: RoomBlocksService,
     private readonly leases: RoomAssignmentLeasesService,
+    private readonly events: RoomEventsService,
   ) {}
 
   @Get('room-types')
@@ -93,6 +99,18 @@ export class InventoryController {
     return this.rooms.create(tenant, dto);
   }
 
+  /**
+   * Server-sent room rack updates. Declared before `rooms/:id` so the literal
+   * path is not consumed by the UUID parameter route. Events are notifications
+   * only: clients refetch the rack, which keeps PostgreSQL authoritative.
+   */
+  @Sse('rooms/updates')
+  @RequirePermissions(PERMISSIONS.INVENTORY_READ)
+  roomUpdates(@Tenant() tenant: TenantContext) {
+    const propertyId = requirePropertyContext(tenant);
+    return this.events.stream(tenant.organizationId, propertyId);
+  }
+
   @Get('rooms/:id')
   @RequirePermissions(PERMISSIONS.INVENTORY_READ)
   getRoom(@Tenant() tenant: TenantContext, @Param('id', new ParseUUIDPipe()) id: string) {
@@ -113,7 +131,7 @@ export class InventoryController {
   @RequirePermissions(PERMISSIONS.HOUSEKEEPING_MANAGE)
   transitionHousekeeping(
     @Tenant() tenant: TenantContext,
-    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('id', new ParseUUIDPipe) id: string,
     @Body() dto: HousekeepingTransitionDto,
   ) {
     return this.rooms.transitionHousekeeping(tenant, id, dto);
@@ -149,6 +167,28 @@ export class InventoryController {
     @Param('leaseId', new ParseUUIDPipe()) leaseId: string,
   ) {
     return this.leases.release(tenant, id, leaseId);
+  }
+
+  @Post('rooms/:id/lease-release')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FRONT_OFFICE_MANAGE)
+  releaseAssignmentLeaseForced(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ReleaseRoomAssignmentLeaseDto,
+  ) {
+    return this.leases.releaseForced(tenant, id, dto.leaseId, dto.reason);
+  }
+
+  @Post('rooms/:id/assignment-leases/transfer')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FRONT_OFFICE_MANAGE)
+  transferAssignmentLease(
+    @Tenant() tenant: TenantContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: TransferRoomAssignmentLeaseDto,
+  ) {
+    return this.leases.transfer(tenant, id, dto.toRoomId, dto.reason);
   }
 
   @Get('rooms/:id/blocks')

@@ -208,13 +208,16 @@ const theme = extendTheme({
     warning,
     danger,
     gray,
-    canvas: '#F3F7FB',
+    // Light theme keeps the approved NOVA look but moves the page canvas slightly off
+    // pure white, and uses a clearer secondary text and divider line so labels and
+    // cards read with better contrast without heavier borders or stronger shadows.
+    canvas: '#F4F7FB',
     surface: '#FFFFFF',
     sidebar: '#102A43',
     sidebarHover: '#1B3B5A',
     textPrimary: '#172B4D',
-    textSecondary: '#62748A',
-    line: '#E3EAF2',
+    textSecondary: '#54657A',
+    line: '#D8E1EC',
     skySoft: '#E8F5FD',
     mintSoft: '#E8F8F2',
     limeSoft: '#F6FDEB',
