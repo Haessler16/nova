@@ -14,17 +14,19 @@ const inter = Inter({
 // Metadata follows the same cookie as the UI: no copy is hardcoded in a single
 // language here either.
 export async function generateMetadata(): Promise<Metadata> {
-  const locale = resolveLocale(cookies().get(LOCALE_COOKIE)?.value);
+  const cookieStore = await cookies();
+  const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
   return {
     title: translate(locale, 'app.metadata.title'),
     description: translate(locale, 'app.metadata.description'),
   };
 }
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
   // Resolved on the server so `lang`, the provider and the first client render
   // agree; the cookie is only a preference, never authorization.
-  const locale = resolveLocale(cookies().get(LOCALE_COOKIE)?.value);
+  const cookieStore = await cookies();
+  const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
 
   return (
     <html lang={locale} className={inter.variable}>

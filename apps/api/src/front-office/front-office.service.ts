@@ -24,19 +24,34 @@ import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { addCalendarDays, propertyDayStart } from '../common/time/property-day';
 import { requirePropertyContext, RoomStateService } from '../inventory/room-state.service';
-import {
-  RoomAssignmentLease,
-  RoomAssignmentLeasesService,
-} from '../inventory/room-assignment-leases.service';
+import { RoomAssignmentLeasesService } from '../inventory/room-assignment-leases.service';
 import { computeOperationalDay } from '../operational-day/operational-day';
 import { PrismaService } from '../prisma/prisma.service';
-import { lockRow } from './infrastructure/row-locks';
+import {
+  lockReservationRow,
+  lockRoomRow,
+  lockStayRow,
+  type RoomLockRow,
+} from './infrastructure/row-locks';
+import { CheckInUseCase } from './application/check-in.use-case';
+import { PropertyLoader } from './infrastructure/property-loader';
+import {
+  mapReservationSummary,
+  mapStay,
+  RESERVATION_SUMMARY_SELECT,
+  STAY_SELECT,
+  type CheckInReadiness,
+  type ReservationSummaryResponse,
+  type ReservationSummaryRow,
+  type StayResponse,
+  type StayRow,
+  type Transaction,
+} from './application/front-office.contracts';
 import {
   formatCalendarDate,
   nightsBetween,
   parseCalendarDate,
 } from '../reservations/reservation-dates';
-import { evaluatePartyReadiness } from '../reservations/reservation-party';
 import {
   CheckOutDto,
   CreateIncidentDto,
@@ -56,67 +71,6 @@ import {
   staticRoomMoveBlockers,
   type RoomMoveBlocker,
 } from './room-move';
-
-type Transaction = Prisma.TransactionClient;
-
-/**
- * Housekeeping states that block a normal check-in. `CLEAN` is accepted even
- * though inspection has not been recorded: whether pending inspection blocks
- * check-in is a property policy decision, so the default is reversible and
- * documented as an open question. DIRTY/CLEANING always block.
- */
-const CHECK_IN_BLOCKED_HOUSEKEEPING_STATES: HousekeepingState[] = [
-  HousekeepingState.DIRTY,
-  HousekeepingState.CLEANING,
-];
-
-const RESERVATION_SUMMARY_SELECT = {
-  id: true,
-  code: true,
-  status: true,
-  checkInDate: true,
-  checkOutDate: true,
-  adults: true,
-  children: true,
-  notes: true,
-  roomId: true,
-  guestId: true,
-  roomTypeId: true,
-  guest: { select: { id: true, fullName: true, email: true, phone: true } },
-  roomType: { select: { id: true, name: true, code: true } },
-  room: { select: { id: true, number: true, floor: true, building: true } },
-} as const;
-
-const STAY_SELECT = {
-  id: true,
-  organizationId: true,
-  propertyId: true,
-  reservationId: true,
-  guestId: true,
-  roomId: true,
-  status: true,
-  checkedInAt: true,
-  checkedOutAt: true,
-  checkOutNotes: true,
-  moveCount: true,
-  createdAt: true,
-  updatedAt: true,
-  guest: { select: { id: true, fullName: true, email: true, phone: true } },
-  room: { select: { id: true, number: true, floor: true, building: true } },
-  reservation: {
-    select: {
-      id: true,
-      code: true,
-      status: true,
-      checkInDate: true,
-      checkOutDate: true,
-      adults: true,
-      children: true,
-      notes: true,
-      roomType: { select: { id: true, name: true, code: true } },
-    },
-  },
-} as const;
 
 const INCIDENT_SELECT = {
   id: true,
@@ -141,50 +95,15 @@ const INCIDENT_SELECT = {
   resolvedBy: { select: { id: true, name: true } },
 } as const;
 
-type ReservationSummaryRow = Prisma.ReservationGetPayload<{
-  select: typeof RESERVATION_SUMMARY_SELECT;
-}>;
-type StayRow = Prisma.StayGetPayload<{ select: typeof STAY_SELECT }>;
 type IncidentRow = Prisma.IncidentGetPayload<{ select: typeof INCIDENT_SELECT }>;
 
-export interface ReservationSummaryResponse {
-  id: string;
-  code: string;
-  status: ReservationStatus;
-  checkInDate: string;
-  checkOutDate: string;
-  nights: number;
-  adults: number;
-  children: number;
-  notes: string | null;
-  roomId: string | null;
-  guest: { id: string; fullName: string; email: string | null; phone: string | null };
-  roomType: { id: string; name: string; code: string };
-  room: { id: string; number: string; floor: string | null; building: string | null } | null;
-}
-
-export interface StayResponse {
-  id: string;
-  status: StayStatus;
-  checkedInAt: Date;
-  checkedOutAt: Date | null;
-  checkOutNotes: string | null;
-  moveCount: number;
-  guest: { id: string; fullName: string; email: string | null; phone: string | null };
-  room: { id: string; number: string; floor: string | null; building: string | null };
-  reservation: {
-    id: string;
-    code: string;
-    status: ReservationStatus;
-    checkInDate: string;
-    checkOutDate: string;
-    nights: number;
-    adults: number;
-    children: number;
-    notes: string | null;
-    roomType: { id: string; name: string; code: string };
-  };
-}
+export type {
+  CheckInReadiness,
+  CheckInRoomOption,
+  CheckInWindow,
+  ReservationSummaryResponse,
+  StayResponse,
+} from './application/front-office.contracts';
 
 export interface RoomRackItem {
   id: string;
@@ -232,36 +151,6 @@ export interface FrontOfficeOverview {
   inHouse: StayResponse[];
   noShowCandidates: ReservationSummaryResponse[];
   roomRack: RoomRackItem[];
-}
-
-export interface CheckInRoomOption {
-  id: string;
-  number: string;
-  floor: string | null;
-  building: string | null;
-  housekeepingState: HousekeepingState;
-  operationalState: RoomOperationalState;
-  occupancy: 'VACANT' | 'OCCUPIED';
-  activeBlock: { id: string; type: string; endsAt: Date } | null;
-  lease: RoomAssignmentLease | null;
-  eligible: boolean;
-  reasons: string[];
-}
-
-export interface CheckInWindow {
-  localDate: string;
-  checkInDate: string;
-  checkOutDate: string;
-  allowed: boolean;
-  code: 'check_in_too_early' | 'check_in_window_elapsed' | null;
-}
-
-export interface CheckInReadiness {
-  reservation: ReservationSummaryResponse;
-  checkInWindow: CheckInWindow;
-  currentRoomId: string | null;
-  currentRoomEligible: boolean | null;
-  rooms: CheckInRoomOption[];
 }
 
 interface FolioCheckoutRow {
@@ -369,33 +258,6 @@ export interface RoomMoveCandidates {
   candidates: RoomMoveCandidate[];
 }
 
-/**
- * Single source of truth for the check-in window: the property local calendar
- * date must be within `[checkInDate, checkOutDate)`. The operational day only
- * drives lists and the room rack (ADR-027).
- */
-function buildCheckInWindow(
-  localDate: string,
-  checkInDate: Date,
-  checkOutDate: Date,
-): CheckInWindow {
-  const checkIn = formatCalendarDate(checkInDate);
-  const checkOut = formatCalendarDate(checkOutDate);
-  const code =
-    localDate < checkIn
-      ? 'check_in_too_early'
-      : localDate >= checkOut
-        ? 'check_in_window_elapsed'
-        : null;
-  return {
-    localDate,
-    checkInDate: checkIn,
-    checkOutDate: checkOut,
-    allowed: code === null,
-    code,
-  };
-}
-
 export interface IncidentResponse {
   id: string;
   type: IncidentType;
@@ -422,6 +284,8 @@ export class FrontOfficeService {
     private readonly roomState: RoomStateService,
     private readonly leases: RoomAssignmentLeasesService,
     private readonly clock: Clock,
+    private readonly properties: PropertyLoader,
+    private readonly checkInUseCase: CheckInUseCase,
   ) {}
 
   async overview(
@@ -429,7 +293,7 @@ export class FrontOfficeService {
     query: FrontOfficeOverviewQueryDto,
   ): Promise<FrontOfficeOverview> {
     const propertyId = requirePropertyContext(context);
-    const property = await this.loadProperty(context.organizationId, propertyId);
+    const property = await this.properties.load(context.organizationId, propertyId);
     const operationalDay = computeOperationalDay(
       this.clock.now(),
       property.timezone,
@@ -685,434 +549,15 @@ export class FrontOfficeService {
    * backend rules used by `checkIn` so the operator sees why a room is not
    * selectable, but the confirmation transaction remains the authority.
    */
-  async checkInReadiness(context: TenantContext, reservationId: string): Promise<CheckInReadiness> {
-    const propertyId = requirePropertyContext(context);
-    const property = await this.loadProperty(context.organizationId, propertyId);
-    const operationalDay = computeOperationalDay(
-      this.clock.now(),
-      property.timezone,
-      property.operationalDayStart,
-    );
-    await this.roomState.reconcileProperty({
-      organizationId: context.organizationId,
-      propertyId,
-      correlationId: context.correlationId,
-    });
-
-    const reservation = await this.prisma.reservation.findFirst({
-      where: {
-        id: reservationId,
-        organizationId: context.organizationId,
-        propertyId,
-      },
-      select: RESERVATION_SUMMARY_SELECT,
-    });
-    if (reservation === null) {
-      throw new NotFoundException({
-        code: 'reservation_not_found',
-        message: 'Reservation not found in the selected property.',
-      });
-    }
-
-    const rooms = await this.prisma.room.findMany({
-      where: {
-        organizationId: context.organizationId,
-        propertyId,
-        status: 'ACTIVE',
-        roomTypeId: reservation.roomTypeId,
-      },
-      orderBy: [{ number: 'asc' }, { id: 'asc' }],
-      select: {
-        id: true,
-        number: true,
-        floor: true,
-        building: true,
-        housekeepingState: true,
-        operationalState: true,
-      },
-    });
-
-    const checkInWindow = buildCheckInWindow(
-      operationalDay.localDate,
-      reservation.checkInDate,
-      reservation.checkOutDate,
-    );
-
-    const roomIds = rooms.map((room) => room.id);
-    const [stays, blocks, overlapping] = await Promise.all([
-      this.prisma.stay.findMany({
-        where: {
-          organizationId: context.organizationId,
-          propertyId,
-          roomId: { in: roomIds },
-          status: StayStatus.IN_HOUSE,
-        },
-        select: { roomId: true, reservationId: true },
-      }),
-      this.prisma.roomBlock.findMany({
-        where: {
-          organizationId: context.organizationId,
-          propertyId,
-          roomId: { in: roomIds },
-          status: 'ACTIVE',
-          startsAt: { lt: reservation.checkOutDate },
-          endsAt: { gt: reservation.checkInDate },
-        },
-        select: { id: true, roomId: true, type: true, endsAt: true },
-        orderBy: [{ endsAt: 'asc' }, { id: 'asc' }],
-      }),
-      this.prisma.reservation.findMany({
-        where: {
-          organizationId: context.organizationId,
-          propertyId,
-          roomId: { in: roomIds },
-          id: { not: reservation.id },
-          status: { in: [ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN] },
-          checkInDate: { lt: reservation.checkOutDate },
-          checkOutDate: { gt: reservation.checkInDate },
-        },
-        select: { id: true, roomId: true },
-      }),
-    ]);
-
-    const occupyingReservations = groupOccupyingReservations(stays);
-    const occupiedRooms = occupiedRoomIds(occupyingReservations);
-    const overlappingRooms = overlappingRoomIds(overlapping, occupyingReservations);
-    const blockByRoom = new Map<string, (typeof blocks)[number]>();
-    for (const block of blocks) {
-      if (!blockByRoom.has(block.roomId)) {
-        blockByRoom.set(block.roomId, block);
-      }
-    }
-
-    const leases = await this.leases.getMany(context, roomIds);
-
-    const options: CheckInRoomOption[] = rooms.map((room) => {
-      const reasons: string[] = [];
-      if (room.operationalState !== RoomOperationalState.AVAILABLE) {
-        reasons.push('ROOM_OUT_OF_SERVICE');
-      }
-      if (blockByRoom.has(room.id)) {
-        reasons.push('ROOM_BLOCKED');
-      }
-      if (occupiedRooms.has(room.id)) {
-        reasons.push('ROOM_OCCUPIED');
-      }
-      if (overlappingRooms.has(room.id)) {
-        reasons.push('ROOM_NOT_AVAILABLE');
-      }
-      if (CHECK_IN_BLOCKED_HOUSEKEEPING_STATES.includes(room.housekeepingState)) {
-        reasons.push('HOUSEKEEPING_NOT_READY');
-      }
-      const block = blockByRoom.get(room.id);
-      return {
-        id: room.id,
-        number: room.number,
-        floor: room.floor,
-        building: room.building,
-        housekeepingState: room.housekeepingState,
-        operationalState: room.operationalState,
-        occupancy: occupiedRooms.has(room.id) ? 'OCCUPIED' : 'VACANT',
-        activeBlock:
-          block === undefined ? null : { id: block.id, type: block.type, endsAt: block.endsAt },
-        lease: leases.get(room.id) ?? null,
-        eligible: reasons.length === 0,
-        reasons,
-      };
-    });
-
-    const current = options.find((room) => room.id === reservation.roomId);
-
-    return {
-      reservation: mapReservationSummary(reservation),
-      checkInWindow,
-      currentRoomId: reservation.roomId,
-      currentRoomEligible: reservation.roomId === null ? null : current?.eligible === true,
-      rooms: options,
-    };
+  checkInReadiness(context: TenantContext, reservationId: string): Promise<CheckInReadiness> {
+    return this.checkInUseCase.readiness(context, reservationId);
   }
 
-  async checkIn(
+  checkIn(
     context: TenantContext,
     reservationId: string,
   ): Promise<{ reservation: ReservationSummaryResponse; stay: StayResponse }> {
-    const propertyId = requirePropertyContext(context);
-    const property = await this.loadProperty(context.organizationId, propertyId);
-    const operationalDay = computeOperationalDay(
-      this.clock.now(),
-      property.timezone,
-      property.operationalDayStart,
-    );
-
-    try {
-      return await this.prisma.$transaction(async (transaction) => {
-        const reservation = await this.lockReservation(
-          transaction,
-          context.organizationId,
-          propertyId,
-          reservationId,
-        );
-
-        if (reservation.status === ReservationStatus.CHECKED_IN) {
-          const existing = await transaction.stay.findUnique({
-            where: { reservationId: reservation.id },
-            select: STAY_SELECT,
-          });
-          if (existing === null) {
-            throw new ConflictException({
-              code: 'stay_inconsistent',
-              message: 'Reservation is checked in but has no stay record.',
-            });
-          }
-          return { reservation: mapReservationSummary(reservation), stay: mapStay(existing) };
-        }
-
-        if (reservation.status !== ReservationStatus.CONFIRMED) {
-          throw new ConflictException({
-            code: 'reservation_not_check_in_eligible',
-            message: 'Only confirmed reservations can be checked in.',
-            details: { status: reservation.status },
-          });
-        }
-
-        // Check-in follows the local calendar date, not the operational day:
-        // an early-morning arrival is still arriving on that calendar date.
-        const checkInWindow = buildCheckInWindow(
-          operationalDay.localDate,
-          reservation.checkInDate,
-          reservation.checkOutDate,
-        );
-        if (checkInWindow.code === 'check_in_too_early') {
-          throw new ConflictException({
-            code: checkInWindow.code,
-            message: 'The reservation cannot be checked in before its arrival date.',
-            details: {
-              checkInDate: checkInWindow.checkInDate,
-              localDate: checkInWindow.localDate,
-            },
-          });
-        }
-        if (checkInWindow.code === 'check_in_window_elapsed') {
-          throw new ConflictException({
-            code: checkInWindow.code,
-            message: 'The reservation check-in window has elapsed.',
-            details: {
-              checkOutDate: checkInWindow.checkOutDate,
-              localDate: checkInWindow.localDate,
-            },
-          });
-        }
-
-        if (reservation.roomId === null) {
-          throw new ConflictException({
-            code: 'reservation_room_required',
-            message: 'Assign a room to the reservation before checking in.',
-          });
-        }
-
-        const party = await transaction.reservationGuest.findMany({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            reservationId: reservation.id,
-          },
-          select: {
-            id: true,
-            guestId: true,
-            role: true,
-            legalIncapacity: true,
-            minorSupervision: true,
-            authorizationReference: true,
-            responsibleReservationGuestId: true,
-            guest: {
-              select: {
-                documentType: true,
-                documentNumber: true,
-                fnrhProfile: { select: { birthDate: true } },
-              },
-            },
-          },
-        });
-        if (party.length > 0) {
-          const readiness = evaluatePartyReadiness({
-            members: party.map((row) => ({
-              id: row.id,
-              guestId: row.guestId,
-              role: row.role,
-              birthDate: row.guest.fnrhProfile?.birthDate ?? null,
-              documentType: row.guest.documentType,
-              documentNumber: row.guest.documentNumber,
-              legalIncapacity: row.legalIncapacity,
-              minorSupervision: row.minorSupervision,
-              authorizationReference: row.authorizationReference,
-              responsibleReservationGuestId: row.responsibleReservationGuestId,
-            })),
-            checkInDate: reservation.checkInDate,
-            primaryGuestId: reservation.guestId,
-            declaredAdults: reservation.adults,
-            declaredChildren: reservation.children,
-          });
-          if (readiness.checkInBlocked) {
-            throw new ConflictException({
-              code: 'reservation_party_check_in_blocked',
-              message: 'Resolve the reservation party legal block before checking in.',
-              details: { codes: readiness.legalCodes },
-            });
-          }
-        }
-
-        const room = await this.lockRoom(
-          transaction,
-          context.organizationId,
-          propertyId,
-          reservation.roomId,
-        );
-
-        if (room.status !== 'ACTIVE') {
-          throw new ConflictException({
-            code: 'room_inactive',
-            message: 'The assigned room is not active.',
-          });
-        }
-        if (room.operationalState !== 'AVAILABLE') {
-          throw new ConflictException({
-            code: 'room_out_of_service',
-            message: 'The assigned room is not operationally available.',
-            details: { operationalState: room.operationalState },
-          });
-        }
-        if (CHECK_IN_BLOCKED_HOUSEKEEPING_STATES.includes(room.housekeepingState)) {
-          throw new ConflictException({
-            code: 'room_housekeeping_not_ready',
-            message: 'The assigned room is not clean enough for check-in.',
-            details: { housekeepingState: room.housekeepingState },
-          });
-        }
-
-        const now = this.clock.now();
-        const blocking = await transaction.roomBlock.findFirst({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            roomId: room.id,
-            status: 'ACTIVE',
-            startsAt: { lte: now },
-            endsAt: { gt: now },
-          },
-          select: { id: true, type: true, endsAt: true },
-        });
-        if (blocking !== null) {
-          throw new ConflictException({
-            code: 'room_out_of_service',
-            message: 'The assigned room has an active operational block.',
-            details: {
-              blockId: blocking.id,
-              type: blocking.type,
-              endsAt: blocking.endsAt,
-            },
-          });
-        }
-
-        const occupied = await transaction.stay.findFirst({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            roomId: room.id,
-            status: StayStatus.IN_HOUSE,
-          },
-          select: { id: true, reservationId: true },
-        });
-        if (occupied !== null) {
-          throw new ConflictException({
-            code: 'room_occupied',
-            message: 'The room already has an in-house stay.',
-            details: { stayId: occupied.id, reservationId: occupied.reservationId },
-          });
-        }
-
-        const stay = await transaction.stay.create({
-          data: {
-            organizationId: context.organizationId,
-            propertyId,
-            reservationId: reservation.id,
-            guestId: reservation.guestId,
-            roomId: room.id,
-            status: StayStatus.IN_HOUSE,
-            checkedInAt: now,
-            checkedInByUserId: context.actor.id,
-          },
-          select: STAY_SELECT,
-        });
-
-        const updated = await transaction.reservation.update({
-          where: { id: reservation.id },
-          data: { status: ReservationStatus.CHECKED_IN },
-          select: RESERVATION_SUMMARY_SELECT,
-        });
-
-        await transaction.reservationHistory.create({
-          data: {
-            organizationId: context.organizationId,
-            propertyId,
-            reservationId: reservation.id,
-            action: 'reservation.checked_in',
-            fromStatus: ReservationStatus.CONFIRMED,
-            toStatus: ReservationStatus.CHECKED_IN,
-            fromRoomId: reservation.roomId,
-            toRoomId: room.id,
-            reason: 'Guest checked in at front office.',
-            actorUserId: context.actor.id,
-            correlationId: context.correlationId,
-          },
-          select: { id: true },
-        });
-
-        await this.audit.append(
-          {
-            organizationId: context.organizationId,
-            propertyId,
-            actorUserId: context.actor.id,
-            action: 'reservation.checked_in',
-            entityType: 'Reservation',
-            entityId: reservation.id,
-            correlationId: context.correlationId,
-            metadata: {
-              code: reservation.code,
-              stayId: stay.id,
-              roomId: room.id,
-              localDate: operationalDay.localDate,
-              operationalDate: operationalDay.operationalDate,
-            },
-          },
-          transaction,
-        );
-
-        return { reservation: mapReservationSummary(updated), stay: mapStay(stay) };
-      });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        const existing = await this.prisma.stay.findUnique({
-          where: { reservationId },
-          select: STAY_SELECT,
-        });
-        if (existing !== null) {
-          return {
-            reservation: mapReservationSummary(
-              await this.prisma.reservation.findFirstOrThrow({
-                where: { id: reservationId },
-                select: RESERVATION_SUMMARY_SELECT,
-              }),
-            ),
-            stay: mapStay(existing),
-          };
-        }
-        throw new ConflictException({
-          code: 'stay_conflict',
-          message: 'A stay already exists for this reservation.',
-        });
-      }
-      throw error;
-    }
+    return this.checkInUseCase.execute(context, reservationId);
   }
 
   async checkoutReadiness(context: TenantContext, stayId: string): Promise<CheckoutReadiness> {
@@ -1731,7 +1176,7 @@ export class FrontOfficeService {
     dto: NoShowDto,
   ): Promise<ReservationSummaryResponse> {
     const propertyId = requirePropertyContext(context);
-    const property = await this.loadProperty(context.organizationId, propertyId);
+    const property = await this.properties.load(context.organizationId, propertyId);
     const operationalDay = computeOperationalDay(
       this.clock.now(),
       property.timezone,
@@ -2048,39 +1493,13 @@ export class FrontOfficeService {
     }));
   }
 
-  private async loadProperty(organizationId: string, propertyId: string) {
-    const property = await this.prisma.property.findFirst({
-      where: { id: propertyId, organizationId, status: 'ACTIVE' },
-      select: {
-        id: true,
-        timezone: true,
-        operationalDayStart: true,
-      },
-    });
-    if (property === null) {
-      throw new NotFoundException({
-        code: 'property_not_found',
-        message: 'Property not found.',
-      });
-    }
-    return property;
-  }
-
   private async lockReservation(
     transaction: Transaction,
     organizationId: string,
     propertyId: string,
     reservationId: string,
   ): Promise<ReservationSummaryRow> {
-    await lockRow(transaction, 'Reservation', {
-      organizationId,
-      propertyId,
-      id: reservationId,
-    });
-    return transaction.reservation.findFirstOrThrow({
-      where: { id: reservationId },
-      select: RESERVATION_SUMMARY_SELECT,
-    });
+    return lockReservationRow(transaction, { organizationId, propertyId, id: reservationId });
   }
 
   private async lockStay(
@@ -2089,11 +1508,7 @@ export class FrontOfficeService {
     propertyId: string,
     stayId: string,
   ): Promise<StayRow> {
-    await lockRow(transaction, 'Stay', { organizationId, propertyId, id: stayId });
-    return transaction.stay.findFirstOrThrow({
-      where: { id: stayId },
-      select: STAY_SELECT,
-    });
+    return lockStayRow(transaction, { organizationId, propertyId, id: stayId });
   }
 
   private async lockRoom(
@@ -2101,33 +1516,8 @@ export class FrontOfficeService {
     organizationId: string,
     propertyId: string,
     roomId: string,
-  ): Promise<{
-    id: string;
-    status: string;
-    operationalState: string;
-    housekeepingState: HousekeepingState;
-    roomTypeId: string;
-    number: string;
-  }> {
-    await this.roomState.lockRoom(transaction, organizationId, propertyId, roomId);
-    const room = await transaction.room.findFirst({
-      where: { id: roomId, organizationId, propertyId },
-      select: {
-        id: true,
-        status: true,
-        operationalState: true,
-        housekeepingState: true,
-        roomTypeId: true,
-        number: true,
-      },
-    });
-    if (room === null) {
-      throw new NotFoundException({
-        code: 'room_not_found',
-        message: 'Room not found in the selected property.',
-      });
-    }
-    return room;
+  ): Promise<RoomLockRow> {
+    return lockRoomRow(this.roomState, transaction, { organizationId, propertyId, id: roomId });
   }
 
   private async assertRoomInProperty(
@@ -2147,49 +1537,6 @@ export class FrontOfficeService {
       });
     }
   }
-}
-
-function mapReservationSummary(row: ReservationSummaryRow): ReservationSummaryResponse {
-  return {
-    id: row.id,
-    code: row.code,
-    status: row.status,
-    checkInDate: formatCalendarDate(row.checkInDate),
-    checkOutDate: formatCalendarDate(row.checkOutDate),
-    nights: nightsBetween(row.checkInDate, row.checkOutDate),
-    adults: row.adults,
-    children: row.children,
-    notes: row.notes,
-    roomId: row.roomId,
-    guest: row.guest,
-    roomType: row.roomType,
-    room: row.room,
-  };
-}
-
-function mapStay(row: StayRow): StayResponse {
-  return {
-    id: row.id,
-    status: row.status,
-    checkedInAt: row.checkedInAt,
-    checkedOutAt: row.checkedOutAt,
-    checkOutNotes: row.checkOutNotes,
-    moveCount: row.moveCount,
-    guest: row.guest,
-    room: row.room,
-    reservation: {
-      id: row.reservation.id,
-      code: row.reservation.code,
-      status: row.reservation.status,
-      checkInDate: formatCalendarDate(row.reservation.checkInDate),
-      checkOutDate: formatCalendarDate(row.reservation.checkOutDate),
-      nights: nightsBetween(row.reservation.checkInDate, row.reservation.checkOutDate),
-      adults: row.reservation.adults,
-      children: row.reservation.children,
-      notes: row.reservation.notes,
-      roomType: row.reservation.roomType,
-    },
-  };
 }
 
 function buildCheckoutSummary(

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
 
 const baseUrl =
   process.env.DATABASE_URL ??
@@ -8,6 +9,8 @@ const baseUrl =
 const runId = `e2e_${Date.now().toString(36)}_${randomUUID().replace(/-/g, '').slice(0, 8)}`;
 const schema = runId;
 const databaseUrl = withSchema(baseUrl, schema);
+const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+const LOGIN_RATE_LIMIT_PATTERN = 'nova:auth:login:*';
 
 function withSchema(url: string, schemaName: string): string {
   const parsed = new URL(url);
@@ -41,6 +44,50 @@ async function dropSchema(): Promise<void> {
   }
 }
 
+/**
+ * The isolated schema protects PostgreSQL state, but the login rate limiter
+ * lives in Redis, which is shared between runs. Without this, counters left by
+ * a previous run (or by the main e2e pass) make the auth suite answer 429 and
+ * fail for reasons unrelated to the code under test. Only the auth limiter
+ * keys are touched; Redis failures are non-fatal because the limiter itself
+ * fails open when Redis is unavailable.
+ */
+async function clearLoginRateLimits(): Promise<void> {
+  const client = new Redis(redisUrl, {
+    lazyConnect: true,
+    connectTimeout: 1500,
+    maxRetriesPerRequest: 1,
+    retryStrategy: () => null,
+  });
+  try {
+    await client.connect();
+    let cursor = '0';
+    let removed = 0;
+    do {
+      const [nextCursor, keys] = await client.scan(
+        cursor,
+        'MATCH',
+        LOGIN_RATE_LIMIT_PATTERN,
+        'COUNT',
+        200,
+      );
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        removed += await client.del(...keys);
+      }
+    } while (cursor !== '0');
+    console.log(`[e2e] cleared ${removed} login rate-limit counter(s)`);
+  } catch (error) {
+    console.warn(
+      `[e2e] could not clear login rate-limit counters: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  } finally {
+    client.disconnect();
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0) {
@@ -63,6 +110,7 @@ async function main(): Promise<void> {
   try {
     run('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], env);
     run('pnpm', ['exec', 'prisma', 'db', 'seed'], env);
+    await clearLoginRateLimits();
     run(commandArgs[0], commandArgs.slice(1), env);
   } finally {
     try {

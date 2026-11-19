@@ -14,7 +14,8 @@ import { LOCALE_COOKIE, resolveLocale } from './locale';
  */
 export function segmentMetadata(titleKey: TranslationKey): () => Promise<Metadata> {
   return async () => {
-    const locale = resolveLocale(cookies().get(LOCALE_COOKIE)?.value);
+    const cookieStore = await cookies();
+    const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
     return { title: translate(locale, titleKey) };
   };
 }

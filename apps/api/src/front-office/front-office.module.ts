@@ -5,10 +5,12 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { FrontOfficeController } from './front-office.controller';
 import { FrontOfficeService } from './front-office.service';
+import { PropertyLoader } from './infrastructure/property-loader';
+import { CheckInUseCase } from './application/check-in.use-case';
 
 @Module({
   imports: [AuthModule, TenancyModule, AuditModule, InventoryModule],
   controllers: [FrontOfficeController],
-  providers: [FrontOfficeService],
+  providers: [FrontOfficeService, PropertyLoader, CheckInUseCase],
 })
 export class FrontOfficeModule {}

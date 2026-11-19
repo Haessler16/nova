@@ -1,5 +1,12 @@
 import { NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { HousekeepingState, Prisma } from '@prisma/client';
+import type { RoomStateService } from '../../inventory/room-state.service';
+import {
+  RESERVATION_SUMMARY_SELECT,
+  STAY_SELECT,
+  type ReservationSummaryRow,
+  type StayRow,
+} from '../application/front-office.contracts';
 
 export type Transaction = Prisma.TransactionClient;
 
@@ -41,4 +48,74 @@ export async function lockRow(
       message: `${label} not found in the selected property.`,
     });
   }
+}
+
+export interface RowScope {
+  organizationId: string;
+  propertyId: string;
+  id: string;
+}
+
+/** Locks a reservation row and reads it back with the shared projection. */
+export async function lockReservationRow(
+  tx: Transaction,
+  scope: RowScope,
+): Promise<ReservationSummaryRow> {
+  await lockRow(tx, 'Reservation', scope);
+  return tx.reservation.findFirstOrThrow({
+    where: { id: scope.id },
+    select: RESERVATION_SUMMARY_SELECT,
+  });
+}
+
+/** Locks a stay row and reads it back with the shared projection. */
+export async function lockStayRow(tx: Transaction, scope: RowScope): Promise<StayRow> {
+  await lockRow(tx, 'Stay', scope);
+  return tx.stay.findFirstOrThrow({
+    where: { id: scope.id },
+    select: STAY_SELECT,
+  });
+}
+
+export interface RoomLockRow {
+  id: string;
+  status: string;
+  operationalState: string;
+  housekeepingState: HousekeepingState;
+  roomTypeId: string;
+  number: string;
+}
+
+/**
+ * Delegates the `FOR UPDATE` on the room to `RoomStateService` (which owns the
+ * room state machine) and returns the columns the callers validate.
+ */
+export async function lockRoomRow(
+  roomState: Pick<RoomStateService, 'lockRoom'>,
+  tx: Transaction,
+  scope: RowScope,
+): Promise<RoomLockRow> {
+  await roomState.lockRoom(tx, scope.organizationId, scope.propertyId, scope.id);
+  const room = await tx.room.findFirst({
+    where: {
+      id: scope.id,
+      organizationId: scope.organizationId,
+      propertyId: scope.propertyId,
+    },
+    select: {
+      id: true,
+      status: true,
+      operationalState: true,
+      housekeepingState: true,
+      roomTypeId: true,
+      number: true,
+    },
+  });
+  if (room === null) {
+    throw new NotFoundException({
+      code: 'room_not_found',
+      message: 'Room not found in the selected property.',
+    });
+  }
+  return room;
 }

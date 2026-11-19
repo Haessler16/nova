@@ -3,12 +3,14 @@ import { cookies } from 'next/headers';
 import { LOCALE_COOKIE, resolveLocale, translate, type TranslationKey } from '@/lib/i18n';
 
 export async function generateMetadata(): Promise<Metadata> {
-  const locale = resolveLocale(cookies().get(LOCALE_COOKIE)?.value);
+  const cookieStore = await cookies();
+  const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
   return { title: translate(locale, 'offline.metadataTitle') };
 }
 
-export default function OfflinePage() {
-  const locale = resolveLocale(cookies().get(LOCALE_COOKIE)?.value);
+export default async function OfflinePage() {
+  const cookieStore = await cookies();
+  const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
   const t = (key: TranslationKey): string => translate(locale, key);
 
   return (
