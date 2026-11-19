@@ -1,4 +1,5 @@
 # Modelo conceptual (adaptar al schema real)
+
 - `ReservationInstruction`: organizationId, propertyId, reservationId, category, title, body, priority, status, source, sourceDepartment, visibility, assignedDepartment, assignedUserId, actionType, actionDueAt, validFrom/Until, completedAt/By, createdBy/At, metadataJson.
 - `GuestNote`: organizationId, propertyId, guestId, category, body, priority, visibility, purpose, expiresAt, isActive, createdBy/At.
 - `ReservationSourceNote`: reservationId, sourceTextOriginal, sourceSystem, sourceDepartment, externalReference, importedAt/By, contentHash, parserVersion.

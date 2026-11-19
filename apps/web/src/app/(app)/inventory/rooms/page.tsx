@@ -192,9 +192,13 @@ function RoomsContent() {
         )) {
           attempts = 0;
           setLiveMode('live');
-          if (event.type === 'ready' || event.type === 'room.updated' ||
-              event.type === 'room.housekeeping' || event.type === 'room.block_changed' ||
-              event.type === 'room.lease_changed') {
+          if (
+            event.type === 'ready' ||
+            event.type === 'room.updated' ||
+            event.type === 'room.housekeeping' ||
+            event.type === 'room.block_changed' ||
+            event.type === 'room.lease_changed'
+          ) {
             scheduleRefresh();
           }
         }
@@ -206,10 +210,13 @@ function RoomsContent() {
       }
       setLiveMode('polling');
       attempts += 1;
-      retryTimer = window.setTimeout(() => {
-        retryTimer = undefined;
-        void run();
-      }, Math.min(2_000 * attempts, 30_000));
+      retryTimer = window.setTimeout(
+        () => {
+          retryTimer = undefined;
+          void run();
+        },
+        Math.min(2_000 * attempts, 30_000),
+      );
     }
 
     void run();
@@ -617,14 +624,11 @@ function RoomsContent() {
     }
     setLeaseBusy(true);
     try {
-      await api<{ released: boolean }>(
-        `/api/v1/inventory/rooms/${selectedRoomId}/lease-release`,
-        {
-          method: 'POST',
-          tenant,
-          body: { leaseId: lease.leaseId, reason: forceReason.trim() },
-        },
-      );
+      await api<{ released: boolean }>(`/api/v1/inventory/rooms/${selectedRoomId}/lease-release`, {
+        method: 'POST',
+        tenant,
+        body: { leaseId: lease.leaseId, reason: forceReason.trim() },
+      });
       toast({
         title: 'Selección liberada',
         description: 'Se registró el motivo en la auditoría.',
@@ -968,16 +972,8 @@ function RoomsContent() {
                       borderLeftColor="gray.100"
                     >
                       <HStack spacing={1} justify="flex-end" wrap="nowrap">
-                        <RowActionButton
-                          onClick={() => openDetail(room)}
-                        >
-                          Detalle
-                        </RowActionButton>
-                        <RowActionButton
-                          onClick={() => openEdit(room)}
-                        >
-                          Editar
-                        </RowActionButton>
+                        <RowActionButton onClick={() => openDetail(room)}>Detalle</RowActionButton>
+                        <RowActionButton onClick={() => openEdit(room)}>Editar</RowActionButton>
                       </HStack>
                     </Td>
                   </Tr>

@@ -1,5 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Clock } from '../common/time/clock';
 import {
   createCipheriv,
   createDecipheriv,
@@ -34,7 +35,10 @@ export class MfaService {
   private readonly keyMaterial: string | null;
   private readonly challengeTtlSeconds: number;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly clock: Clock,
+  ) {
     this.keyMaterial = config.get<string>('MFA_ENCRYPTION_KEY') ?? null;
     this.challengeTtlSeconds = config.get<number>('MFA_CHALLENGE_TTL_SECONDS', 300);
   }
@@ -87,7 +91,7 @@ export class MfaService {
 
   issueChallenge(userId: string): MfaChallenge {
     this.assertConfigured();
-    const expiresAt = new Date(Date.now() + this.challengeTtlSeconds * 1000);
+    const expiresAt = new Date(this.clock.now().getTime() + this.challengeTtlSeconds * 1000);
     const payload: ChallengePayload = { sub: userId, exp: Math.floor(expiresAt.getTime() / 1000) };
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
     return { token: `${encoded}.${this.sign(encoded)}`, expiresAt };
@@ -118,7 +122,7 @@ export class MfaService {
       if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') {
         return null;
       }
-      if (payload.exp * 1000 <= Date.now()) {
+      if (payload.exp * 1000 <= this.clock.now().getTime()) {
         return null;
       }
       return payload.sub;

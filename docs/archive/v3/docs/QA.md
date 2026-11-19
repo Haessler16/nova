@@ -1,4 +1,5 @@
 # QA obligatorio
+
 1. `PGTO DIRETO NO HOTEL (12-15/11)` propone preautorización en check-in con tarjeta, pendiente; no crea pago/caja ni marca pagado.
 2. Retry/import duplicado no duplica instrucciones.
 3. `PGTO ... LANÇADO NO CAIXA` solo genera verificación; ledger es fuente de verdad.

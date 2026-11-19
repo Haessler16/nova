@@ -2,6 +2,7 @@
 
 import { Box, HStack, Text } from '@chakra-ui/react';
 import { useEffect, useState } from 'react';
+import { useI18n } from '@/lib/i18n';
 
 type ConnectionState = 'online' | 'offline';
 
@@ -10,6 +11,7 @@ type ConnectionState = 'online' | 'offline';
  * "syncing" state: the API has no global synchronization channel yet.
  */
 export function ConnectionStatus({ compact = false }: { compact?: boolean }) {
+  const { t } = useI18n();
   const [state, setState] = useState<ConnectionState>('online');
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function ConnectionStatus({ compact = false }: { compact?: boolean }) {
         boxShadow={online ? '0 0 0 3px rgba(72, 201, 165, 0.18)' : 'none'}
       />
       <Text fontSize="xs" fontWeight="semibold" whiteSpace="nowrap">
-        {online ? 'En línea' : 'Sin conexión'}
+        {online ? t('connection.online') : t('connection.offline')}
       </Text>
     </HStack>
   );

@@ -37,6 +37,7 @@ import {
 } from '@chakra-ui/react';
 import NextLink from 'next/link';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ActionDialog } from '@/components/action-dialog';
 import { CheckInWizard } from '@/components/check-in-wizard';
 import { PropertyGate } from '@/components/app-shell';
 import { DateField } from '@/components/date-field';
@@ -51,21 +52,23 @@ import {
 } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api, errorMessage, isApiError } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import {
   HOUSEKEEPING_COLORS,
-  HOUSEKEEPING_LABELS,
   INCIDENT_SEVERITY_COLORS,
-  INCIDENT_SEVERITY_LABELS,
-  INCIDENT_STATUS_LABELS,
-  INCIDENT_TYPE_LABELS,
   OPERATIONAL_COLORS,
-  OPERATIONAL_LABELS,
   RESERVATION_STATUS_COLORS,
-  RESERVATION_STATUS_LABELS,
   formatCalendarDate,
   formatDateTime,
   formatLongDate,
   formatMoney,
+  housekeepingLabel,
+  incidentSeverityLabel,
+  incidentStatusLabel,
+  incidentTypeLabel,
+  occupancyLabel,
+  reservationStatusLabel,
+  roomOperationalLabel,
   todayISO,
 } from '@/lib/format';
 import type {
@@ -78,6 +81,7 @@ import type {
   IncidentType,
   Reservation,
   ReservationStatus,
+  RoomBlockType,
   RoomMoveBlockerCode,
   RoomMoveCandidate,
   RoomMoveCandidates,
@@ -85,12 +89,7 @@ import type {
   Stay,
 } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
-import {
-  buildErrors,
-  hasErrors,
-  reasonField,
-  type FieldErrors,
-} from '@/lib/validation';
+import { buildErrors, hasErrors, reasonField, type FieldErrors } from '@/lib/validation';
 
 interface IncidentList {
   items: Incident[];
@@ -107,31 +106,59 @@ interface MoveFilters {
   showIneligible: boolean;
 }
 
-const ROOM_MOVE_BLOCKER_LABELS: Record<RoomMoveBlockerCode, string> = {
-  room_inactive: 'Habitación inactiva',
-  room_out_of_service: 'Fuera de servicio',
-  room_type_mismatch: 'Tipo distinto al de la reserva',
-  room_block_overlap: 'Bloqueo operativo vigente',
-  room_occupied: 'Ocupada por otra estancia',
-  room_not_available: 'Reserva solapada',
-};
+type Translator = ReturnType<typeof useI18n>['t'];
+
+const INCIDENT_TYPES: IncidentType[] = ['NOTE', 'MAINTENANCE', 'COMPLAINT', 'SAFETY', 'OTHER'];
+
+function roomMoveBlockerLabel(t: Translator, code: RoomMoveBlockerCode): string {
+  switch (code) {
+    case 'room_inactive':
+      return t('frontOffice.move.blocker.roomInactive');
+    case 'room_out_of_service':
+      return t('frontOffice.move.blocker.outOfService');
+    case 'room_type_mismatch':
+      return t('frontOffice.move.blocker.typeMismatch');
+    case 'room_block_overlap':
+      return t('frontOffice.move.blocker.blockOverlap');
+    case 'room_occupied':
+      return t('frontOffice.move.blocker.occupied');
+    case 'room_not_available':
+      return t('frontOffice.move.blocker.notAvailable');
+  }
+}
+
+function blockTypeLabel(t: Translator, type: RoomBlockType): string {
+  return t(type === 'OUT_OF_ORDER' ? 'operational.outOfOrder' : 'operational.outOfService');
+}
+
+function nightsLabel(t: Translator, count: number): string {
+  return t(count === 1 ? 'common.nightsOne' : 'common.nightsOther', { count });
+}
+
+function adultsLabel(t: Translator, count: number): string {
+  return t(count === 1 ? 'common.adultsOne' : 'common.adultsOther', { count });
+}
+
+function minorsLabel(t: Translator, count: number): string {
+  return t(count === 1 ? 'common.minorsOne' : 'common.minorsOther', { count });
+}
 
 /** Friendly, actionable version of the transaction's conflict codes. */
-function roomMoveErrorMessage(error: unknown): string {
+function roomMoveErrorMessage(error: unknown, t: Translator): string {
   if (isApiError(error)) {
     switch (error.code) {
       case 'room_occupied':
-        return 'Otra estancia ocupa esa habitación. Actualizamos las alternativas disponibles.';
+        return t('frontOffice.move.error.occupied');
       case 'room_block_overlap':
-        return 'La habitación tiene un bloqueo operativo vigente. Elegí otra.';
+        return t('frontOffice.move.error.blockOverlap');
       case 'room_not_available':
-        return 'La habitación tiene una reserva solapada. Elegí otra.';
+        return t('frontOffice.move.error.notAvailable');
       case 'room_out_of_service':
-        return 'La habitación no está operativamente disponible.';
+        return t('frontOffice.move.error.outOfService');
       case 'room_type_mismatch':
-        return 'La habitación no pertenece al tipo de la reserva.';
+        return t('frontOffice.move.error.typeMismatch');
       case 'stay_not_in_house':
-        return 'La estancia ya no está en casa. Actualizá el front office.';
+        return t('frontOffice.move.error.stayNotInHouse');
     }
   }
   return errorMessage(error);
@@ -174,24 +201,37 @@ function StayCard({
   onMove: (stay: Stay) => void;
   onIncident: (stay: Stay) => void;
 }) {
+  const { t } = useI18n();
   return (
     <Box borderWidth="1px" borderRadius="md" px={3} py={2}>
       <HStack justify="space-between" align="flex-start" wrap="wrap">
         <Box>
           <Text fontSize="sm" fontWeight="semibold">
-            Hab. {stay.room.number} · {stay.guest.fullName}
+            {t('frontOffice.stay.card', {
+              number: stay.room.number,
+              name: stay.guest.fullName,
+            })}
           </Text>
           <Text fontSize="xs" color="gray.500">
-            {stay.reservation.code} · salida {formatCalendarDate(stay.reservation.checkOutDate)}
-            {stay.moveCount > 0 ? ` · ${stay.moveCount} cambio(s)` : ''}
+            {stay.reservation.code} ·{' '}
+            {t('frontOffice.stay.checkout', {
+              date: formatCalendarDate(stay.reservation.checkOutDate),
+            })}
+            {stay.moveCount > 0
+              ? ` · ${t('frontOffice.stay.moves', { count: stay.moveCount })}`
+              : ''}
             {stay.checkedOutAt !== null
-              ? ` · salida registrada ${formatDateTime(stay.checkedOutAt)}`
+              ? ` · ${t('frontOffice.stay.checkedOut', { time: formatDateTime(stay.checkedOutAt) })}`
               : ''}
           </Text>
         </Box>
         <StatusBadge
           color={stay.status === 'CHECKED_OUT' ? 'sky' : 'mint'}
-          label={stay.status === 'CHECKED_OUT' ? 'Salió' : 'En casa'}
+          label={t(
+            stay.status === 'CHECKED_OUT'
+              ? 'frontOffice.stay.statusOut'
+              : 'frontOffice.stay.statusIn',
+          )}
         />
       </HStack>
       <HStack spacing={1} mt={2} wrap="wrap">
@@ -203,13 +243,13 @@ function StayCard({
               onClick={() => onCheckOut(stay)}
               isLoading={busy === `check-out:${stay.id}`}
             >
-              Check-out
+              {t('frontOffice.action.checkOut')}
             </Button>
             <Button size="xs" variant="outline" onClick={() => onMove(stay)}>
-              Mover
+              {t('frontOffice.action.move')}
             </Button>
             <Button size="xs" variant="ghost" onClick={() => onIncident(stay)}>
-              Incidencia
+              {t('frontOffice.action.incident')}
             </Button>
           </>
         )}
@@ -218,7 +258,7 @@ function StayCard({
           reservationCode={stay.reservation.code}
         />
         <Button as={NextLink} href="/reservations" size="xs" variant="ghost">
-          Reserva
+          {t('frontOffice.action.reservation')}
         </Button>
       </HStack>
     </Box>
@@ -227,6 +267,7 @@ function StayCard({
 
 function FrontOfficeContent() {
   const { tenant, property } = useSession();
+  const { t, locale } = useI18n();
   const propertyTimezone = property?.timezone;
   const toast = useToast();
 
@@ -305,10 +346,12 @@ function FrontOfficeContent() {
   const [moveResult, setMoveResult] = useState<{ fromNumber: string; toNumber: string } | null>(
     null,
   );
+  const [moveActionError, setMoveActionError] = useState<unknown>(null);
   const moveRequestRef = useRef(0);
 
   const [noShowTarget, setNoShowTarget] = useState<Reservation | null>(null);
   const [noShowReason, setNoShowReason] = useState('');
+  const [noShowError, setNoShowError] = useState<unknown>(null);
 
   const [incidentTarget, setIncidentTarget] = useState<Stay | null>(null);
   const [incidentForm, setIncidentForm] = useState<{
@@ -331,6 +374,7 @@ function FrontOfficeContent() {
 
   const [resolveTarget, setResolveTarget] = useState<Incident | null>(null);
   const [resolution, setResolution] = useState('');
+  const [resolveError, setResolveError] = useState<unknown>(null);
 
   function reloadAll(): void {
     overview.reload();
@@ -356,7 +400,7 @@ function FrontOfficeContent() {
       reloadAll();
     } catch (cause) {
       toast({
-        title: 'No se pudo completar la operación',
+        title: t('frontOffice.error.generic'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -464,7 +508,7 @@ function FrontOfficeContent() {
       fromDate: params.get('fromDate') ?? '',
       toDate: params.get('toDate') ?? '',
       status:
-        status !== null && Object.prototype.hasOwnProperty.call(RESERVATION_STATUS_LABELS, status)
+        status !== null && Object.prototype.hasOwnProperty.call(RESERVATION_STATUS_COLORS, status)
           ? (status as ReservationStatus)
           : '',
     };
@@ -494,8 +538,7 @@ function FrontOfficeContent() {
       .finally(() => setCheckoutLoading(false));
   }
 
-  async function handleCheckOut(event: FormEvent): Promise<void> {
-    event.preventDefault();
+  async function handleCheckOut(): Promise<void> {
     if (checkoutTarget === null) {
       return;
     }
@@ -511,8 +554,8 @@ function FrontOfficeContent() {
     if (checkoutAllowBalance) {
       if (checkoutBalanceReason.trim().length < 3) {
         toast({
-          title: 'Indicá el motivo del saldo pendiente',
-          description: 'El checkout con saldo pendiente requiere un motivo auditado.',
+          title: t('frontOffice.checkout.balanceTitle'),
+          description: t('frontOffice.checkout.balanceHelp'),
           status: 'warning',
         });
         return;
@@ -528,7 +571,7 @@ function FrontOfficeContent() {
           tenant,
           body,
         }),
-      `Check-out registrado para ${target.guest.fullName}`,
+      t('frontOffice.checkout.success', { name: target.guest.fullName }),
       checkoutModal.onClose,
     );
   }
@@ -541,6 +584,7 @@ function FrontOfficeContent() {
     setMoveError(null);
     setMoveErrors({});
     setMoveResult(null);
+    setMoveActionError(null);
     setMoveFilters({
       roomTypeId: '',
       floor: '',
@@ -588,22 +632,18 @@ function FrontOfficeContent() {
     }
   }
 
-  function updateMoveFilter<K extends keyof MoveFilters>(
-    key: K,
-    value: MoveFilters[K],
-  ): void {
+  function updateMoveFilter<K extends keyof MoveFilters>(key: K, value: MoveFilters[K]): void {
     setMoveFilters((current) => ({ ...current, [key]: value }));
     setMoveRoomId('');
   }
 
-  async function handleMove(event: FormEvent): Promise<void> {
-    event.preventDefault();
+  async function handleMove(): Promise<void> {
     if (moveTarget === null || moveResult !== null) {
       return;
     }
     const nextErrors = buildErrors([
-      ['move.roomId', moveRoomId === '' ? 'Elegí una habitación destino.' : null],
-      ['move.reason', reasonField(moveReason, 'El motivo del cambio')],
+      ['move.roomId', moveRoomId === '' ? t('frontOffice.move.roomRequired') : null],
+      ['move.reason', reasonField(moveReason, t('frontOffice.move.reasonField'))],
     ]);
     setMoveErrors(nextErrors);
     if (hasErrors(nextErrors)) {
@@ -619,18 +659,18 @@ function FrontOfficeContent() {
       });
       setMoveResult({ fromNumber: target.room.number, toNumber: updated.room.number });
       toast({
-        title: `Habitación actualizada: ${target.room.number} → ${updated.room.number}`,
+        title: t('frontOffice.move.success', {
+          from: target.room.number,
+          to: updated.room.number,
+        }),
         status: 'success',
         duration: 6000,
       });
       reloadAll();
     } catch (cause) {
-      toast({
-        title: 'No se pudo cambiar la habitación',
-        description: roomMoveErrorMessage(cause),
-        status: 'error',
-        duration: 8000,
-      });
+      // The dialog keeps the context and shows the mapped conflict; the
+      // candidate list is refreshed so the operator can pick another room.
+      setMoveActionError(cause);
       setMoveRoomId('');
       void loadMoveCandidates(target.id, false);
     } finally {
@@ -641,28 +681,33 @@ function FrontOfficeContent() {
   function openNoShow(reservation: Reservation): void {
     setNoShowTarget(reservation);
     setNoShowReason('');
+    setNoShowError(null);
     noShowModal.onOpen();
   }
 
-  async function handleNoShow(event: FormEvent): Promise<void> {
-    event.preventDefault();
+  async function handleNoShow(): Promise<void> {
     if (noShowTarget === null) {
       return;
     }
     const target = noShowTarget;
-    await run(
-      `no-show:${target.id}`,
-      () =>
-        api(`/api/v1/front-office/reservations/${target.id}/no-show`, {
-          method: 'POST',
-          tenant,
-          body: {
-            ...(noShowReason.trim().length >= 3 ? { reason: noShowReason.trim() } : {}),
-          },
-        }),
-      'Reserva marcada como no-show',
-      noShowModal.onClose,
-    );
+    setBusy(`no-show:${target.id}`);
+    setNoShowError(null);
+    try {
+      await api(`/api/v1/front-office/reservations/${target.id}/no-show`, {
+        method: 'POST',
+        tenant,
+        body: {
+          ...(noShowReason.trim().length >= 3 ? { reason: noShowReason.trim() } : {}),
+        },
+      });
+      toast({ title: t('frontOffice.noShow.success'), status: 'success' });
+      noShowModal.onClose();
+      reloadAll();
+    } catch (cause) {
+      setNoShowError(cause);
+    } finally {
+      setBusy(null);
+    }
   }
 
   function openIncident(stay?: Stay, room?: RoomRackItem): void {
@@ -682,7 +727,7 @@ function FrontOfficeContent() {
   async function handleCreateIncident(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (incidentForm.title.trim().length < 3 || incidentForm.description.trim().length < 3) {
-      toast({ title: 'Completá título y descripción', status: 'warning' });
+      toast({ title: t('frontOffice.incidentForm.invalid'), status: 'warning' });
       return;
     }
     await run(
@@ -704,7 +749,7 @@ function FrontOfficeContent() {
               : {}),
           },
         }),
-      'Incidencia registrada',
+      t('frontOffice.incidentForm.created'),
       incidentModal.onClose,
     );
   }
@@ -712,27 +757,32 @@ function FrontOfficeContent() {
   function openResolve(incident: Incident): void {
     setResolveTarget(incident);
     setResolution('');
+    setResolveError(null);
     resolveModal.onOpen();
   }
 
-  async function handleResolve(event: FormEvent): Promise<void> {
-    event.preventDefault();
+  async function handleResolve(): Promise<void> {
     if (resolveTarget === null || resolution.trim().length < 3) {
-      toast({ title: 'Escribí una resolución de al menos 3 caracteres', status: 'warning' });
+      toast({ title: t('frontOffice.resolve.tooShort'), status: 'warning' });
       return;
     }
     const target = resolveTarget;
-    await run(
-      `incident:resolve:${target.id}`,
-      () =>
-        api(`/api/v1/front-office/incidents/${target.id}/resolve`, {
-          method: 'POST',
-          tenant,
-          body: { resolution: resolution.trim() },
-        }),
-      'Incidencia resuelta',
-      resolveModal.onClose,
-    );
+    setBusy(`incident:resolve:${target.id}`);
+    setResolveError(null);
+    try {
+      await api(`/api/v1/front-office/incidents/${target.id}/resolve`, {
+        method: 'POST',
+        tenant,
+        body: { resolution: resolution.trim() },
+      });
+      toast({ title: t('frontOffice.resolve.done'), status: 'success' });
+      resolveModal.onClose();
+      reloadAll();
+    } catch (cause) {
+      setResolveError(cause);
+    } finally {
+      setBusy(null);
+    }
   }
 
   const data = overview.data;
@@ -785,17 +835,24 @@ function FrontOfficeContent() {
         description={
           data !== null
             ? data.isHistorical
-              ? `Vista histórica · ${formatLongDate(data.selectedDate)}. Solo lectura: llegadas, estancias y salidas corresponden a ese día; el room rack y las incidencias quedan ocultos porque reflejan el estado actual.`
-              : `Día operativo ${formatCalendarDate(data.operationalDate)} · hora local ${data.localTime} · ${data.timezone} (inicio ${data.operationalDayStart}). La ocupación se deriva de estancias en casa, separada de housekeeping.`
-            : 'Llegadas, estancias en casa, salidas, room rack e incidencias del día operativo.'
+              ? t('frontOffice.description.historical', {
+                  date: formatLongDate(data.selectedDate),
+                })
+              : t('frontOffice.description.operational', {
+                  date: formatCalendarDate(data.operationalDate),
+                  time: data.localTime,
+                  timezone: data.timezone,
+                  start: data.operationalDayStart,
+                })
+            : t('frontOffice.description.default')
         }
         actions={
           <HStack spacing={2} wrap="wrap">
             <DateField
               value={referenceDate}
               onChange={changeDate}
-              placeholder="Día a consultar"
-              ariaLabel="Día operativo a consultar"
+              placeholder={t('frontOffice.date.placeholder')}
+              ariaLabel={t('frontOffice.date.aria')}
               max={data?.operationalDate}
               today={data?.operationalDate ?? todayISO(0, propertyTimezone)}
               width="168px"
@@ -807,7 +864,7 @@ function FrontOfficeContent() {
               onClick={() => changeDate(data?.operationalDate ?? '')}
               isDisabled={!isHistorical}
             >
-              Hoy
+              {t('frontOffice.action.today')}
             </Button>
             <Button
               size="sm"
@@ -815,7 +872,7 @@ function FrontOfficeContent() {
               onClick={reloadAll}
               isLoading={overview.loading && data !== null}
             >
-              Actualizar
+              {t('frontOffice.action.refresh')}
             </Button>
           </HStack>
         }
@@ -826,53 +883,52 @@ function FrontOfficeContent() {
           <Stack spacing={3}>
             <HStack justify="space-between" wrap="wrap">
               <Box>
-                <Text fontWeight="semibold">Búsqueda operativa</Text>
+                <Text fontWeight="semibold">{t('frontOffice.search.title')}</Text>
                 <Text fontSize="xs" color="gray.500">
-                  Huésped (sin importar acentos), código de reserva o UH. Combiná con fechas y
-                  estado.
+                  {t('frontOffice.search.help')}
                 </Text>
               </Box>
               {searchActive && (
                 <Button size="xs" variant="ghost" onClick={clearSearch}>
-                  Limpiar filtros
+                  {t('frontOffice.action.clearFilters')}
                 </Button>
               )}
             </HStack>
             <SimpleGrid columns={{ base: 1, md: 2, xl: 4 }} spacing={3}>
-              <Field label="Huésped, reserva o UH">
+              <Field label={t('frontOffice.search.guestLabel')}>
                 <Input
                   value={searchInputs.q}
-                  placeholder="Ej.: José, DEMO-1104, 201"
+                  placeholder={t('frontOffice.search.guestPlaceholder')}
                   onChange={(event) => updateSearchInput('q', event.target.value)}
                 />
               </Field>
-              <Field label="Desde">
+              <Field label={t('frontOffice.search.from')}>
                 <DateField
                   value={searchInputs.fromDate}
                   onChange={(value) => updateSearchInput('fromDate', value)}
-                  placeholder="Cualquier fecha"
-                  ariaLabel="Desde"
+                  placeholder={t('frontOffice.search.anyDate')}
+                  ariaLabel={t('frontOffice.search.from')}
                 />
               </Field>
-              <Field label="Hasta">
+              <Field label={t('frontOffice.search.to')}>
                 <DateField
                   value={searchInputs.toDate}
                   onChange={(value) => updateSearchInput('toDate', value)}
-                  placeholder="Cualquier fecha"
-                  ariaLabel="Hasta"
+                  placeholder={t('frontOffice.search.anyDate')}
+                  ariaLabel={t('frontOffice.search.to')}
                 />
               </Field>
-              <Field label="Estado">
+              <Field label={t('frontOffice.search.status')}>
                 <Select
                   value={searchInputs.status}
                   onChange={(event) =>
                     updateSearchInput('status', event.target.value as ReservationStatus | '')
                   }
                 >
-                  <option value="">Todos</option>
-                  {Object.entries(RESERVATION_STATUS_LABELS).map(([value, label]) => (
+                  <option value="">{t('frontOffice.search.allStatuses')}</option>
+                  {(Object.keys(RESERVATION_STATUS_COLORS) as ReservationStatus[]).map((value) => (
                     <option key={value} value={value}>
-                      {label}
+                      {reservationStatusLabel(locale, value)}
                     </option>
                   ))}
                 </Select>
@@ -880,10 +936,10 @@ function FrontOfficeContent() {
             </SimpleGrid>
             <HStack justify="space-between" wrap="wrap">
               <Text fontSize="xs" color="gray.500">
-                Las fechas filtran reservas que solapan el rango elegido.
+                {t('frontOffice.search.datesHint')}
               </Text>
               <Button type="submit" size="sm" colorScheme="brand" isLoading={searchLoading}>
-                Buscar
+                {t('frontOffice.action.search')}
               </Button>
             </HStack>
           </Stack>
@@ -896,21 +952,21 @@ function FrontOfficeContent() {
               error={searchError}
               onRetry={() => void performSearch(searchFilters)}
               isEmpty={!searchLoading && searchResults.length === 0}
-              emptyText="Ninguna reserva coincide con los filtros."
+              emptyText={t('frontOffice.search.empty')}
             >
               <TableContainer overflowX="auto">
                 <Table size="sm">
                   <Thead>
                     <Tr>
-                      <Th>Huésped</Th>
-                      <Th>Reserva</Th>
-                      <Th>UH</Th>
-                      <Th>Llegada</Th>
-                      <Th>Salida</Th>
-                      <Th>Estado</Th>
-                      <Th>Tipo</Th>
+                      <Th>{t('frontOffice.table.guest')}</Th>
+                      <Th>{t('frontOffice.table.reservation')}</Th>
+                      <Th>{t('frontOffice.table.room')}</Th>
+                      <Th>{t('frontOffice.table.arrival')}</Th>
+                      <Th>{t('frontOffice.table.departure')}</Th>
+                      <Th>{t('frontOffice.table.status')}</Th>
+                      <Th>{t('frontOffice.table.type')}</Th>
                       <Th position="sticky" right={0} bg="white" zIndex={1}>
-                        Acciones
+                        {t('frontOffice.table.actions')}
                       </Th>
                     </Tr>
                   </Thead>
@@ -921,13 +977,13 @@ function FrontOfficeContent() {
                           <Text fontWeight="medium">{reservation.guest.fullName}</Text>
                         </Td>
                         <Td>{reservation.code}</Td>
-                        <Td>{reservation.room?.number ?? 'Sin UH'}</Td>
+                        <Td>{reservation.room?.number ?? t('frontOffice.table.noRoom')}</Td>
                         <Td>{formatCalendarDate(reservation.checkInDate)}</Td>
                         <Td>{formatCalendarDate(reservation.checkOutDate)}</Td>
                         <Td>
                           <StatusBadge
                             color={RESERVATION_STATUS_COLORS[reservation.status] ?? 'gray'}
-                            label={RESERVATION_STATUS_LABELS[reservation.status]}
+                            label={reservationStatusLabel(locale, reservation.status)}
                           />
                         </Td>
                         <Td>{reservation.roomType.name}</Td>
@@ -946,7 +1002,7 @@ function FrontOfficeContent() {
                               size="xs"
                               variant="ghost"
                             >
-                              Abrir
+                              {t('frontOffice.action.open')}
                             </Button>
                             <Button
                               as={NextLink}
@@ -954,7 +1010,7 @@ function FrontOfficeContent() {
                               size="xs"
                               variant="ghost"
                             >
-                              Huésped
+                              {t('frontOffice.table.guest')}
                             </Button>
                             {reservation.status === 'CONFIRMED' && (
                               <Button
@@ -962,7 +1018,7 @@ function FrontOfficeContent() {
                                 colorScheme="brand"
                                 onClick={() => openGuidedCheckIn(reservation)}
                               >
-                                Check-in
+                                {t('frontOffice.action.checkIn')}
                               </Button>
                             )}
                           </HStack>
@@ -980,7 +1036,7 @@ function FrontOfficeContent() {
                     isLoading={searchLoading}
                     onClick={() => void performSearch(searchFilters, searchNextCursor)}
                   >
-                    Cargar más
+                    {t('frontOffice.action.loadMore')}
                   </Button>
                 </HStack>
               )}
@@ -994,7 +1050,7 @@ function FrontOfficeContent() {
         error={overview.error}
         onRetry={overview.reload}
         isEmpty={data === null}
-        emptyText="No se pudo cargar el tablero operativo."
+        emptyText={t('frontOffice.board.loadError')}
       >
         {data !== null && (
           <Stack spacing={5}>
@@ -1010,43 +1066,60 @@ function FrontOfficeContent() {
                 spacing={3}
               >
                 <Badge colorScheme="warning" textTransform="none" mt={0.5}>
-                  Vista histórica
+                  {t('frontOffice.historical.badge')}
                 </Badge>
                 <Box>
                   <Text fontSize="sm" fontWeight="semibold" color="warning.800">
                     {formatLongDate(data.selectedDate)}
                   </Text>
                   <Text fontSize="xs" color="warning.700">
-                    Consulta de solo lectura. Para operar sobre las llegadas o salidas pendientes,
-                    volvé al día operativo actual.
+                    {t('frontOffice.historical.note')}
                   </Text>
                 </Box>
               </HStack>
             )}
 
             <SimpleGrid columns={{ base: 2, md: 3, xl: data.isHistorical ? 4 : 6 }} spacing={3}>
-              <MetricCard label="Llegadas" value={data.counts.arrivals} accent="sky" />
               <MetricCard
-                label={data.isHistorical ? 'Alojados' : 'En casa'}
+                label={t('frontOffice.metric.arrivals')}
+                value={data.counts.arrivals}
+                accent="sky"
+              />
+              <MetricCard
+                label={t(
+                  data.isHistorical ? 'frontOffice.metric.hosted' : 'frontOffice.metric.inHouse',
+                )}
                 value={data.counts.inHouse}
                 accent="mint"
               />
-              <MetricCard label="Salidas" value={data.counts.departures} accent="warning" />
+              <MetricCard
+                label={t('frontOffice.metric.departures')}
+                value={data.counts.departures}
+                accent="warning"
+              />
               {data.isHistorical ? (
                 <MetricCard
-                  label="No-show"
+                  label={t('frontOffice.metric.noShow')}
                   value={data.counts.noShowCandidates}
-                  hint="marcados ese día"
+                  hint={t('frontOffice.metric.noShowHint')}
                   accent="danger"
                 />
               ) : (
                 <>
-                  <MetricCard label="Libres" value={data.counts.vacantRooms} accent="mint" />
-                  <MetricCard label="Ocupadas" value={data.counts.occupiedRooms} accent="brand" />
                   <MetricCard
-                    label="No-show por marcar"
+                    label={t('frontOffice.metric.free')}
+                    value={data.counts.vacantRooms}
+                    accent="mint"
+                  />
+                  <MetricCard
+                    label={t('frontOffice.metric.occupied')}
+                    value={data.counts.occupiedRooms}
+                    accent="brand"
+                  />
+                  <MetricCard
+                    label={t('frontOffice.metric.noShowPending')}
                     value={data.counts.noShowCandidates}
-                    hint="llegadas vencidas"
+                    hint={t('frontOffice.metric.noShowPendingHint')}
                     accent="danger"
                   />
                 </>
@@ -1055,13 +1128,22 @@ function FrontOfficeContent() {
 
             <Tabs colorScheme="brand" index={tabIndex} onChange={setTabIndex} isLazy>
               <TabList>
-                <Tab>Llegadas ({data.counts.arrivals})</Tab>
                 <Tab>
-                  {data.isHistorical ? 'Alojados' : 'En casa'} ({data.counts.inHouse})
+                  {t('frontOffice.tab.arrivals')} ({data.counts.arrivals})
                 </Tab>
-                <Tab>Salidas ({data.counts.departures})</Tab>
-                {!data.isHistorical && <Tab>Room rack ({data.roomRack.length})</Tab>}
-                {!data.isHistorical && <Tab>Incidencias</Tab>}
+                <Tab>
+                  {t(data.isHistorical ? 'frontOffice.tab.hosted' : 'frontOffice.tab.inHouse')} (
+                  {data.counts.inHouse})
+                </Tab>
+                <Tab>
+                  {t('frontOffice.tab.departures')} ({data.counts.departures})
+                </Tab>
+                {!data.isHistorical && (
+                  <Tab>
+                    {t('frontOffice.tab.rack')} ({data.roomRack.length})
+                  </Tab>
+                )}
+                {!data.isHistorical && <Tab>{t('frontOffice.tab.incidents')}</Tab>}
               </TabList>
 
               <TabPanels>
@@ -1069,13 +1151,17 @@ function FrontOfficeContent() {
                   <SectionCard>
                     <Text fontWeight="semibold" mb={1}>
                       {data.isHistorical
-                        ? `Llegadas del ${formatCalendarDate(data.selectedDate)}`
-                        : 'Llegadas del día operativo'}
+                        ? t('frontOffice.arrivals.titleHistorical', {
+                            date: formatCalendarDate(data.selectedDate),
+                          })
+                        : t('frontOffice.arrivals.titleOperational')}
                     </Text>
                     <Text fontSize="xs" color="gray.500" mb={3}>
                       {data.isHistorical
-                        ? 'Reservas con llegada ese día, incluidos los estados finales. Vista de solo lectura.'
-                        : `Reservas confirmadas con llegada hasta ${formatCalendarDate(operationalDate)}. El check-in se guía desde el flujo: valida habitación limpia, disponible y sin bloqueos.`}
+                        ? t('frontOffice.arrivals.helpHistorical')
+                        : t('frontOffice.arrivals.helpOperational', {
+                            date: formatCalendarDate(operationalDate),
+                          })}
                     </Text>
                     <QueryFeedback
                       loading={false}
@@ -1083,8 +1169,8 @@ function FrontOfficeContent() {
                       isEmpty={data.arrivals.length === 0}
                       emptyText={
                         data.isHistorical
-                          ? 'No hubo llegadas registradas ese día.'
-                          : 'No hay llegadas pendientes.'
+                          ? t('frontOffice.arrivals.emptyHistorical')
+                          : t('frontOffice.arrivals.emptyOperational')
                       }
                     >
                       <Stack spacing={2}>
@@ -1110,16 +1196,16 @@ function FrontOfficeContent() {
                                       color={
                                         RESERVATION_STATUS_COLORS[reservation.status] ?? 'gray'
                                       }
-                                      label={RESERVATION_STATUS_LABELS[reservation.status]}
+                                      label={reservationStatusLabel(locale, reservation.status)}
                                     />
                                     {late && (
                                       <Badge colorScheme="warning" textTransform="none">
-                                        Llegada vencida
+                                        {t('frontOffice.badge.late')}
                                       </Badge>
                                     )}
                                     {missingRoom && (
                                       <Badge colorScheme="danger" textTransform="none">
-                                        Sin habitación
+                                        {t('frontOffice.badge.noRoom')}
                                       </Badge>
                                     )}
                                   </HStack>
@@ -1127,17 +1213,16 @@ function FrontOfficeContent() {
                                     {reservation.code} · {reservation.roomType.name} ·{' '}
                                     {formatCalendarDate(reservation.checkInDate)} →{' '}
                                     {formatCalendarDate(reservation.checkOutDate)} ·{' '}
-                                    {reservation.nights}{' '}
-                                    {reservation.nights === 1 ? 'noche' : 'noches'}
+                                    {nightsLabel(t, reservation.nights)}
                                   </Text>
                                   <Text fontSize="xs" color="gray.500">
-                                    Habitación:{' '}
+                                    {t('frontOffice.arrivals.roomLabel')}{' '}
                                     {reservation.room !== null
                                       ? reservation.room.number
-                                      : 'sin asignar'}{' '}
-                                    · {reservation.adults} adultos
+                                      : t('frontOffice.arrivals.unassigned')}{' '}
+                                    · {adultsLabel(t, reservation.adults)}
                                     {reservation.children > 0
-                                      ? ` · ${reservation.children} menores`
+                                      ? ` · ${minorsLabel(t, reservation.children)}`
                                       : ''}
                                   </Text>
                                 </Box>
@@ -1153,7 +1238,7 @@ function FrontOfficeContent() {
                                       onClick={() => openGuidedCheckIn(reservation)}
                                       isLoading={busy === `check-in:${reservation.id}`}
                                     >
-                                      Check-in
+                                      {t('frontOffice.action.checkIn')}
                                     </Button>
                                   )}
                                   {!data.isHistorical && late && (
@@ -1163,7 +1248,7 @@ function FrontOfficeContent() {
                                       colorScheme="warning"
                                       onClick={() => openNoShow(reservation)}
                                     >
-                                      No-show
+                                      {t('frontOffice.action.noShow')}
                                     </Button>
                                   )}
                                 </HStack>
@@ -1179,12 +1264,18 @@ function FrontOfficeContent() {
                 <TabPanel px={0}>
                   <SectionCard>
                     <Text fontWeight="semibold" mb={1}>
-                      {data.isHistorical ? 'Huéspedes alojados ese día' : 'Huéspedes en casa'}
+                      {t(
+                        data.isHistorical
+                          ? 'frontOffice.inHouse.titleHistorical'
+                          : 'frontOffice.inHouse.titleOperational',
+                      )}
                     </Text>
                     <Text fontSize="xs" color="gray.500" mb={3}>
-                      {data.isHistorical
-                        ? 'Estancias activas en algún momento de ese día. La habitación mostrada es la última asignada.'
-                        : 'Estancias con check-in realizado. El check-out es idempotente y libera la habitación.'}
+                      {t(
+                        data.isHistorical
+                          ? 'frontOffice.inHouse.helpHistorical'
+                          : 'frontOffice.inHouse.helpOperational',
+                      )}
                     </Text>
                     <QueryFeedback
                       loading={false}
@@ -1192,8 +1283,8 @@ function FrontOfficeContent() {
                       isEmpty={inHouse.length === 0}
                       emptyText={
                         data.isHistorical
-                          ? 'No hubo huéspedes alojados ese día.'
-                          : 'No hay huéspedes en casa.'
+                          ? t('frontOffice.inHouse.emptyHistorical')
+                          : t('frontOffice.inHouse.emptyOperational')
                       }
                     >
                       <SimpleGrid columns={{ base: 1, xl: 2 }} spacing={2}>
@@ -1216,12 +1307,18 @@ function FrontOfficeContent() {
                 <TabPanel px={0}>
                   <SectionCard>
                     <Text fontWeight="semibold" mb={1}>
-                      {data.isHistorical ? 'Salidas registradas' : 'Salidas pendientes'}
+                      {t(
+                        data.isHistorical
+                          ? 'frontOffice.departures.titleHistorical'
+                          : 'frontOffice.departures.titleOperational',
+                      )}
                     </Text>
                     <Text fontSize="xs" color="gray.500" mb={3}>
-                      {data.isHistorical
-                        ? 'Check-outs registrados durante ese día en la zona horaria de la propiedad.'
-                        : 'Estancias en casa cuya fecha de check-out ya llegó.'}
+                      {t(
+                        data.isHistorical
+                          ? 'frontOffice.departures.helpHistorical'
+                          : 'frontOffice.departures.helpOperational',
+                      )}
                     </Text>
                     <QueryFeedback
                       loading={false}
@@ -1229,8 +1326,8 @@ function FrontOfficeContent() {
                       isEmpty={data.departures.length === 0}
                       emptyText={
                         data.isHistorical
-                          ? 'No se registraron salidas ese día.'
-                          : 'No hay salidas pendientes para el día operativo.'
+                          ? t('frontOffice.departures.emptyHistorical')
+                          : t('frontOffice.departures.emptyOperational')
                       }
                     >
                       <Stack spacing={2}>
@@ -1239,14 +1336,21 @@ function FrontOfficeContent() {
                             <HStack justify="space-between" align="flex-start" wrap="wrap">
                               <Box>
                                 <Text fontSize="sm" fontWeight="semibold">
-                                  Hab. {stay.room.number} · {stay.guest.fullName}
+                                  {t('frontOffice.stay.card', {
+                                    number: stay.room.number,
+                                    name: stay.guest.fullName,
+                                  })}
                                 </Text>
                                 <Text fontSize="xs" color="gray.500">
-                                  {stay.reservation.code} · salida{' '}
-                                  {formatCalendarDate(stay.reservation.checkOutDate)} · check-in{' '}
-                                  {formatDateTime(stay.checkedInAt)}
+                                  {stay.reservation.code} ·{' '}
+                                  {t('frontOffice.stay.checkout', {
+                                    date: formatCalendarDate(stay.reservation.checkOutDate),
+                                  })}{' '}
+                                  · check-in {formatDateTime(stay.checkedInAt)}
                                   {stay.checkedOutAt !== null
-                                    ? ` · salida registrada ${formatDateTime(stay.checkedOutAt)}`
+                                    ? ` · ${t('frontOffice.stay.checkedOut', {
+                                        time: formatDateTime(stay.checkedOutAt),
+                                      })}`
                                     : ''}
                                 </Text>
                               </Box>
@@ -1264,14 +1368,14 @@ function FrontOfficeContent() {
                                     onClick={() => openCheckOut(stay)}
                                     isLoading={busy === `check-out:${stay.id}`}
                                   >
-                                    Check-out
+                                    {t('frontOffice.action.checkOut')}
                                   </Button>
                                   <Button
                                     size="xs"
                                     variant="ghost"
                                     onClick={() => openIncident(stay)}
                                   >
-                                    Incidencia
+                                    {t('frontOffice.action.incident')}
                                   </Button>
                                 </HStack>
                               )}
@@ -1287,22 +1391,22 @@ function FrontOfficeContent() {
                   <SectionCard>
                     <HStack justify="space-between" mb={3} wrap="wrap">
                       <Box>
-                        <Text fontWeight="semibold">Room rack</Text>
+                        <Text fontWeight="semibold">{t('frontOffice.rack.title')}</Text>
                         <Text fontSize="xs" color="gray.500">
-                          Ocupación y housekeeping son estados independientes.
+                          {t('frontOffice.rack.help')}
                         </Text>
                       </Box>
                       <HStack spacing={3}>
                         <HStack spacing={1}>
                           <Box boxSize="10px" borderRadius="full" bg="mint.500" />
                           <Text fontSize="xs" color="gray.600">
-                            Libre
+                            {t('frontOffice.rack.free')}
                           </Text>
                         </HStack>
                         <HStack spacing={1}>
                           <Box boxSize="10px" borderRadius="full" bg="warning.500" />
                           <Text fontSize="xs" color="gray.600">
-                            Ocupada
+                            {t('frontOffice.rack.occupied')}
                           </Text>
                         </HStack>
                       </HStack>
@@ -1322,34 +1426,38 @@ function FrontOfficeContent() {
                           <HStack justify="space-between" align="flex-start">
                             <Box>
                               <Text fontSize="sm" fontWeight="bold">
-                                Hab. {room.number}
+                                {t('frontOffice.rack.room', { number: room.number })}
                               </Text>
                               <Text fontSize="xs" color="gray.500">
                                 {room.roomType.name}
-                                {room.floor !== null ? ` · piso ${room.floor}` : ''}
+                                {room.floor !== null
+                                  ? t('frontOffice.rack.floor', { floor: room.floor })
+                                  : ''}
                               </Text>
                             </Box>
                             <Badge
                               colorScheme={room.occupancy === 'OCCUPIED' ? 'warning' : 'mint'}
                               textTransform="none"
                             >
-                              {room.occupancy === 'OCCUPIED' ? 'Ocupada' : 'Libre'}
+                              {occupancyLabel(locale, room.occupancy)}
                             </Badge>
                           </HStack>
                           <HStack spacing={1} mt={2} wrap="wrap">
                             <StatusBadge
                               color={HOUSEKEEPING_COLORS[room.housekeepingState]}
-                              label={HOUSEKEEPING_LABELS[room.housekeepingState]}
+                              label={housekeepingLabel(locale, room.housekeepingState)}
                             />
                             {room.operationalState !== 'AVAILABLE' && (
                               <StatusBadge
                                 color={OPERATIONAL_COLORS[room.operationalState]}
-                                label={OPERATIONAL_LABELS[room.operationalState]}
+                                label={roomOperationalLabel(locale, room.operationalState)}
                               />
                             )}
                             {room.activeBlock !== null && (
                               <Badge colorScheme="danger" textTransform="none">
-                                Bloqueo hasta {formatDateTime(room.activeBlock.endsAt)}
+                                {t('frontOffice.rack.block', {
+                                  time: formatDateTime(room.activeBlock.endsAt),
+                                })}
                               </Badge>
                             )}
                           </HStack>
@@ -1359,8 +1467,10 @@ function FrontOfficeContent() {
                                 {room.currentStay.guestName}
                               </Text>
                               <Text fontSize="xs" color="gray.500">
-                                {room.currentStay.code} · salida{' '}
-                                {formatCalendarDate(room.currentStay.checkOutDate)}
+                                {room.currentStay.code} ·{' '}
+                                {t('frontOffice.stay.checkout', {
+                                  date: formatCalendarDate(room.currentStay.checkOutDate),
+                                })}
                               </Text>
                               <Button
                                 size="xs"
@@ -1375,25 +1485,27 @@ function FrontOfficeContent() {
                                   }
                                 }}
                               >
-                                Registrar incidencia
+                                {t('frontOffice.rack.registerIncident')}
                               </Button>
                             </Box>
                           ) : room.nextArrival !== null ? (
                             <Text fontSize="xs" color="gray.500" mt={2}>
-                              Próxima llegada: {room.nextArrival.guestName} ·{' '}
-                              {formatCalendarDate(room.nextArrival.checkInDate)}
+                              {t('frontOffice.rack.nextArrival', {
+                                name: room.nextArrival.guestName,
+                                date: formatCalendarDate(room.nextArrival.checkInDate),
+                              })}
                             </Text>
                           ) : (
                             <HStack justify="space-between" mt={2}>
                               <Text fontSize="xs" color="gray.400">
-                                Sin estancia activa
+                                {t('frontOffice.rack.noStay')}
                               </Text>
                               <Button
                                 size="xs"
                                 variant="ghost"
                                 onClick={() => openIncident(undefined, room)}
                               >
-                                Nota
+                                {t('frontOffice.rack.note')}
                               </Button>
                             </HStack>
                           )}
@@ -1407,27 +1519,29 @@ function FrontOfficeContent() {
                   <SectionCard>
                     <HStack justify="space-between" mb={3} wrap="wrap" gap={2}>
                       <Box>
-                        <Text fontWeight="semibold">Incidencias y notas</Text>
+                        <Text fontWeight="semibold">{t('frontOffice.incidents.title')}</Text>
                         <Text fontSize="xs" color="gray.500">
-                          Registro operativo auditable, separado de la reserva.
+                          {t('frontOffice.incidents.help')}
                         </Text>
                       </Box>
                       <HStack>
                         <Select
                           size="sm"
                           width="150px"
-                          aria-label="Estado de incidencias"
+                          aria-label={t('frontOffice.incidents.statusAria')}
                           value={incidentFilter}
                           onChange={(event) =>
                             setIncidentFilter(event.target.value as IncidentStatus | '')
                           }
                         >
-                          <option value="OPEN">Abiertas</option>
-                          <option value="RESOLVED">Resueltas</option>
-                          <option value="">Todas</option>
+                          <option value="OPEN">{t('frontOffice.incidents.filterOpen')}</option>
+                          <option value="RESOLVED">
+                            {t('frontOffice.incidents.filterResolved')}
+                          </option>
+                          <option value="">{t('frontOffice.incidents.filterAll')}</option>
                         </Select>
                         <Button size="sm" colorScheme="brand" onClick={() => openIncident()}>
-                          Nueva incidencia
+                          {t('frontOffice.incidents.new')}
                         </Button>
                       </HStack>
                     </HStack>
@@ -1437,7 +1551,7 @@ function FrontOfficeContent() {
                       error={incidents.error}
                       onRetry={incidents.reload}
                       isEmpty={(incidents.data?.items.length ?? 0) === 0}
-                      emptyText="No hay incidencias para el filtro seleccionado."
+                      emptyText={t('frontOffice.incidents.empty')}
                     >
                       <Stack spacing={2}>
                         {incidents.data?.items.map((incident) => (
@@ -1464,20 +1578,22 @@ function FrontOfficeContent() {
                                   </Text>
                                   <StatusBadge
                                     color={incident.status === 'OPEN' ? 'warning' : 'mint'}
-                                    label={INCIDENT_STATUS_LABELS[incident.status]}
+                                    label={incidentStatusLabel(locale, incident.status)}
                                   />
                                   <StatusBadge
                                     color={INCIDENT_SEVERITY_COLORS[incident.severity]}
-                                    label={`Severidad ${INCIDENT_SEVERITY_LABELS[incident.severity]}`}
+                                    label={t('frontOffice.incidents.severity', {
+                                      level: incidentSeverityLabel(locale, incident.severity),
+                                    })}
                                   />
                                   <Badge colorScheme="gray" textTransform="none">
-                                    {INCIDENT_TYPE_LABELS[incident.type]}
+                                    {incidentTypeLabel(locale, incident.type)}
                                   </Badge>
                                 </HStack>
                                 <Text fontSize="xs" color="gray.500" mt={1}>
                                   {incident.room !== null
-                                    ? `Hab. ${incident.room.number}`
-                                    : 'Sin habitación'}
+                                    ? t('frontOffice.rack.room', { number: incident.room.number })
+                                    : t('frontOffice.incidents.noRoom')}
                                   {incident.reservation !== null
                                     ? ` · ${incident.reservation.code}`
                                     : ''}
@@ -1493,7 +1609,7 @@ function FrontOfficeContent() {
                                 {incident.resolution !== null && (
                                   <Box mt={1} borderLeftWidth="2px" borderColor="mint.300" pl={2}>
                                     <Text fontSize="xs" color="gray.500">
-                                      Resolución
+                                      {t('frontOffice.incidents.resolution')}
                                       {incident.resolvedBy !== null
                                         ? ` · ${incident.resolvedBy.name}`
                                         : ''}{' '}
@@ -1510,7 +1626,7 @@ function FrontOfficeContent() {
                                   colorScheme="mint"
                                   onClick={() => openResolve(incident)}
                                 >
-                                  Resolver
+                                  {t('frontOffice.incidents.resolve')}
                                 </Button>
                               )}
                             </HStack>
@@ -1537,569 +1653,560 @@ function FrontOfficeContent() {
         onCompleted={reloadAll}
       />
 
-      <Modal isOpen={checkoutModal.isOpen} onClose={checkoutModal.onClose} size="md">
-        <ModalOverlay />
-        <ModalContent as="form" onSubmit={(event) => void handleCheckOut(event)}>
-          <ModalHeader>Check-out</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            {checkoutTarget !== null && (
-              <Stack spacing={3}>
-                <Text fontSize="sm">
-                  {checkoutTarget.guest.fullName} · Hab. {checkoutTarget.room.number} ·{' '}
-                  {checkoutTarget.reservation.code}
-                </Text>
-                <Text fontSize="xs" color="gray.500">
-                  Cierra la cuenta y la estancia en una sola transacción, y deja la habitación
-                  sucia. Si el cierre falla, la habitación no se libera.
-                </Text>
+      <ActionDialog
+        isOpen={checkoutModal.isOpen}
+        onClose={checkoutModal.onClose}
+        tone="critical"
+        title={t('frontOffice.checkout.title')}
+        summary={t('frontOffice.checkout.summary')}
+        confirmLabel={t('frontOffice.checkout.confirm')}
+        onConfirm={() => void handleCheckOut()}
+        isLoading={busy?.startsWith('check-out') === true}
+        hasUnsavedChanges={checkoutNotes.trim() !== '' || checkoutBalanceReason.trim() !== ''}
+        error={checkoutError === null ? undefined : errorMessage(checkoutError)}
+      >
+        {checkoutTarget !== null && (
+          <Stack spacing={3}>
+            <Text fontSize="sm">
+              {checkoutTarget.guest.fullName} · Hab. {checkoutTarget.room.number} ·{' '}
+              {checkoutTarget.reservation.code}
+            </Text>
 
-                {checkoutLoading && (
-                  <Text fontSize="sm" color="gray.500">
-                    Revisando la cuenta…
-                  </Text>
-                )}
-                {checkoutError !== null && (
-                  <Text fontSize="sm" color="danger.600">
-                    {errorMessage(checkoutError)}
-                  </Text>
-                )}
-
-                {checkoutReadiness !== null &&
-                  (() => {
-                    const currency =
-                      checkoutReadiness.folios[0]?.currencyCode ??
-                      property?.currencyCode ??
-                      'BRL';
-                    const hasBalance = checkoutReadiness.totals.balance !== '0.00';
-                    return (
-                      <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
-                        <Stack spacing={1}>
-                          <HStack justify="space-between">
-                            <Text fontSize="xs" color="gray.500">
-                              Cargos
-                            </Text>
-                            <Text fontSize="sm">
-                              {formatMoney(checkoutReadiness.totals.charges, currency)}
-                            </Text>
-                          </HStack>
-                          <HStack justify="space-between">
-                            <Text fontSize="xs" color="gray.500">
-                              Pagos
-                            </Text>
-                            <Text fontSize="sm">
-                              {formatMoney(checkoutReadiness.totals.payments, currency)}
-                            </Text>
-                          </HStack>
-                          <HStack justify="space-between">
-                            <Text fontSize="xs" color="gray.500">
-                              Saldo
-                            </Text>
-                            <Text fontSize="sm" fontWeight="semibold">
-                              {formatMoney(checkoutReadiness.totals.balance, currency)}
-                            </Text>
-                          </HStack>
-                          <HStack justify="space-between">
-                            <Text fontSize="xs" color="gray.500">
-                              Housekeeping
-                            </Text>
-                            <Text fontSize="sm">
-                              {HOUSEKEEPING_LABELS[checkoutReadiness.housekeeping.current]} →{' '}
-                              {HOUSEKEEPING_LABELS[checkoutReadiness.housekeeping.target]}
-                            </Text>
-                          </HStack>
-                        </Stack>
-
-                        {checkoutReadiness.warnings.length > 0 && (
-                          <Stack spacing={1} mt={3}>
-                            {checkoutReadiness.warnings.map((warning) => (
-                              <Text key={warning.code} fontSize="xs" color="warning.700">
-                                {warning.message}
-                              </Text>
-                            ))}
-                          </Stack>
-                        )}
-                        {checkoutReadiness.blockedReasons.length > 0 && (
-                          <Stack spacing={1} mt={3}>
-                            {checkoutReadiness.blockedReasons.map((reason) => (
-                              <Text key={reason.code} fontSize="xs" color="danger.600">
-                                {reason.message}
-                              </Text>
-                            ))}
-                          </Stack>
-                        )}
-
-                        {hasBalance && (
-                          <Stack spacing={2} mt={3}>
-                            <Checkbox
-                              size="sm"
-                              isChecked={checkoutAllowBalance}
-                              onChange={(event) => setCheckoutAllowBalance(event.target.checked)}
-                            >
-                              Autorizar checkout con saldo pendiente
-                            </Checkbox>
-                            {checkoutAllowBalance && (
-                              <Field label="Motivo" isRequired helper="Queda auditado en la cuenta.">
-                                <Textarea
-                                  size="sm"
-                                  rows={2}
-                                  maxLength={500}
-                                  value={checkoutBalanceReason}
-                                  onChange={(event) =>
-                                    setCheckoutBalanceReason(event.target.value)
-                                  }
-                                  required
-                                />
-                              </Field>
-                            )}
-                          </Stack>
-                        )}
-                      </Box>
-                    );
-                  })()}
-                <Field label="Notas de salida" helper="Opcional, hasta 2000 caracteres.">
-                  <Textarea
-                    rows={3}
-                    value={checkoutNotes}
-                    maxLength={2000}
-                    onChange={(event) => setCheckoutNotes(event.target.value)}
-                  />
-                </Field>
-              </Stack>
+            {checkoutLoading && (
+              <Text fontSize="sm" color="gray.500">
+                {t('frontOffice.checkout.loading')}
+              </Text>
             )}
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={checkoutModal.onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" colorScheme="brand" isLoading={busy?.startsWith('check-out')}>
-              Confirmar check-out
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+            {checkoutReadiness !== null &&
+              (() => {
+                const currency =
+                  checkoutReadiness.folios[0]?.currencyCode ?? property?.currencyCode ?? 'BRL';
+                const hasBalance = checkoutReadiness.totals.balance !== '0.00';
+                return (
+                  <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
+                    <Stack spacing={1}>
+                      <HStack justify="space-between">
+                        <Text fontSize="xs" color="gray.500">
+                          {t('frontOffice.checkout.charges')}
+                        </Text>
+                        <Text fontSize="sm">
+                          {formatMoney(checkoutReadiness.totals.charges, currency)}
+                        </Text>
+                      </HStack>
+                      <HStack justify="space-between">
+                        <Text fontSize="xs" color="gray.500">
+                          {t('frontOffice.checkout.payments')}
+                        </Text>
+                        <Text fontSize="sm">
+                          {formatMoney(checkoutReadiness.totals.payments, currency)}
+                        </Text>
+                      </HStack>
+                      <HStack justify="space-between">
+                        <Text fontSize="xs" color="gray.500">
+                          {t('frontOffice.checkout.balance')}
+                        </Text>
+                        <Text fontSize="sm" fontWeight="semibold">
+                          {formatMoney(checkoutReadiness.totals.balance, currency)}
+                        </Text>
+                      </HStack>
+                      <HStack justify="space-between">
+                        <Text fontSize="xs" color="gray.500">
+                          {t('frontOffice.checkout.housekeeping')}
+                        </Text>
+                        <Text fontSize="sm">
+                          {housekeepingLabel(locale, checkoutReadiness.housekeeping.current)} →{' '}
+                          {housekeepingLabel(locale, checkoutReadiness.housekeeping.target)}
+                        </Text>
+                      </HStack>
+                    </Stack>
 
-      <Modal
+                    {checkoutReadiness.warnings.length > 0 && (
+                      <Stack spacing={1} mt={3}>
+                        {checkoutReadiness.warnings.map((warning) => (
+                          <Text key={warning.code} fontSize="xs" color="warning.700">
+                            {warning.message}
+                          </Text>
+                        ))}
+                      </Stack>
+                    )}
+                    {checkoutReadiness.blockedReasons.length > 0 && (
+                      <Stack spacing={1} mt={3}>
+                        {checkoutReadiness.blockedReasons.map((reason) => (
+                          <Text key={reason.code} fontSize="xs" color="danger.600">
+                            {reason.message}
+                          </Text>
+                        ))}
+                      </Stack>
+                    )}
+
+                    {hasBalance && (
+                      <Stack spacing={2} mt={3}>
+                        <Checkbox
+                          size="sm"
+                          isChecked={checkoutAllowBalance}
+                          onChange={(event) => setCheckoutAllowBalance(event.target.checked)}
+                        >
+                          {t('frontOffice.checkout.allowBalance')}
+                        </Checkbox>
+                        {checkoutAllowBalance && (
+                          <Field
+                            label={t('frontOffice.checkout.reason')}
+                            isRequired
+                            helper={t('frontOffice.checkout.reasonHelper')}
+                          >
+                            <Textarea
+                              size="sm"
+                              rows={2}
+                              maxLength={500}
+                              value={checkoutBalanceReason}
+                              onChange={(event) => setCheckoutBalanceReason(event.target.value)}
+                              required
+                            />
+                          </Field>
+                        )}
+                      </Stack>
+                    )}
+                  </Box>
+                );
+              })()}
+            <Field
+              label={t('frontOffice.checkout.notes')}
+              helper={t('frontOffice.checkout.notesHelper')}
+            >
+              <Textarea
+                rows={3}
+                value={checkoutNotes}
+                maxLength={2000}
+                onChange={(event) => setCheckoutNotes(event.target.value)}
+              />
+            </Field>
+          </Stack>
+        )}
+      </ActionDialog>
+
+      <ActionDialog
         isOpen={moveModal.isOpen}
         onClose={moveModal.onClose}
         size="4xl"
-        scrollBehavior="inside"
+        tone="info"
+        title={t('frontOffice.move.title')}
+        summary={
+          moveResult !== null ? t('frontOffice.move.summaryDone') : t('frontOffice.move.summary')
+        }
+        confirmLabel={
+          moveResult !== null ? t('frontOffice.move.close') : t('frontOffice.move.confirm')
+        }
+        hideCancel={moveResult !== null}
+        hasUnsavedChanges={moveReason.trim() !== ''}
+        error={moveActionError === null ? undefined : roomMoveErrorMessage(moveActionError, t)}
+        onConfirm={moveResult !== null ? moveModal.onClose : () => void handleMove()}
+        isLoading={busy === `move:${moveTarget?.id ?? ''}`}
+        confirmDisabled={moveResult === null && (moveRoomId === '' || moveLoading)}
       >
-        <ModalOverlay />
-        <ModalContent as="form" onSubmit={(event) => void handleMove(event)}>
-          <ModalHeader>Cambiar habitación</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            {moveResult !== null ? (
-              <Stack spacing={3} align="center" py={8}>
-                <Badge colorScheme="mint">Cambio registrado</Badge>
-                <Text fontWeight="semibold">Habitación actualizada</Text>
-                <HStack fontSize="xl" fontWeight="bold" spacing={3}>
-                  <Text>Hab. {moveResult.fromNumber}</Text>
-                  <Text color="gray.400">→</Text>
-                  <Text>Hab. {moveResult.toNumber}</Text>
-                </HStack>
-                <Text fontSize="sm" color="gray.600" textAlign="center" maxW="380px">
-                  La reserva, la estancia y el room rack ya reflejan la nueva habitación. El
-                  motivo quedó auditado con actor, fecha y habitaciones de origen y destino.
-                </Text>
-              </Stack>
-            ) : (
-              moveTarget !== null && (
-                <Stack spacing={4}>
-                  <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
-                    <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                      <Box>
-                        <Text fontSize="xs" color="gray.500">
-                          Huésped
-                        </Text>
-                        <Text fontSize="sm" fontWeight="semibold">
-                          {moveTarget.guest.fullName}
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          {moveTarget.reservation.code} ·{' '}
-                          {formatCalendarDate(moveTarget.reservation.checkInDate)} →{' '}
-                          {formatCalendarDate(moveTarget.reservation.checkOutDate)} ·{' '}
-                          {moveTarget.reservation.nights} noches
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          {moveTarget.reservation.adults} adultos ·{' '}
-                          {moveTarget.reservation.children} menores
-                        </Text>
-                      </Box>
-                      <Box>
-                        <Text fontSize="xs" color="gray.500">
-                          Habitación actual
-                        </Text>
-                        <Text fontSize="sm" fontWeight="semibold">
-                          Hab. {moveTarget.room.number} · {moveTarget.reservation.roomType.name}
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          Piso {moveTarget.room.floor ?? '—'} · {moveTarget.room.building ?? '—'}
-                        </Text>
-                      </Box>
-                    </SimpleGrid>
+        {moveResult !== null ? (
+          <Stack spacing={3} align="center" py={8}>
+            <Badge colorScheme="mint">{t('frontOffice.move.doneBadge')}</Badge>
+            <Text fontWeight="semibold">{t('frontOffice.move.doneTitle')}</Text>
+            <HStack fontSize="xl" fontWeight="bold" spacing={3}>
+              <Text>{t('frontOffice.rack.room', { number: moveResult.fromNumber })}</Text>
+              <Text color="gray.400">→</Text>
+              <Text>{t('frontOffice.rack.room', { number: moveResult.toNumber })}</Text>
+            </HStack>
+            <Text fontSize="sm" color="gray.600" textAlign="center" maxW="380px">
+              {t('frontOffice.move.doneNote')}
+            </Text>
+          </Stack>
+        ) : (
+          moveTarget !== null && (
+            <Stack spacing={4}>
+              <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
+                <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                  <Box>
+                    <Text fontSize="xs" color="gray.500">
+                      {t('frontOffice.move.guest')}
+                    </Text>
+                    <Text fontSize="sm" fontWeight="semibold">
+                      {moveTarget.guest.fullName}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500">
+                      {moveTarget.reservation.code} ·{' '}
+                      {formatCalendarDate(moveTarget.reservation.checkInDate)} →{' '}
+                      {formatCalendarDate(moveTarget.reservation.checkOutDate)} ·{' '}
+                      {nightsLabel(t, moveTarget.reservation.nights)}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500">
+                      {adultsLabel(t, moveTarget.reservation.adults)} ·{' '}
+                      {minorsLabel(t, moveTarget.reservation.children)}
+                    </Text>
                   </Box>
-
-                  {moveLoading && (
-                    <Text fontSize="sm" color="gray.500">
-                      Buscando habitaciones disponibles…
+                  <Box>
+                    <Text fontSize="xs" color="gray.500">
+                      {t('frontOffice.move.currentRoom')}
                     </Text>
-                  )}
-                  {moveError !== null && (
-                    <Text fontSize="sm" color="danger.600">
-                      {errorMessage(moveError)}
+                    <Text fontSize="sm" fontWeight="semibold">
+                      {t('frontOffice.rack.room', { number: moveTarget.room.number })} ·{' '}
+                      {moveTarget.reservation.roomType.name}
                     </Text>
-                  )}
+                    <Text fontSize="xs" color="gray.500">
+                      {t('frontOffice.move.floor', {
+                        floor: moveTarget.room.floor ?? '—',
+                        building: moveTarget.room.building ?? '—',
+                      })}
+                    </Text>
+                  </Box>
+                </SimpleGrid>
+              </Box>
 
-                  {moveData !== null && (
-                    <>
-                      <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
-                        <Field label="Tipo">
-                          <Select
-                            size="sm"
-                            value={moveFilters.roomTypeId}
-                            onChange={(event) => updateMoveFilter('roomTypeId', event.target.value)}
-                          >
-                            <option value="">Todos</option>
-                            {moveRoomTypes.map((type) => (
-                              <option key={type.id} value={type.id}>
-                                {type.name} ({type.capacityAdults}A/{type.capacityChildren}N)
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                        <Field label="Piso">
-                          <Select
-                            size="sm"
-                            value={moveFilters.floor}
-                            onChange={(event) => updateMoveFilter('floor', event.target.value)}
-                          >
-                            <option value="">Todos</option>
-                            {moveFloors.map((floor) => (
-                              <option key={floor} value={floor}>
-                                {floor}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                        <Field label="Ala / edificio">
-                          <Select
-                            size="sm"
-                            value={moveFilters.building}
-                            onChange={(event) => updateMoveFilter('building', event.target.value)}
-                          >
-                            <option value="">Todas</option>
-                            {moveBuildings.map((building) => (
-                              <option key={building} value={building}>
-                                {building}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                        <Field label="Housekeeping">
-                          <Select
-                            size="sm"
-                            value={moveFilters.housekeeping}
-                            onChange={(event) =>
-                              updateMoveFilter(
-                                'housekeeping',
-                                event.target.value as MoveFilters['housekeeping'],
-                              )
-                            }
-                          >
-                            <option value="">Todos</option>
-                            {(
-                              ['DIRTY', 'CLEANING', 'CLEAN', 'INSPECTED'] as HousekeepingState[]
-                            ).map((state) => (
-                              <option key={state} value={state}>
-                                {HOUSEKEEPING_LABELS[state]}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                      </SimpleGrid>
-                      <HStack spacing={3} wrap="wrap" align="flex-end" justify="space-between">
-                        <Field label="Buscar UH">
-                          <Input
-                            size="sm"
-                            width="160px"
-                            value={moveFilters.search}
-                            onChange={(event) => updateMoveFilter('search', event.target.value)}
-                          />
-                        </Field>
-                        <Checkbox
-                          size="sm"
-                          isChecked={moveFilters.showIneligible}
-                          onChange={(event) =>
-                            updateMoveFilter('showIneligible', event.target.checked)
-                          }
-                        >
-                          Mostrar no elegibles
-                        </Checkbox>
-                        <Text fontSize="xs" color="gray.500">
-                          {filteredMoveCandidates.length} de {moveRooms.length} habitaciones
-                        </Text>
-                      </HStack>
+              {moveLoading && (
+                <Text fontSize="sm" color="gray.500">
+                  {t('frontOffice.move.searching')}
+                </Text>
+              )}
+              {moveError !== null && (
+                <Text fontSize="sm" color="danger.600">
+                  {errorMessage(moveError)}
+                </Text>
+              )}
 
-                      {moveRooms.length === 0 ? (
-                        <Text fontSize="sm" color="warning.700">
-                          La propiedad no tiene otras habitaciones cargadas.
-                        </Text>
-                      ) : filteredMoveCandidates.length === 0 ? (
-                        <Text fontSize="sm" color="warning.700">
-                          No hay habitaciones que cumplan los filtros. Ajustá el tipo, el piso o el
-                          estado de housekeeping.
-                        </Text>
-                      ) : (
-                        <TableContainer
-                          maxH="320px"
-                          overflowX="auto"
-                          overflowY="auto"
-                          borderWidth="1px"
-                          borderColor="line"
-                          borderRadius="md"
-                        >
-                          <Table size="sm" minW="720px">
-                            <Thead>
-                              <Tr>
-                                <Th>UH</Th>
-                                <Th>Tipo</Th>
-                                <Th>Piso / ala</Th>
-                                <Th>Housekeeping</Th>
-                                <Th>Estado</Th>
-                                <Th
-                                  position="sticky"
-                                  right={0}
-                                  zIndex={1}
-                                  bg="surface"
-                                  borderLeftWidth="1px"
-                                  borderLeftColor="line"
-                                >
-                                  Acción
-                                </Th>
-                              </Tr>
-                            </Thead>
-                            <Tbody>
-                              {filteredMoveCandidates.map((room) => (
-                                <Tr key={room.id} opacity={room.eligible ? 1 : 0.65}>
-                                  <Td fontWeight="semibold">{room.number}</Td>
-                                  <Td>
-                                    <Text fontSize="xs">{room.roomType.name}</Text>
-                                    <Text fontSize="xs" color="gray.500">
-                                      {room.roomType.capacityAdults}A /{' '}
-                                      {room.roomType.capacityChildren}N
-                                    </Text>
-                                  </Td>
-                                  <Td>
-                                    <Text fontSize="xs">{room.floor ?? '—'}</Text>
-                                    <Text fontSize="xs" color="gray.500">
-                                      {room.building ?? '—'}
-                                    </Text>
-                                  </Td>
-                                  <Td>
-                                    <StatusBadge
-                                      color={HOUSEKEEPING_COLORS[room.housekeepingState]}
-                                      label={HOUSEKEEPING_LABELS[room.housekeepingState]}
-                                    />
-                                  </Td>
-                                  <Td>
-                                    <Text fontSize="xs">
-                                      {room.occupancy === 'OCCUPIED' ? 'Ocupada' : 'Libre'} ·{' '}
-                                      {OPERATIONAL_LABELS[room.operationalState]}
-                                    </Text>
-                                    {room.activeBlock !== null && (
-                                      <Text fontSize="xs" color="danger.600">
-                                        Bloqueo {room.activeBlock.type} hasta{' '}
-                                        {formatDateTime(room.activeBlock.endsAt)}
-                                      </Text>
-                                    )}
-                                    {room.blockers.map((blocker) => (
-                                      <Text key={blocker.code} fontSize="xs" color="danger.600">
-                                        {ROOM_MOVE_BLOCKER_LABELS[blocker.code]}
-                                      </Text>
-                                    ))}
-                                  </Td>
-                                  <Td
-                                    isNumeric
-                                    position="sticky"
-                                    right={0}
-                                    bg="surface"
-                                    borderLeftWidth="1px"
-                                    borderLeftColor="line"
-                                  >
-                                    <Button
-                                      size="xs"
-                                      variant={moveRoomId === room.id ? 'solid' : 'outline'}
-                                      colorScheme="brand"
-                                      isDisabled={!room.eligible}
-                                      onClick={() => {
-                                        setMoveRoomId(room.id);
-                                        setMoveErrors((current) => {
-                                          const next = { ...current };
-                                          delete next['move.roomId'];
-                                          return next;
-                                        });
-                                      }}
-                                    >
-                                      {moveRoomId === room.id ? 'Elegida' : 'Elegir'}
-                                    </Button>
-                                  </Td>
-                                </Tr>
-                              ))}
-                            </Tbody>
-                          </Table>
-                        </TableContainer>
-                      )}
-                      {moveErrors['move.roomId'] !== undefined && (
-                        <Text fontSize="xs" color="danger.600">
-                          {moveErrors['move.roomId']}
-                        </Text>
-                      )}
-
-                      {selectedMoveRoom !== null && (
-                        <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
-                          <Text fontSize="sm" fontWeight="semibold" mb={2}>
-                            Comparación
-                          </Text>
-                          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                            <Box>
-                              <Text fontSize="xs" color="gray.500">
-                                Actual
-                              </Text>
-                              <Text fontSize="sm">
-                                Hab. {moveData.stay.room.number} ·{' '}
-                                {moveData.stay.room.roomType.name}
-                              </Text>
-                              <Text fontSize="xs" color="gray.500">
-                                Piso {moveData.stay.room.floor ?? '—'} ·{' '}
-                                {moveData.stay.room.building ?? '—'} ·{' '}
-                                {HOUSEKEEPING_LABELS[moveData.stay.room.housekeepingState]}
-                              </Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" color="gray.500">
-                                Destino
-                              </Text>
-                              <Text fontSize="sm">
-                                Hab. {selectedMoveRoom.number} · {selectedMoveRoom.roomType.name}
-                              </Text>
-                              <Text fontSize="xs" color="gray.500">
-                                Piso {selectedMoveRoom.floor ?? '—'} ·{' '}
-                                {selectedMoveRoom.building ?? '—'} ·{' '}
-                                {HOUSEKEEPING_LABELS[selectedMoveRoom.housekeepingState]}
-                              </Text>
-                            </Box>
-                          </SimpleGrid>
-                          {selectedMoveRoom.warnings.map((warning) => (
-                            <Text key={warning.code} fontSize="xs" color="warning.700" mt={2}>
-                              Housekeeping: la habitación destino figura{' '}
-                              {HOUSEKEEPING_LABELS[
-                                selectedMoveRoom.housekeepingState
-                              ].toLowerCase()}
-                              . Conviene confirmar con gobernanta antes de mover al huésped.
-                            </Text>
-                          ))}
-                        </Box>
-                      )}
-
-                      <Field
-                        label="Motivo del cambio"
-                        isRequired
-                        error={moveErrors['move.reason']}
-                        helper="Queda auditado con actor, fecha y habitaciones de origen y destino."
+              {moveData !== null && (
+                <>
+                  <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
+                    <Field label={t('frontOffice.move.type')}>
+                      <Select
+                        size="sm"
+                        value={moveFilters.roomTypeId}
+                        onChange={(event) => updateMoveFilter('roomTypeId', event.target.value)}
                       >
-                        <Textarea
-                          size="sm"
-                          rows={2}
-                          value={moveReason}
-                          maxLength={500}
-                          onChange={(event) => setMoveReason(event.target.value)}
-                          required
-                        />
-                      </Field>
-                    </>
-                  )}
-                </Stack>
-              )
-            )}
-          </ModalBody>
-          <ModalFooter>
-            {moveResult !== null ? (
-              <Button colorScheme="brand" onClick={moveModal.onClose}>
-                Cerrar
-              </Button>
-            ) : (
-              <>
-                <Button variant="ghost" mr={3} onClick={moveModal.onClose}>
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  colorScheme="brand"
-                  isLoading={busy === `move:${moveTarget?.id ?? ''}`}
-                  isDisabled={moveRoomId === '' || moveLoading}
-                >
-                  Cambiar habitación
-                </Button>
-              </>
-            )}
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+                        <option value="">{t('frontOffice.move.all')}</option>
+                        {moveRoomTypes.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.name} ({type.capacityAdults}A/{type.capacityChildren}N)
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label={t('frontOffice.move.floorLabel')}>
+                      <Select
+                        size="sm"
+                        value={moveFilters.floor}
+                        onChange={(event) => updateMoveFilter('floor', event.target.value)}
+                      >
+                        <option value="">{t('frontOffice.move.all')}</option>
+                        {moveFloors.map((floor) => (
+                          <option key={floor} value={floor}>
+                            {floor}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label={t('frontOffice.move.building')}>
+                      <Select
+                        size="sm"
+                        value={moveFilters.building}
+                        onChange={(event) => updateMoveFilter('building', event.target.value)}
+                      >
+                        <option value="">{t('frontOffice.move.allF')}</option>
+                        {moveBuildings.map((building) => (
+                          <option key={building} value={building}>
+                            {building}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label={t('frontOffice.move.housekeeping')}>
+                      <Select
+                        size="sm"
+                        value={moveFilters.housekeeping}
+                        onChange={(event) =>
+                          updateMoveFilter(
+                            'housekeeping',
+                            event.target.value as MoveFilters['housekeeping'],
+                          )
+                        }
+                      >
+                        <option value="">{t('frontOffice.move.all')}</option>
+                        {(['DIRTY', 'CLEANING', 'CLEAN', 'INSPECTED'] as HousekeepingState[]).map(
+                          (state) => (
+                            <option key={state} value={state}>
+                              {housekeepingLabel(locale, state)}
+                            </option>
+                          ),
+                        )}
+                      </Select>
+                    </Field>
+                  </SimpleGrid>
+                  <HStack spacing={3} wrap="wrap" align="flex-end" justify="space-between">
+                    <Field label={t('frontOffice.move.searchRoom')}>
+                      <Input
+                        size="sm"
+                        width="160px"
+                        value={moveFilters.search}
+                        onChange={(event) => updateMoveFilter('search', event.target.value)}
+                      />
+                    </Field>
+                    <Checkbox
+                      size="sm"
+                      isChecked={moveFilters.showIneligible}
+                      onChange={(event) => updateMoveFilter('showIneligible', event.target.checked)}
+                    >
+                      {t('frontOffice.move.showIneligible')}
+                    </Checkbox>
+                    <Text fontSize="xs" color="gray.500">
+                      {t('frontOffice.move.count', {
+                        filtered: filteredMoveCandidates.length,
+                        total: moveRooms.length,
+                      })}
+                    </Text>
+                  </HStack>
 
-      <Modal isOpen={noShowModal.isOpen} onClose={noShowModal.onClose} size="md">
-        <ModalOverlay />
-        <ModalContent as="form" onSubmit={(event) => void handleNoShow(event)}>
-          <ModalHeader>Marcar no-show</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            {noShowTarget !== null && (
-              <Stack spacing={3}>
-                <Text fontSize="sm">
-                  {noShowTarget.guest.fullName} · {noShowTarget.code} · llegada{' '}
-                  {formatCalendarDate(noShowTarget.checkInDate)}
-                </Text>
-                <Text fontSize="xs" color="gray.500">
-                  Solo se permite después de la fecha de llegada. La reserva queda como no-show y no
-                  se elimina.
-                </Text>
-                <Field label="Motivo" helper="Opcional, mínimo 3 caracteres.">
-                  <Textarea
-                    rows={3}
-                    value={noShowReason}
-                    maxLength={500}
-                    onChange={(event) => setNoShowReason(event.target.value)}
-                  />
-                </Field>
-              </Stack>
-            )}
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={noShowModal.onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" colorScheme="warning" isLoading={busy?.startsWith('no-show')}>
-              Confirmar no-show
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+                  {moveRooms.length === 0 ? (
+                    <Text fontSize="sm" color="warning.700">
+                      {t('frontOffice.move.noRooms')}
+                    </Text>
+                  ) : filteredMoveCandidates.length === 0 ? (
+                    <Text fontSize="sm" color="warning.700">
+                      {t('frontOffice.move.noMatches')}
+                    </Text>
+                  ) : (
+                    <TableContainer
+                      maxH="320px"
+                      overflowX="auto"
+                      overflowY="auto"
+                      borderWidth="1px"
+                      borderColor="line"
+                      borderRadius="md"
+                    >
+                      <Table size="sm" minW="720px">
+                        <Thead>
+                          <Tr>
+                            <Th>{t('frontOffice.move.tableRoom')}</Th>
+                            <Th>{t('frontOffice.move.tableType')}</Th>
+                            <Th>{t('frontOffice.move.tableFloor')}</Th>
+                            <Th>{t('frontOffice.move.tableHousekeeping')}</Th>
+                            <Th>{t('frontOffice.move.tableState')}</Th>
+                            <Th
+                              position="sticky"
+                              right={0}
+                              zIndex={1}
+                              bg="surface"
+                              borderLeftWidth="1px"
+                              borderLeftColor="line"
+                            >
+                              {t('frontOffice.move.tableAction')}
+                            </Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {filteredMoveCandidates.map((room) => (
+                            <Tr key={room.id} opacity={room.eligible ? 1 : 0.65}>
+                              <Td fontWeight="semibold">{room.number}</Td>
+                              <Td>
+                                <Text fontSize="xs">{room.roomType.name}</Text>
+                                <Text fontSize="xs" color="gray.500">
+                                  {room.roomType.capacityAdults}A / {room.roomType.capacityChildren}
+                                  N
+                                </Text>
+                              </Td>
+                              <Td>
+                                <Text fontSize="xs">{room.floor ?? '—'}</Text>
+                                <Text fontSize="xs" color="gray.500">
+                                  {room.building ?? '—'}
+                                </Text>
+                              </Td>
+                              <Td>
+                                <StatusBadge
+                                  color={HOUSEKEEPING_COLORS[room.housekeepingState]}
+                                  label={housekeepingLabel(locale, room.housekeepingState)}
+                                />
+                              </Td>
+                              <Td>
+                                <Text fontSize="xs">
+                                  {occupancyLabel(locale, room.occupancy)} ·{' '}
+                                  {roomOperationalLabel(locale, room.operationalState)}
+                                </Text>
+                                {room.activeBlock !== null && (
+                                  <Text fontSize="xs" color="danger.600">
+                                    {t('frontOffice.move.block', {
+                                      type: blockTypeLabel(t, room.activeBlock.type),
+                                      time: formatDateTime(room.activeBlock.endsAt),
+                                    })}
+                                  </Text>
+                                )}
+                                {room.blockers.map((blocker) => (
+                                  <Text key={blocker.code} fontSize="xs" color="danger.600">
+                                    {roomMoveBlockerLabel(t, blocker.code)}
+                                  </Text>
+                                ))}
+                              </Td>
+                              <Td
+                                isNumeric
+                                position="sticky"
+                                right={0}
+                                bg="surface"
+                                borderLeftWidth="1px"
+                                borderLeftColor="line"
+                              >
+                                <Button
+                                  size="xs"
+                                  variant={moveRoomId === room.id ? 'solid' : 'outline'}
+                                  colorScheme="brand"
+                                  isDisabled={!room.eligible}
+                                  onClick={() => {
+                                    setMoveRoomId(room.id);
+                                    setMoveErrors((current) => {
+                                      const next = { ...current };
+                                      delete next['move.roomId'];
+                                      return next;
+                                    });
+                                  }}
+                                >
+                                  {moveRoomId === room.id
+                                    ? t('frontOffice.move.chosen')
+                                    : t('frontOffice.move.choose')}
+                                </Button>
+                              </Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                  {moveErrors['move.roomId'] !== undefined && (
+                    <Text fontSize="xs" color="danger.600">
+                      {moveErrors['move.roomId']}
+                    </Text>
+                  )}
+
+                  {selectedMoveRoom !== null && (
+                    <Box borderWidth="1px" borderColor="line" borderRadius="md" p={3}>
+                      <Text fontSize="sm" fontWeight="semibold" mb={2}>
+                        {t('frontOffice.move.compare')}
+                      </Text>
+                      <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500">
+                            {t('frontOffice.move.actual')}
+                          </Text>
+                          <Text fontSize="sm">
+                            {t('frontOffice.rack.room', {
+                              number: moveData.stay.room.number,
+                            })}{' '}
+                            · {moveData.stay.room.roomType.name}
+                          </Text>
+                          <Text fontSize="xs" color="gray.500">
+                            {t('frontOffice.move.floor', {
+                              floor: moveData.stay.room.floor ?? '—',
+                              building: moveData.stay.room.building ?? '—',
+                            })}{' '}
+                            · {housekeepingLabel(locale, moveData.stay.room.housekeepingState)}
+                          </Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500">
+                            {t('frontOffice.move.destination')}
+                          </Text>
+                          <Text fontSize="sm">
+                            {t('frontOffice.rack.room', {
+                              number: selectedMoveRoom.number,
+                            })}{' '}
+                            · {selectedMoveRoom.roomType.name}
+                          </Text>
+                          <Text fontSize="xs" color="gray.500">
+                            {t('frontOffice.move.floor', {
+                              floor: selectedMoveRoom.floor ?? '—',
+                              building: selectedMoveRoom.building ?? '—',
+                            })}{' '}
+                            · {housekeepingLabel(locale, selectedMoveRoom.housekeepingState)}
+                          </Text>
+                        </Box>
+                      </SimpleGrid>
+                      {selectedMoveRoom.warnings.map((warning) => (
+                        <Text key={warning.code} fontSize="xs" color="warning.700" mt={2}>
+                          {t('frontOffice.move.housekeepingWarning', {
+                            state: housekeepingLabel(
+                              locale,
+                              selectedMoveRoom.housekeepingState,
+                            ).toLowerCase(),
+                          })}
+                        </Text>
+                      ))}
+                    </Box>
+                  )}
+
+                  <Field
+                    label={t('frontOffice.move.reason')}
+                    isRequired
+                    error={moveErrors['move.reason']}
+                    helper={t('frontOffice.move.reasonHelper')}
+                  >
+                    <Textarea
+                      size="sm"
+                      rows={2}
+                      value={moveReason}
+                      maxLength={500}
+                      onChange={(event) => setMoveReason(event.target.value)}
+                      required
+                    />
+                  </Field>
+                </>
+              )}
+            </Stack>
+          )
+        )}
+      </ActionDialog>
+
+      <ActionDialog
+        isOpen={noShowModal.isOpen}
+        onClose={noShowModal.onClose}
+        tone="warning"
+        title={t('frontOffice.noShow.title')}
+        summary={t('frontOffice.noShow.summary')}
+        confirmLabel={t('frontOffice.noShow.confirm')}
+        onConfirm={() => void handleNoShow()}
+        isLoading={busy?.startsWith('no-show') === true}
+        hasUnsavedChanges={noShowReason.trim() !== ''}
+        error={noShowError === null ? undefined : errorMessage(noShowError)}
+      >
+        {noShowTarget !== null && (
+          <Stack spacing={3}>
+            <Text fontSize="sm">
+              {noShowTarget.guest.fullName} · {noShowTarget.code} ·{' '}
+              {t('frontOffice.noShow.arrival', {
+                date: formatCalendarDate(noShowTarget.checkInDate),
+              })}
+            </Text>
+            <Field
+              label={t('frontOffice.noShow.reason')}
+              helper={t('frontOffice.noShow.reasonHelper')}
+            >
+              <Textarea
+                rows={3}
+                value={noShowReason}
+                maxLength={500}
+                onChange={(event) => setNoShowReason(event.target.value)}
+              />
+            </Field>
+          </Stack>
+        )}
+      </ActionDialog>
 
       <Modal isOpen={incidentModal.isOpen} onClose={incidentModal.onClose} size="lg">
         <ModalOverlay />
         <ModalContent as="form" onSubmit={(event) => void handleCreateIncident(event)}>
-          <ModalHeader>Nueva incidencia</ModalHeader>
+          <ModalHeader>{t('frontOffice.incidentForm.title')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={3}>
               {incidentTarget !== null && (
                 <Text fontSize="sm">
-                  Estancia: {incidentTarget.guest.fullName} · Hab. {incidentTarget.room.number}
+                  {t('frontOffice.incidentForm.stay', {
+                    name: incidentTarget.guest.fullName,
+                    number: incidentTarget.room.number,
+                  })}
                 </Text>
               )}
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                <Field label="Tipo">
+                <Field label={t('frontOffice.incidentForm.type')}>
                   <Select
                     value={incidentForm.type}
                     onChange={(event) =>
@@ -2109,14 +2216,14 @@ function FrontOfficeContent() {
                       })
                     }
                   >
-                    {Object.entries(INCIDENT_TYPE_LABELS).map(([value, label]) => (
+                    {INCIDENT_TYPES.map((value) => (
                       <option key={value} value={value}>
-                        {label}
+                        {incidentTypeLabel(locale, value)}
                       </option>
                     ))}
                   </Select>
                 </Field>
-                <Field label="Severidad">
+                <Field label={t('frontOffice.incidentForm.severity')}>
                   <Select
                     value={incidentForm.severity}
                     onChange={(event) =>
@@ -2126,15 +2233,19 @@ function FrontOfficeContent() {
                       })
                     }
                   >
-                    {Object.entries(INCIDENT_SEVERITY_LABELS).map(([value, label]) => (
+                    {(Object.keys(INCIDENT_SEVERITY_COLORS) as IncidentSeverity[]).map((value) => (
                       <option key={value} value={value}>
-                        {label}
+                        {incidentSeverityLabel(locale, value)}
                       </option>
                     ))}
                   </Select>
                 </Field>
               </SimpleGrid>
-              <Field label="Título" isRequired helper="3–120 caracteres.">
+              <Field
+                label={t('frontOffice.incidentForm.titleField')}
+                isRequired
+                helper={t('frontOffice.incidentForm.titleHelper')}
+              >
                 <Input
                   value={incidentForm.title}
                   maxLength={120}
@@ -2145,9 +2256,9 @@ function FrontOfficeContent() {
                 />
               </Field>
               <Field
-                label="Descripción"
+                label={t('frontOffice.incidentForm.description')}
                 isRequired
-                helper="3–4000 caracteres. Sin datos sensibles."
+                helper={t('frontOffice.incidentForm.descriptionHelper')}
               >
                 <Textarea
                   rows={4}
@@ -2161,7 +2272,7 @@ function FrontOfficeContent() {
               </Field>
               {incidentTarget === null && (
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                  <Field label="Alcance">
+                  <Field label={t('frontOffice.incidentForm.scope')}>
                     <Select
                       value={incidentForm.scope}
                       onChange={(event) =>
@@ -2171,40 +2282,46 @@ function FrontOfficeContent() {
                         })
                       }
                     >
-                      <option value="none">Sin vínculo</option>
-                      <option value="room">Habitación</option>
-                      <option value="stay">Estancia</option>
+                      <option value="none">{t('frontOffice.incidentForm.scopeNone')}</option>
+                      <option value="room">{t('frontOffice.incidentForm.scopeRoom')}</option>
+                      <option value="stay">{t('frontOffice.incidentForm.scopeStay')}</option>
                     </Select>
                   </Field>
                   {incidentForm.scope === 'room' && (
-                    <Field label="Habitación">
+                    <Field label={t('frontOffice.incidentForm.room')}>
                       <Select
                         value={incidentForm.roomId}
                         onChange={(event) =>
                           setIncidentForm({ ...incidentForm, roomId: event.target.value })
                         }
                       >
-                        <option value="">Seleccionar…</option>
+                        <option value="">{t('frontOffice.incidentForm.selectPlaceholder')}</option>
                         {data?.roomRack.map((room) => (
                           <option key={room.id} value={room.id}>
-                            Hab. {room.number} · {room.roomType.name}
+                            {t('frontOffice.incidentForm.roomOption', {
+                              number: room.number,
+                              type: room.roomType.name,
+                            })}
                           </option>
                         ))}
                       </Select>
                     </Field>
                   )}
                   {incidentForm.scope === 'stay' && (
-                    <Field label="Estancia">
+                    <Field label={t('frontOffice.incidentForm.stayField')}>
                       <Select
                         value={incidentForm.stayId}
                         onChange={(event) =>
                           setIncidentForm({ ...incidentForm, stayId: event.target.value })
                         }
                       >
-                        <option value="">Seleccionar…</option>
+                        <option value="">{t('frontOffice.incidentForm.selectPlaceholder')}</option>
                         {inHouse.map((stay) => (
                           <option key={stay.id} value={stay.id}>
-                            Hab. {stay.room.number} · {stay.guest.fullName}
+                            {t('frontOffice.incidentForm.stayOption', {
+                              number: stay.room.number,
+                              name: stay.guest.fullName,
+                            })}
                           </option>
                         ))}
                       </Select>
@@ -2214,62 +2331,58 @@ function FrontOfficeContent() {
               )}
               <Divider />
               <Text fontSize="xs" color="gray.500">
-                La incidencia queda vinculada a la propiedad seleccionada y genera auditoría.
+                {t('frontOffice.incidentForm.footnote')}
               </Text>
             </Stack>
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={incidentModal.onClose}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button type="submit" colorScheme="brand" isLoading={busy === 'incident:create'}>
-              Registrar
+              {t('frontOffice.incidentForm.register')}
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={resolveModal.isOpen} onClose={resolveModal.onClose} size="md">
-        <ModalOverlay />
-        <ModalContent as="form" onSubmit={(event) => void handleResolve(event)}>
-          <ModalHeader>Resolver incidencia</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            {resolveTarget !== null && (
-              <Stack spacing={3}>
-                <Text fontSize="sm" fontWeight="medium">
-                  {resolveTarget.title}
-                </Text>
-                <Text fontSize="xs" color="gray.500">
-                  {resolveTarget.description}
-                </Text>
-                <Field label="Resolución" isRequired helper="3–4000 caracteres.">
-                  <Textarea
-                    rows={4}
-                    value={resolution}
-                    maxLength={4000}
-                    onChange={(event) => setResolution(event.target.value)}
-                    required
-                  />
-                </Field>
-              </Stack>
-            )}
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={resolveModal.onClose}>
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              colorScheme="mint"
-              isLoading={busy?.startsWith('incident:resolve')}
-              isDisabled={resolution.trim().length < 3}
+      <ActionDialog
+        isOpen={resolveModal.isOpen}
+        onClose={resolveModal.onClose}
+        tone="info"
+        title={t('frontOffice.resolve.title')}
+        summary={t('frontOffice.resolve.summary')}
+        confirmLabel={t('frontOffice.incidents.resolve')}
+        onConfirm={() => void handleResolve()}
+        isLoading={busy?.startsWith('incident:resolve') === true}
+        confirmDisabled={resolution.trim().length < 3}
+        hasUnsavedChanges={resolution.trim() !== ''}
+        error={resolveError === null ? undefined : errorMessage(resolveError)}
+      >
+        {resolveTarget !== null && (
+          <Stack spacing={3}>
+            <Text fontSize="sm" fontWeight="medium">
+              {resolveTarget.title}
+            </Text>
+            <Text fontSize="xs" color="gray.500">
+              {resolveTarget.description}
+            </Text>
+            <Field
+              label={t('frontOffice.resolve.label')}
+              isRequired
+              helper={t('frontOffice.resolve.helper')}
             >
-              Resolver
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+              <Textarea
+                rows={4}
+                value={resolution}
+                maxLength={4000}
+                onChange={(event) => setResolution(event.target.value)}
+                required
+              />
+            </Field>
+          </Stack>
+        )}
+      </ActionDialog>
     </>
   );
 }

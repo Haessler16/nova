@@ -10,10 +10,7 @@ import { HousekeepingTransitionDto } from './dto/housekeeping-transition.dto';
 import { ListRoomHistoryQueryDto } from './dto/room-block.dto';
 import { assertHousekeepingTransition } from './housekeeping-transitions';
 import { RoomEventsService } from './room-events.service';
-import {
-  RoomAssignmentLease,
-  RoomAssignmentLeasesService,
-} from './room-assignment-leases.service';
+import { RoomAssignmentLease, RoomAssignmentLeasesService } from './room-assignment-leases.service';
 import { requirePropertyContext, RoomStateService } from './room-state.service';
 
 export interface RoomResponse {
@@ -280,12 +277,7 @@ export class RoomsService {
       this.currentBlocks(context.organizationId, propertyId, [roomId]),
       this.nextArrivals(context.organizationId, propertyId, [roomId], today),
     ]);
-    return this.mapRoom(
-      room,
-      leases.get(roomId) ?? null,
-      blocks[0] ?? null,
-      upcoming[0] ?? null,
-    );
+    return this.mapRoom(room, leases.get(roomId) ?? null, blocks[0] ?? null, upcoming[0] ?? null);
   }
 
   async create(context: TenantContext, dto: CreateRoomDto): Promise<RoomResponse> {
@@ -648,15 +640,16 @@ export class RoomsService {
               guestName: next.guest.fullName,
               checkInDate: formatCalendarDate(next.checkInDate),
             },
-      activeBlock:
-        block === null ? null : { id: block.id, type: block.type, endsAt: block.endsAt },
+      activeBlock: block === null ? null : { id: block.id, type: block.type, endsAt: block.endsAt },
       lease,
       createdAt: room.createdAt,
       updatedAt: room.updatedAt,
     };
   }
 
-  private withEmptyRelations(room: Prisma.RoomGetPayload<{ select: typeof ROOM_SELECT }>): RoomResponse {
+  private withEmptyRelations(
+    room: Prisma.RoomGetPayload<{ select: typeof ROOM_SELECT }>,
+  ): RoomResponse {
     return {
       ...room,
       occupancy: 'VACANT',
@@ -667,10 +660,7 @@ export class RoomsService {
     };
   }
 
-  private async buildSummary(
-    organizationId: string,
-    propertyId: string,
-  ): Promise<RoomListSummary> {
+  private async buildSummary(organizationId: string, propertyId: string): Promise<RoomListSummary> {
     const rooms = await this.prisma.room.findMany({
       where: { organizationId, propertyId, status: RecordStatus.ACTIVE },
       select: { id: true, housekeepingState: true, operationalState: true },
@@ -763,16 +753,15 @@ export class RoomsService {
     });
   }
 
-  private async buildFacets(
-    organizationId: string,
-    propertyId: string,
-  ): Promise<RoomListFacets> {
+  private async buildFacets(organizationId: string, propertyId: string): Promise<RoomListFacets> {
     const rooms = await this.prisma.room.findMany({
       where: { organizationId, propertyId, status: RecordStatus.ACTIVE },
       select: { floor: true, building: true },
     });
     return {
-      floors: [...new Set(rooms.map((room) => room.floor).filter((value) => value !== null))].sort(),
+      floors: [
+        ...new Set(rooms.map((room) => room.floor).filter((value) => value !== null)),
+      ].sort(),
       buildings: [
         ...new Set(rooms.map((room) => room.building).filter((value) => value !== null)),
       ].sort(),
@@ -790,11 +779,8 @@ export class RoomsService {
         message: 'Property not found in the selected organization.',
       });
     }
-    return computeOperationalDay(
-      new Date(),
-      property.timezone,
-      property.operationalDayStart,
-    ).localDate;
+    return computeOperationalDay(new Date(), property.timezone, property.operationalDayStart)
+      .localDate;
   }
 
   private async assertRoomType(

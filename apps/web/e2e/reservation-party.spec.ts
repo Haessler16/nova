@@ -151,7 +151,9 @@ async function openReservation(page: Page, code: string): Promise<void> {
 
   const row = page.getByRole('row').filter({ hasText: code });
   await expect(row).toBeVisible();
-  await row.getByRole('button', { name: 'Detalle' }).click();
+  // The Reservations screen renders the row action as a link (RowActionLink),
+  // so the accessible name is its aria-label, not the visible "Detalle" text.
+  await row.getByRole('link', { name: `Abrir reserva ${code}` }).click();
   await expect(page.getByTestId('reservation-party')).toBeVisible();
 }
 

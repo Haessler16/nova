@@ -1078,3 +1078,164 @@ These choices should be confirmed against the existing repository and current st
   - si el piloto exige que el destino esté limpio (bloqueo, no advertencia) o que inspección pendiente bloquee;
   - qué roles pueden mover una estancia y si el motivo debe ser obligatorio siempre;
   - si el cambio debe notificar a gobernanza o registrar consumos/llaves asociados al traslado.
+
+### ADR-057 — Un único `ActionDialog` con tonos concentra la jerarquía y el comportamiento de las decisiones operativas
+
+- Status: accepted and implemented in Fase 6 for Front Office; adoption in the remaining screens pending.
+- Date: 2026-11-17.
+- Context: cada pantalla de Front Office escribía su propio `Modal` con cabecera, pie y botones, el error de una mutación sólo aparecía como toast efímero y el foco inicial caía en el primer campo del formulario. La ficha pide un sistema consistente (información, advertencia, confirmación y acción crítica) con foco inicial, cierre controlado, anti doble submit y errores en contexto, sin convertir cada aviso en un modal.
+- Options:
+  1. seguir con modales ad hoc y normalizar sólo el texto (rechazado: el comportamiento —foco, Escape, doble submit, errores— seguiría divergiendo por pantalla);
+  2. cuatro componentes `InfoDialog`/`WarningDialog`/`ConfirmDialog`/`CriticalActionDialog` (rechazado: cuatro copias de la misma estructura y del mismo comportamiento, con riesgo de deriva);
+  3. un `ActionDialog` con el tono como dato, comportamiento único y props para el contenido (elegido).
+- Decision:
+  - `apps/web/src/components/action-dialog.tsx` expone `tone` (`info`, `warning`, `critical`), `title`, `summary`, `children`, `confirmLabel`, `onConfirm`, `hideCancel`, `isLoading`, `confirmDisabled`, `error` (mensaje ya localizado) y `size`. Todo lo demás es comportamiento fijo, no configuración.
+  - El foco inicial siempre cae en la acción segura (cancelar o cerrar); el foco atrapado y su retorno al disparador quedan en manos de Chakra.
+  - `critical` y cualquier diálogo con una petición en vuelo bloquean `Escape`, el clic en el overlay y el botón de cierre: una operación significativa exige una decisión explícita.
+  - Confirmar es un `submit` deshabilitado mientras carga, con una guarda adicional en el handler; un doble clic no puede enviar dos mutaciones.
+  - Los errores del servidor se renderizan dentro del diálogo (`ErrorAlert` o texto de dominio mapeado) en lugar de un toast; el modal permanece abierto y editable.
+  - El toast sigue existiendo para el éxito de una operación y para avisos simples; un modal no es un canal de notificación.
+  - No se crean wrappers por variante: un tono nuevo es un valor del enum, no un componente nuevo.
+- Consequences:
+  - Los flujos convertidos ganan consistencia y pruebas Playwright de foco, cierre, error y envío único; los no convertidos (Reservas, Caja, Catálogo, alta de incidencias) siguen con su composición previa hasta su propia pasada.
+  - El color de la acción principal se deriva del tono (`critical` → `danger`); no hay prop de color. La severidad la comunican además el icono, el eyebrow y la consecuencia, de modo que el color nunca es el único indicador.
+  - Con texto escrito, cualquier intento de cierre abre «¿Descartar lo escrito?» («Seguir editando» / «Descartar»). El aviso no interviene en el cierre exitoso que hace la pantalla y no cambia el reset del formulario al abrir, que sigue evitando arrastrar datos entre huéspedes.
+- Validation required:
+  - si el hotel quiere que `Escape` también descarte una acción crítica (hoy no lo hace);
+  - si el aviso de descarte debe cubrir también selecciones (hoy solo texto escrito);
+  - qué mensajes de dominio deben traducirse antes de la Fase 7.
+
+### ADR-058 — i18n propia con diccionarios tipados y `pt-BR` prioritario, activada por cookie durante la migración
+
+- Status: accepted; implemented for the shared layer and entry routes in Fase 7 (part 1). Screens pending.
+- Date: 2026-11-18.
+- Context: la ficha prioriza `pt-BR` para la interfaz de recepción, pero ADR-050 dejó la copia en español «para acompañar la app existente» y no había ninguna capa de i18n: ~292 cadenas visibles estaban escritas a mano dentro de 31 archivos. Traducir todo de una vez, sin capa, garantiza pantallas mezcladas y un glosario inconsistente (`Habitación`/`UH`, `Folio`/`Conta`). El requisito de la ficha es explícito: no mezclar portugués y español en la misma pantalla, y no cambiar los valores persistidos por una traducción.
+- Options:
+  1. reemplazar la copia en el lugar por portugués y abandonar el español (rechazado: pierde el idioma actual del piloto, no deja glosario central y obliga a tocar todo el producto en un único cambio irreversible);
+  2. incorporar `next-intl`/`react-intl` (rechazado por ahora: dependencia nueva para necesidades que hoy son diccionarios estáticos, un locale activo por sesión e `Intl`; sin plurales ICU ni carga diferida);
+  3. diccionarios tipados propios, resolución de locale en el servidor y `t()` sin dependencias (elegido).
+- Decision:
+  - `apps/web/src/lib/i18n/` contiene `es` (fuente de verdad de las claves y del texto actual), `pt-BR` (tipado como `Record<TranslationKey, string>`, de modo que una clave sin traducir es un error de `tsc`) y un `translate(locale, key, vars)` con interpolación `{placeholder}`.
+  - El locale activo se resuelve en el layout raíz a partir de la cookie `nova_locale`; un valor desconocido cae en `DEFAULT_LOCALE`. El layout escribe `lang` en `<html>` y pasa el locale al `I18nProvider`, así el primer render de servidor y el de cliente coinciden y no hay desajuste de hidratación. La cookie es una preferencia, nunca autorización.
+  - `DEFAULT_LOCALE` se mantiene en `es` mientras la migración avance: nada cambia para el piloto y las suites e2e siguen afirmando el mismo texto. Al terminar la migración, pasar el idioma por defecto a `pt-BR` es un cambio de una línea; no se expone un selector de idioma en la UI hasta entonces.
+  - Cada pantalla se migra de forma atómica: una pantalla queda entera en el diccionario o entera en español, nunca a medias, para cumplir «no mezclar idiomas en la misma pantalla».
+  - No se traducen identificadores de enums ni valores de API (`CHECKED_IN`, `CASH_IN`, `OUT_OF_ORDER`): sólo sus etiquetas. El parser `pt-br-notes-v1` y su diccionario quedan fuera de esta capa.
+  - Glosario de recepción adoptado en `pt-BR`: `UH` (unidad habitacional), `Hóspede`, `Governança`, `Caixa`, `Conta` (folio), `Reserva`, `Check-in`, `Checkout`, `Propriedade`.
+  - `format.ts` expone `INTL_LOCALE` (`es-AR`, `pt-BR`) para que fechas e importes sigan el locale cuando las pantallas migren.
+- Consequences:
+  - La copia compartida (chrome, navegación, `ActionDialog`, estados de carga/error/vacío, login y página offline) ya se resuelve por diccionario y responde a `nova_locale=pt-BR`; el resto de las pantallas sigue en español y se migra en las partes 2–4 del informe de fase.
+  - Mientras `DEFAULT_LOCALE` sea `es`, activar `pt-BR` muestra portugués sólo en las superficies migradas: es una vista previa de QA, no el estado de entrega. La fase cierra cuando todas las pantallas estén migradas y el valor por defecto cambie.
+  - ADR-050 queda superado en su punto «UI copy stays in Spanish»: el español deja de ser el único idioma y pasa a ser un locale más.
+  - No hay dependencias nuevas ni cambios de contrato HTTP; los valores persistidos y los códigos de error no cambian.
+- Validation required:
+  - confirmar el glosario con el hotel piloto (`UH` vs `Apartamento`, `Conta` vs `Folio`, `Caixa e fechamento` vs `Caixa`);
+  - decidir si `pt-BR` pasa a ser el idioma por defecto de las propiedades existentes o sólo de las nuevas;
+  - definir si se necesita un selector de idioma por usuario y si debe persistirse en el servidor.
+
+## ADR-059 — Validaciones y etiquetas localizables sin duplicar reglas
+
+- Context: la pantalla `/reservations` valida con `lib/validation` y muestra etiquetas de `lib/format`, ambas compartidas con pantallas todavía en español. Traducir las reglas por pantalla duplicaría límites y mensajes, y traducir los mapas globales rompería el texto de las pantallas no migradas.
+- Decision:
+  - `ValidationCopy` suma plantillas **opcionales** (`minLength`, `date`, `dateOrder`, `nights`, `code`, `emailRequired`, `emailInvalid`, `phoneInvalid`). Cada validador acepta un `copy` opcional y devuelve el texto histórico en español cuando no se lo pasa: los llamadores existentes no cambian y la pantalla migrada arma el objeto desde el diccionario.
+  - `validateGuest` acepta además `labels` (nombre, documento, notas) con el mismo criterio.
+  - Para las etiquetas de enums, `format.ts` gana `*_LABEL_KEYS` + helper `xxxLabel(locale, value)` (`reservationStatusLabel`, `documentTypeLabel`, `documentStatusLabel`, `reservationDocumentLabel`, `instructionCategoryLabel`, `instructionPriorityLabel`, `instructionStatusLabel`, `instructionActionLabel`, `instructionMomentLabel`, `instructionVisibilityLabel`). Los mapas `*_LABELS` en español se derivan de `translate('es', …)` y quedan sólo para pantallas no migradas.
+  - Los paneles del detalle de la reserva (`reservation-party`, `instructions-panel`, `documents-panel`) se localizan en su lugar con `useI18n()`; al ser compartidos, en `pt-BR` aparecen en portugués también dentro de pantallas aún no migradas.
+- Consequences:
+  - No hay reglas de negocio nuevas ni relajadas: sólo cambia la fuente del texto.
+  - Las reglas de validación siguen viviendo una sola vez, en `lib/validation`, con límites espejo de los DTO.
+  - Mientras `DEFAULT_LOCALE` sea `es`, el piloto no ve ningún cambio de texto ni de comportamiento.
+- Validation required:
+  - revisar el glosario de los paneles compartidos (`Comitiva` vs `Fiesta`, `Hospedado` vs `En casa`) con el hotel piloto.
+
+## ADR-060 — RLS como defensa en profundidad del tenant (propuesta, no implementada)
+
+- Status: proposed; requires approval before any implementation.
+- Date: 2026-11-19.
+- Context: hoy el aislamiento multifinca depende de que cada consulta filtre por
+  `organizationId`/`propertyId`. Está resuelto en servidor y cubierto por 19 casos
+  e2e de aislamiento, pero sigue siendo una convención: un `findMany` sin filtro
+  devolvería datos de otro hotel. El aislamiento es la prioridad nº 1 de AGENTS.md.
+- Options:
+  1. mantener sólo la convención de aplicación (rechazado a medio plazo: un error
+     de código es una fuga silenciosa);
+  2. RLS con `set_config` por transacción y roles separados (propuesto);
+  3. RLS con conexiones por tenant (rechazado: multiplica pools y complica PgBouncer).
+- Decision (a validar): roles `nova_migrator` (owner, migraciones) y `nova_app`
+  (API, `NOSUPERUSER NOBYPASSRLS`); cada request ejecuta sus consultas en una
+  transacción que fija `app.organization_id` con `set_config(..., true)`;
+  fail-closed (sin variable, 0 filas). Piloto en una tabla (`Incident`) y
+  extensión tabla por tabla.
+- Consequences: cambia el modelo de conexión y el `PrismaService`; los tests de
+  RLS deben usar un rol no superusuario (el usuario `nova` del CI es superusuario
+  e ignora RLS). Rollback = `ALTER TABLE ... DISABLE ROW LEVEL SECURITY`.
+- Validation required: aprobación explícita, medición de `EXPLAIN` antes/después y
+  plan de migración de los roles en cada entorno.
+
+## ADR-061 — LGPD operativa: retención, anonimización y auditoría de lectura (propuesta)
+
+- Status: proposed; no production code until approved with the pilot hotel and legal review.
+- Date: 2026-11-19.
+- Context: `Guest` guarda `fullName`, `email`, `phone`, `documentType`,
+  `documentNumber`, `notes` y existe `GuestFnrhProfile`. No hay retención,
+  anonimización, derechos del titular ni registro de lecturas sensibles (hallazgo
+  F-06 de la auditoría).
+- Decision (a validar):
+  - retención diferenciada por tipo de dato (huésped sin estadía, con estadía,
+    datos fiscales/FNRH), definida con el hotel y asesoría legal;
+  - anonimización transaccional (nunca hard delete) que conserva folios y
+    documentos fiscales por obligación legal, bloqueada si hay estadía activa;
+  - permiso RBAC nuevo para exportar/anonimizar y auditoría de cada ejecución;
+  - registro de lectura de documento/teléfono/email completo con interceptor.
+- Consequences: agrega estados de archivo, permisos y jobs de retención por lotes
+  idempotentes; no cambia el contrato HTTP existente.
+- Validation required: plazos legales, qué se conserva, quién ejecuta y con qué
+  aprobación. Mientras no se apruebe, no se implementa.
+
+## ADR-062 — Pagos: interfaz `PaymentProvider` antes de elegir proveedor (propuesta)
+
+- Status: proposed; no implementation.
+- Date: 2026-11-19.
+- Context: no se almacenan PAN/CVV y no hay integración de pagos. Elegir proveedor
+  antes de definir la interfaz acopla el dominio a un vendor.
+- Decision (a validar): definir `PaymentProvider` (tokenización, preautorización,
+  captura, reverso, webhooks idempotentes) y una máquina de estados de pago
+  explícita; la conciliación se apoya en PostgreSQL como fuente de verdad.
+- Validation required: proveedor, requisitos fiscales y de adquirencia del piloto.
+
+## ADR-063 — Offline real: outbox idempotente en cliente (propuesta)
+
+- Status: proposed; el modo offline actual sólo bloquea escrituras (ADR-037).
+- Date: 2026-11-19.
+- Decision (a validar): `Idempotency-Key` por mutación, outbox local con
+  reintentos, resolución de conflictos explícita y una lista cerrada de
+  operaciones permitidas sin red. Redis/PostgreSQL siguen siendo la autoridad.
+- Validation required: requisitos de continuidad del piloto y autonomía eléctrica/WAN.
+
+## ADR-064 — Perfil de huésped con historial (bloqueado por ADR-061)
+
+- Status: proposed; depende de la decisión de retención y anonimización.
+- Date: 2026-11-19.
+- Decision (a validar): detalle de huésped con reservas/estancias vinculadas,
+  permisos por recurso y minimización por defecto (documento enmascarado salvo
+  lectura autorizada y auditada).
+
+## ADR-065 — Autenticación de producción: IdP externo vs. auth local
+
+- Status: proposed.
+- Date: 2026-11-19.
+- Context: la auth local con sesiones, MFA y CSRF es una transición controlada y
+  no está declarada producción-ready.
+- Decision (a validar): revisión de seguridad de la auth local (rotación de
+  secretos, recuperación de cuenta, bloqueo, auditoría) frente a un IdP externo
+  con OIDC/SAML y aprovisionamiento por organización.
+- Validation required: proveedor, coste, requisitos de SSO del piloto.
+
+## ADR-066 — FNRH, OCR/PDF y Academy fuera de alcance hasta el piloto
+
+- Status: proposed.
+- Date: 2026-11-19.
+- Context: AGENTS.md prohíbe inventar requisitos fiscales ni comportamiento de
+  proveedores, y exige no introducir IA/OCR cuando reglas y CSV alcanzan.
+- Decision: mantener FNRH/PIX/NFS-e/OCR/Academy como discovery; no implementar
+  contratos ni campos obligatorios sin documentación oficial y validación del
+  hotel piloto.

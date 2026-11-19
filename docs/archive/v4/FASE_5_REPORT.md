@@ -24,19 +24,19 @@ confirmación. No se creó un endpoint de movimiento paralelo.
 
 ## 2. Existente / falta / se modifica
 
-| Requisito de la ficha | Antes | Ahora |
-| --------------------- | ----- | ----- |
-| Mostrar reserva/estancia y habitación actual | El modal recibía el `Stay` de la fila | La cabecera del modal muestra huésped, código, fechas, noches, ocupantes y habitación actual con tipo, piso, ala y housekeeping |
-| Listar habitaciones destino candidatas | Selector con el room rack, sin elegibilidad | `GET /stays/:id/room-move-candidates` con el inventario de la propiedad menos la habitación actual |
-| Filtros por tipo/capacidad/piso/ala/estado | Ninguno | Tipo (con capacidad visible), piso, ala/edificio, housekeeping y búsqueda por UH, combinables |
-| Excluir destinos no elegibles | No se sabía hasta enviar el formulario | Ocultas por defecto; «Mostrar no elegibles» las lista con su bloqueo (`ROOM_MOVE_BLOCKER_LABELS`) |
-| Mostrar diferencias y advertencias | Ninguna | Panel de comparación actual/destino con housekeeping y advertencia `housekeeping_not_ready` |
-| Motivos de rechazo sin duplicados | n/a | Una habitación ocupada reporta sólo `room_occupied`; la reserva de la estancia ocupante no se repite como `room_not_available` |
-| Solicitar motivo | Opcional | Obligatorio en UI (3–500) y opcional en API con default `Room move.` |
-| Confirmar | `POST` con `roomId` | Igual, con revalidación transaccional; conflicto explicado y alternativas refrescadas |
-| Mostrar resultado y habitación nueva | Toast genérico | Panel «Cambio registrado» con `Hab. origen → Hab. destino` y nota de auditoría |
-| Reutilizar el endpoint existente | Sí | Sí; el contrato sólo gana `reason` documentado y errores explícitos |
-| Auditar actor, fecha, origen, destino y motivo | `reservation.room_moved` sin números de habitación | Auditoría ampliada con `fromRoomNumber`/`toRoomNumber`; se mantiene `ReservationHistory` |
+| Requisito de la ficha                          | Antes                                              | Ahora                                                                                                                           |
+| ---------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Mostrar reserva/estancia y habitación actual   | El modal recibía el `Stay` de la fila              | La cabecera del modal muestra huésped, código, fechas, noches, ocupantes y habitación actual con tipo, piso, ala y housekeeping |
+| Listar habitaciones destino candidatas         | Selector con el room rack, sin elegibilidad        | `GET /stays/:id/room-move-candidates` con el inventario de la propiedad menos la habitación actual                              |
+| Filtros por tipo/capacidad/piso/ala/estado     | Ninguno                                            | Tipo (con capacidad visible), piso, ala/edificio, housekeeping y búsqueda por UH, combinables                                   |
+| Excluir destinos no elegibles                  | No se sabía hasta enviar el formulario             | Ocultas por defecto; «Mostrar no elegibles» las lista con su bloqueo (`ROOM_MOVE_BLOCKER_LABELS`)                               |
+| Mostrar diferencias y advertencias             | Ninguna                                            | Panel de comparación actual/destino con housekeeping y advertencia `housekeeping_not_ready`                                     |
+| Motivos de rechazo sin duplicados              | n/a                                                | Una habitación ocupada reporta sólo `room_occupied`; la reserva de la estancia ocupante no se repite como `room_not_available`  |
+| Solicitar motivo                               | Opcional                                           | Obligatorio en UI (3–500) y opcional en API con default `Room move.`                                                            |
+| Confirmar                                      | `POST` con `roomId`                                | Igual, con revalidación transaccional; conflicto explicado y alternativas refrescadas                                           |
+| Mostrar resultado y habitación nueva           | Toast genérico                                     | Panel «Cambio registrado» con `Hab. origen → Hab. destino` y nota de auditoría                                                  |
+| Reutilizar el endpoint existente               | Sí                                                 | Sí; el contrato sólo gana `reason` documentado y errores explícitos                                                             |
+| Auditar actor, fecha, origen, destino y motivo | `reservation.room_moved` sin números de habitación | Auditoría ampliada con `fromRoomNumber`/`toRoomNumber`; se mantiene `ReservationHistory`                                        |
 
 ---
 
@@ -49,10 +49,10 @@ respuesta; el movimiento sigue escribiendo `Stay`, `Reservation`, `ReservationHi
 
 ## 4. API
 
-| Método | Ruta | Permiso | Notas |
-| ------ | ---- | ------- | ----- |
-| GET | `/api/v1/front-office/stays/:id/room-move-candidates` | `front_office.read` | Solo lectura; no reserva ni adquiere lease |
-| POST | `/api/v1/front-office/stays/:id/room-move` | `front_office.manage` | Transaccional; cuerpo `{ roomId, reason? }` |
+| Método | Ruta                                                  | Permiso               | Notas                                       |
+| ------ | ----------------------------------------------------- | --------------------- | ------------------------------------------- |
+| GET    | `/api/v1/front-office/stays/:id/room-move-candidates` | `front_office.read`   | Solo lectura; no reserva ni adquiere lease  |
+| POST   | `/api/v1/front-office/stays/:id/room-move`            | `front_office.manage` | Transaccional; cuerpo `{ roomId, reason? }` |
 
 Contrato del read model:
 
@@ -135,13 +135,13 @@ pendiente que usa la prueba de check-in en habitación sucia:
 
 ### Comandos ejecutados
 
-| Comando | Resultado |
-| ------- | --------- |
-| `pnpm --filter @nova/api typecheck` | OK |
-| `pnpm --filter @nova/web typecheck` | OK |
-| `pnpm --filter @nova/api lint` | OK |
-| `pnpm --filter @nova/web lint` | OK |
-| `pnpm test:e2e:isolated` | 17 suites / 155 tests OK (schema temporal creado y eliminado) |
+| Comando                             | Resultado                                                     |
+| ----------------------------------- | ------------------------------------------------------------- |
+| `pnpm --filter @nova/api typecheck` | OK                                                            |
+| `pnpm --filter @nova/web typecheck` | OK                                                            |
+| `pnpm --filter @nova/api lint`      | OK                                                            |
+| `pnpm --filter @nova/web lint`      | OK                                                            |
+| `pnpm test:e2e:isolated`            | 17 suites / 155 tests OK (schema temporal creado y eliminado) |
 
 No se ejecutó la suite Playwright de navegador ni capturas: el flujo no se verificó visualmente en esta
 sesión (ver limitaciones).
@@ -150,16 +150,16 @@ sesión (ver limitaciones).
 
 ## 7. Estado de aceptación (Fase 5)
 
-| Criterio de la ficha | Estado | Evidencia |
-| -------------------- | ------ | --------- |
-| Movimiento exitoso con revalidación transaccional | `PROBADO` | E2E 2 (`room-move`, `moveCount`, reserva) |
-| Movimiento rechazado por conflicto (bloqueo, ocupación, tipo, solapamiento) | `PROBADO` | E2E 1, 2, 3, 4 |
-| Permisos (`front_office.read`/`manage`) | `PROBADO` | E2E 1 |
-| Auditoría con actor, motivo y habitaciones | `PROBADO` | E2E 3 (`AuditEvent` + `ReservationHistory`) |
-| Aislamiento tenant/propiedad | `PROBADO` (API) | Filtros por organización/propiedad en el servicio + E2E de `stay_not_found` |
-| UX guiada: actual, candidatas, filtros, diferencias, motivo, resultado | `IMPLEMENTADO` | `/front-office`, modal «Cambiar habitación» |
-| UX validada con prueba de usuario/navegador | `NO INICIADO` | Requiere Playwright y servidores; no ejecutado en esta sesión |
-| Evidencia visual (desktop/tablet/estados) | `NO INICIADO` | Sin capturas |
+| Criterio de la ficha                                                        | Estado          | Evidencia                                                                   |
+| --------------------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------- |
+| Movimiento exitoso con revalidación transaccional                           | `PROBADO`       | E2E 2 (`room-move`, `moveCount`, reserva)                                   |
+| Movimiento rechazado por conflicto (bloqueo, ocupación, tipo, solapamiento) | `PROBADO`       | E2E 1, 2, 3, 4                                                              |
+| Permisos (`front_office.read`/`manage`)                                     | `PROBADO`       | E2E 1                                                                       |
+| Auditoría con actor, motivo y habitaciones                                  | `PROBADO`       | E2E 3 (`AuditEvent` + `ReservationHistory`)                                 |
+| Aislamiento tenant/propiedad                                                | `PROBADO` (API) | Filtros por organización/propiedad en el servicio + E2E de `stay_not_found` |
+| UX guiada: actual, candidatas, filtros, diferencias, motivo, resultado      | `IMPLEMENTADO`  | `/front-office`, modal «Cambiar habitación»                                 |
+| UX validada con prueba de usuario/navegador                                 | `NO INICIADO`   | Requiere Playwright y servidores; no ejecutado en esta sesión               |
+| Evidencia visual (desktop/tablet/estados)                                   | `NO INICIADO`   | Sin capturas                                                                |
 
 ---
 

@@ -1,4 +1,8 @@
-# NOVA PMS
+# NOVA PMS — referencia completa
+
+> Documento de referencia extendida. El punto de entrada es el `README.md` de la
+> raíz y el índice de documentación es `docs/README.md`. Algunas rutas de fases
+> históricas viven ahora en `docs/archive/`.
 
 SaaS hotelero multi-tenant. Este repositorio contiene las **Phases 1–11** ejecutables de punta a punta —Foundation, configuración de propiedad e inventario, huéspedes y reservas, **Front Office**, folios/caja/night audit, hardening de piloto e importación CSV, documentos/reportes, fiesta de reserva FNRH local y notas/instrucciones—: monorepo, API NestJS, **UI web Next.js + Chakra UI**, PostgreSQL/Redis, Prisma, autenticación local con sesiones/MFA/recuperación, CSRF, rate limiting, contexto tenant en servidor, RBAC por organización y propiedad, auditoría append-only, health checks, inventario de habitaciones, estados operativos y de housekeeping separados, bloqueos out-of-order/out-of-service, huéspedes minimizados, reservas con disponibilidad y asignación transaccional, historial append-only de reservas, calendario gráfico, room rack, llegadas/salidas/in-house, check-in/check-out idempotentes, cambio de habitación, incidencias, folios y pagos registrados, caja y night audit, reportes/exportaciones, documentos PDF con snapshot y hash, fiesta de reserva con menores y bloqueo legal de check-in, notas/instrucciones estructuradas, seeds sintéticos y pruebas de aislamiento.
 
@@ -67,7 +71,7 @@ La web es una app operativa client-side contra la API real. No guarda el tenant 
 | `/reports`              | Catálogo de reportes operativos/financieros, preview, PDF y CSV                                                             |
 | `/imports`              | Importación CSV de huéspedes con preview y confirmación                                                                     |
 | `/pilot`                | Onboarding y feedback de piloto                                                                                             |
-| `/inventory/rooms`      | Room Rack con filtros/contadores, drawer contextual, housekeeping, bloqueos, incidencias y lease de selección                |
+| `/inventory/rooms`      | Room Rack con filtros/contadores, drawer contextual, housekeeping, bloqueos, incidencias y lease de selección               |
 | `/inventory/room-types` | Tipologías, capacidad y estado                                                                                              |
 | `/settings`             | Nombre, timezone, moneda y hora de corte del día operativo                                                                  |
 | `/audit`                | Eventos de auditoría append-only con metadatos                                                                              |
@@ -263,7 +267,7 @@ Todos usan la contraseña `NovaDemo!2026`.
 | GET    | `/api/v1/pilot/feedback/:id`                                                          | auth + tenant | `pilot.feedback.read`                   |
 | PATCH  | `/api/v1/pilot/feedback/:id/review`                                                   | auth + tenant | `pilot.feedback.manage`                 |
 
-Esta tabla es un subconjunto operativo; el contrato completo, filtros, payloads y códigos de error está en [`docs/API.md`](docs/API.md).
+Esta tabla es un subconjunto operativo; el contrato completo, filtros, payloads y códigos de error está en [`docs/API.md`](API.md).
 
 Todas las mutaciones de propiedades, inventario, huéspedes, reservas, Front Office, folios/caja, documentos, fiesta de reserva y notas/instrucciones escriben `AuditEvent` en la misma transacción. No existe ruta HTTP para modificar o borrar auditoría, historial de estado ni historial de reservas.
 
@@ -323,24 +327,24 @@ Esto cierra la limitación de que una migración futura pueda borrar silenciosam
 
 ## Comandos
 
-| Comando                        | Descripción                                    |
-| ------------------------------ | ---------------------------------------------- |
-| `pnpm dev`                     | API + web en watch                             |
-| `pnpm build`                   | build de todos los workspaces                  |
-| `pnpm lint`                    | ESLint API + Next                              |
-| `pnpm typecheck`               | `tsc --noEmit` en API y web                    |
-| `pnpm test`                    | tests unitarios de API                         |
-| `pnpm test:e2e`                | E2E API con `dev-header`                       |
-| `pnpm test:e2e:auth`           | E2E de sesiones/CSRF/rate limit                |
-| `pnpm test:e2e:all:isolated`   | Todos los E2E en schemas PostgreSQL aislados   |
-| `pnpm format` / `format:check` | Prettier                                       |
-| `pnpm db:generate`             | genera Prisma Client                           |
-| `pnpm db:migrate`              | crea/aplica migración en desarrollo            |
-| `pnpm db:migrate:deploy`       | aplica migraciones existentes                  |
-| `pnpm db:seed`                 | datos sintéticos idempotentes                  |
-| `pnpm db:verify`               | valida constraints/triggers manuales           |
-| `pnpm db:reset`                | reset destructivo local + seed                 |
-| `pnpm infra:up` / `infra:down` | Docker Compose                                 |
+| Comando                        | Descripción                                  |
+| ------------------------------ | -------------------------------------------- |
+| `pnpm dev`                     | API + web en watch                           |
+| `pnpm build`                   | build de todos los workspaces                |
+| `pnpm lint`                    | ESLint API + Next                            |
+| `pnpm typecheck`               | `tsc --noEmit` en API y web                  |
+| `pnpm test`                    | tests unitarios de API                       |
+| `pnpm test:e2e`                | E2E API con `dev-header`                     |
+| `pnpm test:e2e:auth`           | E2E de sesiones/CSRF/rate limit              |
+| `pnpm test:e2e:all:isolated`   | Todos los E2E en schemas PostgreSQL aislados |
+| `pnpm format` / `format:check` | Prettier                                     |
+| `pnpm db:generate`             | genera Prisma Client                         |
+| `pnpm db:migrate`              | crea/aplica migración en desarrollo          |
+| `pnpm db:migrate:deploy`       | aplica migraciones existentes                |
+| `pnpm db:seed`                 | datos sintéticos idempotentes                |
+| `pnpm db:verify`               | valida constraints/triggers manuales         |
+| `pnpm db:reset`                | reset destructivo local + seed               |
+| `pnpm infra:up` / `infra:down` | Docker Compose                               |
 
 Los E2E requieren infraestructura levantada, migración aplicada, seed ejecutado y `db:verify`:
 
@@ -396,24 +400,18 @@ Pendiente inmediato de producto: validar con el piloto las horas de check-in/out
 
 ## Documentación
 
-- `AGENTS.md`
-- `docs/PRODUCT_BRIEF.md`
-- `docs/ARCHITECTURE.md`
-- `docs/DATABASE.md`
-- `docs/API.md`
-- `docs/SECURITY.md`
-- `docs/IMPLEMENTATION_PLAN.md`
-- `docs/DECISIONS.md`
-- `docs/PHASE_1_REPORT.md`
-- `docs/PHASE_2_REPORT.md`
-- `docs/PHASE_3_REPORT.md`
-- `docs/PHASE_4_REPORT.md`
-- `docs/PHASE_5_REPORT.md`
-- `docs/PHASE_6_REPORT.md`
-- `docs/PHASE_7_REPORT.md`
-- `docs/PHASE_8_GROUNDWORK.md`
-- `docs/PHASE_11_NOTES_INSTRUCTIONS_REPORT.md`
-- `docs/DATE_TIMEZONE_HARDENING_REPORT.md`
+- [`README.md`](../README.md) e índice [`docs/README.md`](README.md)
+- [`AGENTS.md`](../AGENTS.md)
+- [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md)
+- [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- [`DATABASE.md`](DATABASE.md)
+- [`API.md`](API.md)
+- [`SECURITY.md`](SECURITY.md)
+- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
+- [`DECISIONS.md`](DECISIONS.md)
+- [`v5/NOVA_IMPROVEMENT_PLAN.md`](v5/NOVA_IMPROVEMENT_PLAN.md)
+- Informes históricos: `docs/archive/PHASE_*_REPORT.md` y
+  `docs/archive/DATE_TIMEZONE_HARDENING_REPORT.md`
 - `docs/FRONTEND_STATE.md`
 - `docs/PILOT_RUNBOOK.md`
 - `docs/PILOT_CHECKLIST.md`

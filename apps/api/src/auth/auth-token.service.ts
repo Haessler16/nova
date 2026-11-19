@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
+import { Clock } from '../common/time/clock';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface IssuedAuthToken {
@@ -26,6 +27,7 @@ export class AuthTokenService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly clock: Clock,
     config: ConfigService,
   ) {
     this.resetTtlMs = config.get<number>('PASSWORD_RESET_TTL_MINUTES', 30) * 60 * 1000;
@@ -46,17 +48,17 @@ export class AuthTokenService {
   async consumePasswordReset(
     transaction: Prisma.TransactionClient,
     token: string,
-    now = new Date(),
+    now?: Date,
   ): Promise<string | null> {
-    return this.consume(transaction, 'passwordResetToken', token, now);
+    return this.consume(transaction, 'passwordResetToken', token, now ?? this.clock.now());
   }
 
   async consumeEmailVerification(
     transaction: Prisma.TransactionClient,
     token: string,
-    now = new Date(),
+    now?: Date,
   ): Promise<string | null> {
-    return this.consume(transaction, 'emailVerificationToken', token, now);
+    return this.consume(transaction, 'emailVerificationToken', token, now ?? this.clock.now());
   }
 
   private async issue(
@@ -66,7 +68,7 @@ export class AuthTokenService {
     requestedIpHash: string | undefined,
   ): Promise<IssuedAuthToken> {
     const token = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + ttlMs);
+    const expiresAt = new Date(this.clock.now().getTime() + ttlMs);
 
     await this.prisma.$transaction(async (transaction) => {
       if (model === 'passwordResetToken') {
@@ -139,7 +141,7 @@ export class AuthTokenService {
   }
 
   private async deleteExpired(): Promise<void> {
-    const now = new Date();
+    const now = this.clock.now();
     try {
       await Promise.all([
         this.prisma.passwordResetToken.deleteMany({

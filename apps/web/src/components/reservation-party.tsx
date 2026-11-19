@@ -29,7 +29,9 @@ import {
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
-import { DOCUMENT_TYPE_LABELS } from '@/lib/format';
+import { DOCUMENT_TYPES, documentTypeLabel } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
+import type { TranslationKey } from '@/lib/i18n/dictionary';
 import type {
   Guest,
   GuestDocumentType,
@@ -40,26 +42,49 @@ import type {
 import { useAsyncData } from '@/lib/use-async-data';
 import { QueryFeedback } from './ui';
 
-const SUPERVISION_LABELS: Record<MinorSupervision, string> = {
-  ACCOMPANIED: 'Acompañado por el responsable',
-  UNACCOMPANIED_AUTHORIZED: 'Autorizado a viajar sin acompañante',
-  UNACCOMPANIED_WITHOUT_AUTHORIZATION: 'Sin autorización registrada',
-  UNKNOWN: 'Sin definir',
+const SUPERVISION_LABEL_KEYS: Record<MinorSupervision, TranslationKey> = {
+  ACCOMPANIED: 'party.supervision.accompanied',
+  UNACCOMPANIED_AUTHORIZED: 'party.supervision.authorized',
+  UNACCOMPANIED_WITHOUT_AUTHORIZATION: 'party.supervision.withoutAuthorization',
+  UNKNOWN: 'party.supervision.unknown',
 };
 
-const READINESS_LABELS: Record<string, string> = {
-  PRIMARY_MISSING: 'Falta el huésped principal o no coincide con la reserva.',
-  GUEST_COUNT_MISMATCH: 'La fiesta no coincide con la ocupación declarada.',
-  AGE_GROUP_UNKNOWN: 'Falta clasificar la edad de algún huésped.',
-  PRIMARY_NOT_ADULT: 'El huésped principal debe ser adulto y capaz.',
-  MINOR_RESPONSIBLE_MISSING: 'Un menor no tiene responsable válido.',
-  MINOR_SUPERVISION_UNKNOWN: 'Falta indicar cómo viaja un menor.',
-  MINOR_AUTHORIZATION_MISSING: 'Hay un menor sin autorización registrada.',
-  MINOR_AUTHORIZATION_REFERENCE_MISSING: 'Falta la referencia de autorización de un menor.',
-  LEGAL_INCAPACITY_RESPONSIBLE_MISSING: 'Falta el responsable de una persona incapaz.',
-  DOCUMENT_NOT_FNRH_READY: 'Falta CPF o pasaporte para la FNRH.',
-  PROFILE_INCOMPLETE: 'Faltan datos del perfil FNRH.',
+type Translator = ReturnType<typeof useI18n>['t'];
+
+function supervisionLabel(t: Translator, value: MinorSupervision): string {
+  return t(SUPERVISION_LABEL_KEYS[value]);
+}
+
+const READINESS_LABEL_KEYS: Record<string, TranslationKey> = {
+  PRIMARY_MISSING: 'party.readiness.primaryMissing',
+  GUEST_COUNT_MISMATCH: 'party.readiness.guestCountMismatch',
+  AGE_GROUP_UNKNOWN: 'party.readiness.ageGroupUnknown',
+  PRIMARY_NOT_ADULT: 'party.readiness.primaryNotAdult',
+  MINOR_RESPONSIBLE_MISSING: 'party.readiness.minorResponsibleMissing',
+  MINOR_SUPERVISION_UNKNOWN: 'party.readiness.minorSupervisionUnknown',
+  MINOR_AUTHORIZATION_MISSING: 'party.readiness.minorAuthorizationMissing',
+  MINOR_AUTHORIZATION_REFERENCE_MISSING: 'party.readiness.minorAuthorizationReferenceMissing',
+  LEGAL_INCAPACITY_RESPONSIBLE_MISSING: 'party.readiness.legalIncapacityResponsibleMissing',
+  DOCUMENT_NOT_FNRH_READY: 'party.readiness.documentNotFnrhReady',
+  PROFILE_INCOMPLETE: 'party.readiness.profileIncomplete',
 };
+
+function readinessLabel(t: Translator, code: string): string {
+  const key = READINESS_LABEL_KEYS[code];
+  return key === undefined ? code : t(key);
+}
+
+function adultsLabel(t: Translator, count: number): string {
+  return count === 1
+    ? t('party.summary.adultsOne', { count })
+    : t('party.summary.adultsOther', { count });
+}
+
+function minorsLabel(t: Translator, count: number): string {
+  return count === 1
+    ? t('party.summary.minorsOne', { count })
+    : t('party.summary.minorsOther', { count });
+}
 
 interface EditorState {
   kind: 'adult' | 'minor';
@@ -92,13 +117,14 @@ export function ReservationParty({
 }) {
   const { tenant } = useSession();
   const toast = useToast();
+  const { t } = useI18n();
   const [version, setVersion] = useState(0);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const party = useAsyncData<ReservationPartyResponse>(async () => {
     if (tenant.organizationId === null || tenant.propertyId === null) {
-      throw new Error('Seleccioná una propiedad para ver la fiesta de la reserva.');
+      throw new Error(t('party.empty'));
     }
     return api<ReservationPartyResponse>(`/api/v1/reservations/${reservationId}/party`, {
       tenant,
@@ -112,18 +138,18 @@ export function ReservationParty({
 
   async function removeMember(member: ReservationPartyMember): Promise<void> {
     if (member.reservationGuestId === null) return;
-    if (!window.confirm(`¿Quitar a ${member.fullName} de esta reserva?`)) return;
+    if (!window.confirm(t('party.confirm.remove', { name: member.fullName }))) return;
     setRemovingId(member.reservationGuestId);
     try {
       await api<ReservationPartyResponse>(
         `/api/v1/reservations/${reservationId}/party/${member.reservationGuestId}`,
         { method: 'DELETE', tenant },
       );
-      toast({ title: `${member.fullName} quitado de la reserva`, status: 'success' });
+      toast({ title: t('party.toast.removed', { name: member.fullName }), status: 'success' });
       reload();
     } catch (cause) {
       toast({
-        title: 'No se pudo quitar al huésped',
+        title: t('party.toast.removeError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -142,9 +168,9 @@ export function ReservationParty({
     <Box borderTopWidth="1px" borderColor="line" pt={4} data-testid="reservation-party">
       <HStack justify="space-between" align="flex-start" mb={3}>
         <Box>
-          <Text fontWeight="semibold">Huéspedes de la reserva</Text>
+          <Text fontWeight="semibold">{t('party.title')}</Text>
           <Text fontSize="xs" color="gray.500">
-            Los menores se vinculan a un responsable y no generan una FNRH propia.
+            {t('party.subtitle')}
           </Text>
         </Box>
         {data !== null && (
@@ -160,10 +186,10 @@ export function ReservationParty({
             textTransform="none"
           >
             {data.readiness.checkIn === 'BLOCKED'
-              ? 'Bloqueo legal'
+              ? t('party.badge.legal')
               : data.readiness.fnrh === 'READY'
-                ? 'Fiesta completa'
-                : 'Fiesta incompleta'}
+                ? t('party.badge.complete')
+                : t('party.badge.incomplete')}
           </Badge>
         )}
       </HStack>
@@ -173,45 +199,40 @@ export function ReservationParty({
         error={party.error}
         onRetry={party.reload}
         isEmpty={data === null}
-        emptyText="No se pudo cargar la fiesta de la reserva."
+        emptyText={t('party.empty')}
       >
         {data !== null && (
           <Stack spacing={3}>
             <Text fontSize="sm">
-              {data.summary.adults} {data.summary.adults === 1 ? 'adulto' : 'adultos'} ·{' '}
-              {data.summary.minors} {data.summary.minors === 1 ? 'menor' : 'menores'}
-              {data.summary.unknown > 0 ? ` · ${data.summary.unknown} sin clasificar` : ''}
+              {adultsLabel(t, data.summary.adults)} · {minorsLabel(t, data.summary.minors)}
+              {data.summary.unknown > 0
+                ? ` · ${t('party.summary.unknown', { count: data.summary.unknown })}`
+                : ''}
               <Text as="span" color="gray.500">
                 {' '}
-                · declarado: {data.summary.declaredAdults} adultos · {data.summary.declaredChildren}{' '}
-                menores
+                {t('party.summary.declared', {
+                  adults: adultsLabel(t, data.summary.declaredAdults),
+                  children: minorsLabel(t, data.summary.declaredChildren),
+                })}
               </Text>
             </Text>
 
             {legal && (
               <Alert status="error" borderRadius="md" alignItems="flex-start">
                 <AlertIcon />
-                <AlertDescription fontSize="sm">
-                  El check-in y la FNRH están bloqueados. Revisá los menores marcados antes de
-                  continuar.
-                </AlertDescription>
+                <AlertDescription fontSize="sm">{t('party.alert.legal')}</AlertDescription>
               </Alert>
             )}
             {!legal && incomplete && (
               <Alert status="warning" borderRadius="md" alignItems="flex-start">
                 <AlertIcon />
-                <AlertDescription fontSize="sm">
-                  La fiesta está incompleta. El check-in hotelero puede continuar; la FNRH queda
-                  pendiente hasta completar los datos.
-                </AlertDescription>
+                <AlertDescription fontSize="sm">{t('party.alert.incomplete')}</AlertDescription>
               </Alert>
             )}
             {!legal && !incomplete && (
               <Alert status="success" borderRadius="md" alignItems="flex-start">
                 <AlertIcon />
-                <AlertDescription fontSize="sm">
-                  Fiesta completa y datos FNRH listos.
-                </AlertDescription>
+                <AlertDescription fontSize="sm">{t('party.alert.ready')}</AlertDescription>
               </Alert>
             )}
 
@@ -219,7 +240,7 @@ export function ReservationParty({
               <Box>
                 {data.readiness.codes.slice(0, 4).map((code) => (
                   <Text key={code} fontSize="xs" color="gray.600">
-                    • {READINESS_LABELS[code] ?? code}
+                    • {readinessLabel(t, code)}
                   </Text>
                 ))}
               </Box>
@@ -255,7 +276,7 @@ export function ReservationParty({
                   variant="outline"
                   onClick={() => setEditor({ kind: 'adult', member: null })}
                 >
-                  + Agregar adulto
+                  {t('party.addAdult')}
                 </Button>
                 <Button
                   data-testid="add-minor"
@@ -263,7 +284,7 @@ export function ReservationParty({
                   colorScheme="brand"
                   onClick={() => setEditor({ kind: 'minor', member: null })}
                 >
-                  + Agregar menor
+                  {t('party.addMinor')}
                 </Button>
               </HStack>
             )}
@@ -302,6 +323,7 @@ function PartyMemberRow({
   onEdit: () => void;
   onRemove: () => void;
 }) {
+  const { t, locale } = useI18n();
   const primary = member.role === 'PRIMARY';
   const minor = member.ageGroup === 'MINOR';
   const legal =
@@ -312,8 +334,8 @@ function PartyMemberRow({
       member.minorSupervision === 'UNACCOMPANIED_WITHOUT_AUTHORIZATION' ||
       (member.minorSupervision === 'UNACCOMPANIED_AUTHORIZED' && !member.authorizationReference));
   const description = member.documentType
-    ? `${DOCUMENT_TYPE_LABELS[member.documentType]} ${maskDocument(member)}`
-    : 'Sin documento';
+    ? `${documentTypeLabel(locale, member.documentType)} ${maskDocument(member)}`
+    : t('reservations.guest.noDocument');
   return (
     <Box
       data-testid="party-member"
@@ -334,44 +356,55 @@ function PartyMemberRow({
               {member.fullName}
             </Text>
             <Badge colorScheme={primary ? 'sky' : minor ? 'warning' : 'gray'} textTransform="none">
-              {primary ? 'Principal' : minor ? 'Menor' : 'Acompañante'}
+              {primary
+                ? t('party.role.primary')
+                : minor
+                  ? t('party.role.minor')
+                  : t('party.role.companion')}
             </Badge>
             <Badge colorScheme={legal ? 'danger' : 'gray'} textTransform="none">
               {member.ageGroup === 'ADULT'
-                ? 'Adulto'
+                ? t('party.age.adult')
                 : member.ageGroup === 'MINOR'
-                  ? 'Menor'
-                  : 'Sin clasificar'}
+                  ? t('party.role.minor')
+                  : t('party.age.unclassified')}
             </Badge>
           </HStack>
           <Text fontSize="xs" color="gray.600">
             {description}
             {member.email ? ` · ${member.email}` : ''}
-            {member.ageAtCheckIn !== null ? ` · ${member.ageAtCheckIn} años al check-in` : ''}
+            {member.ageAtCheckIn !== null
+              ? ` ${t('party.age.atCheckIn', { age: member.ageAtCheckIn })}`
+              : ''}
           </Text>
           {minor && (
             <Text fontSize="xs" color={legal ? 'danger.600' : 'gray.600'}>
-              Responsable: {member.responsibleName ?? 'sin responsable'} ·{' '}
+              {t('party.member.responsible', {
+                name: member.responsibleName ?? t('party.member.noResponsible'),
+              })}{' '}
+              ·{' '}
               {member.minorSupervision
-                ? SUPERVISION_LABELS[member.minorSupervision]
-                : 'supervisión sin definir'}
+                ? supervisionLabel(t, member.minorSupervision)
+                : t('party.member.noSupervision')}
               {member.minorSupervision === 'UNACCOMPANIED_AUTHORIZED'
-                ? ` · Ref. ${member.authorizationReference ?? 'faltante'}`
+                ? ` ${t('party.member.authorizationRef', {
+                    reference: member.authorizationReference ?? t('party.member.referenceMissing'),
+                  })}`
                 : ''}
             </Text>
           )}
           <Text fontSize="xs" color={legal ? 'danger.600' : 'gray.500'}>
             {minor
-              ? 'FNRH: incluida en la ficha del responsable'
+              ? t('party.member.fnrhIncluded')
               : member.documentType === 'CPF' || member.documentType === 'PASSPORT'
-                ? 'FNRH: documento válido'
-                : 'FNRH: falta CPF o pasaporte'}
+                ? t('party.member.fnrhValid')
+                : t('party.member.fnrhMissing')}
           </Text>
         </Box>
         {editable && (
           <HStack spacing={1}>
             <Button size="xs" variant="ghost" onClick={onEdit}>
-              Editar
+              {t('reservations.row.edit')}
             </Button>
             {!primary && (
               <Button
@@ -381,7 +414,7 @@ function PartyMemberRow({
                 onClick={onRemove}
                 isLoading={removing}
               >
-                Quitar
+                {t('party.member.remove')}
               </Button>
             )}
           </HStack>
@@ -408,6 +441,7 @@ function PartyEditorModal({
 }) {
   const { tenant } = useSession();
   const toast = useToast();
+  const { t, locale } = useI18n();
   const editing = editor.member !== null;
   const [form, setForm] = useState<EditorForm>(() => formFromMember(editor, party));
   const [saving, setSaving] = useState(false);
@@ -461,23 +495,23 @@ function PartyEditorModal({
     const age = ageAtCheckIn(form.birthDate, checkInDate);
 
     if (fullName.length < 2) {
-      setFormError('Ingresá nombre y apellido.');
+      setFormError(t('party.error.fullName'));
       return;
     }
     if (!form.birthDate) {
-      setFormError('La fecha de nacimiento es obligatoria para clasificar la edad.');
+      setFormError(t('party.error.birthDate'));
       return;
     }
     if (editor.kind === 'adult' && age < 18) {
-      setFormError('Al check-in será menor de edad. Usá el alta de menor.');
+      setFormError(t('party.error.adultIsMinor'));
       return;
     }
     if (editor.kind === 'minor' && age >= 18) {
-      setFormError('Al check-in tendrá 18 años. Registralo como adulto.');
+      setFormError(t('party.error.minorIsAdult'));
       return;
     }
     if (editor.kind === 'minor' && form.responsibleReservationGuestId === '') {
-      setFormError('Elegí un responsable adulto de esta reserva.');
+      setFormError(t('party.error.responsible'));
       return;
     }
     if (
@@ -485,11 +519,11 @@ function PartyEditorModal({
       form.minorSupervision === 'UNACCOMPANIED_AUTHORIZED' &&
       form.authorizationReference.trim() === ''
     ) {
-      setFormError('Ingresá la referencia de la autorización.');
+      setFormError(t('party.error.authorization'));
       return;
     }
     if (form.documentType === 'CPF' && form.documentNumber.replace(/\D/g, '').length !== 11) {
-      setFormError('El CPF debe tener 11 dígitos.');
+      setFormError(t('party.error.cpf'));
       return;
     }
 
@@ -539,7 +573,7 @@ function PartyEditorModal({
         body: payload,
       });
       toast({
-        title: editing ? 'Huésped actualizado' : 'Huésped agregado a la reserva',
+        title: editing ? t('party.toast.updated') : t('party.toast.added'),
         status: 'success',
       });
       onSaved();
@@ -557,15 +591,13 @@ function PartyEditorModal({
         <ModalHeader>
           {editing
             ? editor.kind === 'minor'
-              ? 'Editar menor'
-              : 'Editar huésped'
+              ? t('party.modal.editMinor')
+              : t('party.modal.editGuest')
             : editor.kind === 'minor'
-              ? 'Agregar menor'
-              : 'Agregar acompañante adulto'}
+              ? t('party.modal.addMinor')
+              : t('party.modal.addAdult')}
           <Text fontSize="sm" fontWeight="normal" color="gray.500">
-            {editor.kind === 'minor'
-              ? 'El menor se vincula a un responsable y no genera una FNRH propia.'
-              : 'Se agrega a la fiesta de esta reserva; no cambia el huésped principal.'}
+            {editor.kind === 'minor' ? t('party.subtitle') : t('party.modal.addedToParty')}
           </Text>
         </ModalHeader>
         <ModalCloseButton />
@@ -574,12 +606,12 @@ function PartyEditorModal({
             {editor.kind === 'adult' && !editing && (
               <FormControl>
                 <FormLabel fontSize="sm" fontWeight="semibold">
-                  Vincular huésped existente (opcional)
+                  {t('party.link.label')}
                 </FormLabel>
                 <Input
                   data-testid="party-guest-search"
                   size="sm"
-                  placeholder="Buscar por nombre, email o documento…"
+                  placeholder={t('party.link.searchPlaceholder')}
                   value={guestSearch}
                   onChange={(event) => setGuestSearch(event.target.value)}
                 />
@@ -592,7 +624,7 @@ function PartyEditorModal({
                     px={2}
                     py={1}
                   >
-                    <Text fontSize="xs">Huésped vinculado: {form.fullName}</Text>
+                    <Text fontSize="xs">{t('party.link.linked', { name: form.fullName })}</Text>
                     <Button
                       size="xs"
                       variant="ghost"
@@ -607,7 +639,7 @@ function PartyEditorModal({
                         })
                       }
                     >
-                      Quitar vínculo
+                      {t('party.link.unlink')}
                     </Button>
                   </HStack>
                 )}
@@ -629,23 +661,21 @@ function PartyEditorModal({
                           <Text fontSize="xs">{guest.fullName}</Text>
                           <Text fontSize="xs" color="gray.500">
                             {already
-                              ? 'Ya está en la fiesta'
-                              : (guest.documentNumber ?? 'sin documento')}
+                              ? t('party.link.alreadyInParty')
+                              : (guest.documentNumber ?? t('reservations.guest.noDocument'))}
                           </Text>
                         </Button>
                       );
                     })}
                   </Stack>
                 )}
-                <FormHelperText>
-                  Si no encontrás a la persona, completá los datos para crear una ficha nueva.
-                </FormHelperText>
+                <FormHelperText>{t('party.link.helper')}</FormHelperText>
               </FormControl>
             )}
 
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
               <FormControl isRequired>
-                <FormLabel fontSize="sm">Nombre completo</FormLabel>
+                <FormLabel fontSize="sm">{t('reservations.guest.field.fullName')}</FormLabel>
                 <Input
                   data-testid="party-full-name"
                   value={form.fullName}
@@ -654,17 +684,17 @@ function PartyEditorModal({
                 />
               </FormControl>
               <FormControl isRequired>
-                <FormLabel fontSize="sm">Fecha de nacimiento</FormLabel>
+                <FormLabel fontSize="sm">{t('party.field.birthDate')}</FormLabel>
                 <Input
                   data-testid="party-birth-date"
                   type="date"
                   value={form.birthDate}
                   onChange={(event) => patch({ birthDate: event.target.value })}
                 />
-                <FormHelperText>La edad se calcula a la fecha de check-in.</FormHelperText>
+                <FormHelperText>{t('party.field.birthDateHelper')}</FormHelperText>
               </FormControl>
               <FormControl>
-                <FormLabel fontSize="sm">Email</FormLabel>
+                <FormLabel fontSize="sm">{t('reservations.guest.field.email')}</FormLabel>
                 <Input
                   type="email"
                   value={form.email}
@@ -673,7 +703,7 @@ function PartyEditorModal({
                 />
               </FormControl>
               <FormControl>
-                <FormLabel fontSize="sm">Teléfono</FormLabel>
+                <FormLabel fontSize="sm">{t('reservations.guest.field.phone')}</FormLabel>
                 <Input
                   value={form.phone}
                   onChange={(event) => patch({ phone: event.target.value })}
@@ -681,7 +711,7 @@ function PartyEditorModal({
                 />
               </FormControl>
               <FormControl>
-                <FormLabel fontSize="sm">Tipo de documento</FormLabel>
+                <FormLabel fontSize="sm">{t('reservations.guest.field.documentType')}</FormLabel>
                 <Select
                   data-testid="party-document-type"
                   value={form.documentType}
@@ -689,16 +719,16 @@ function PartyEditorModal({
                     patch({ documentType: event.target.value as '' | GuestDocumentType })
                   }
                 >
-                  <option value="">Sin documento</option>
-                  {(Object.keys(DOCUMENT_TYPE_LABELS) as GuestDocumentType[]).map((type) => (
+                  <option value="">{t('reservations.guest.noDocument')}</option>
+                  {DOCUMENT_TYPES.map((type) => (
                     <option key={type} value={type}>
-                      {DOCUMENT_TYPE_LABELS[type]}
+                      {documentTypeLabel(locale, type)}
                     </option>
                   ))}
                 </Select>
               </FormControl>
               <FormControl>
-                <FormLabel fontSize="sm">Número de documento</FormLabel>
+                <FormLabel fontSize="sm">{t('reservations.guest.field.documentNumber')}</FormLabel>
                 <Input
                   data-testid="party-document-number"
                   value={form.documentNumber}
@@ -710,7 +740,7 @@ function PartyEditorModal({
             {editor.kind === 'minor' && (
               <>
                 <FormControl isRequired>
-                  <FormLabel fontSize="sm">Responsable</FormLabel>
+                  <FormLabel fontSize="sm">{t('party.field.responsible')}</FormLabel>
                   <Select
                     data-testid="party-responsible"
                     value={form.responsibleReservationGuestId}
@@ -718,7 +748,7 @@ function PartyEditorModal({
                       patch({ responsibleReservationGuestId: event.target.value })
                     }
                   >
-                    <option value="">Seleccionar…</option>
+                    <option value="">{t('reservations.room.selectPlaceholder')}</option>
                     {responsibleOptions.map((member) => (
                       <option
                         key={member.reservationGuestId}
@@ -730,7 +760,7 @@ function PartyEditorModal({
                   </Select>
                 </FormControl>
                 <FormControl isRequired>
-                  <FormLabel fontSize="sm">Supervisión</FormLabel>
+                  <FormLabel fontSize="sm">{t('party.field.supervision')}</FormLabel>
                   <Select
                     data-testid="party-supervision"
                     value={form.minorSupervision}
@@ -738,23 +768,23 @@ function PartyEditorModal({
                       patch({ minorSupervision: event.target.value as MinorSupervision })
                     }
                   >
-                    {Object.entries(SUPERVISION_LABELS)
-                      .filter(([value]) => value !== 'UNKNOWN')
-                      .map(([value, label]) => (
+                    {(Object.keys(SUPERVISION_LABEL_KEYS) as MinorSupervision[])
+                      .filter((value) => value !== 'UNKNOWN')
+                      .map((value) => (
                         <option key={value} value={value}>
-                          {label}
+                          {supervisionLabel(t, value)}
                         </option>
                       ))}
                   </Select>
                 </FormControl>
                 {form.minorSupervision === 'UNACCOMPANIED_AUTHORIZED' && (
                   <FormControl isRequired>
-                    <FormLabel fontSize="sm">Referencia de autorización</FormLabel>
+                    <FormLabel fontSize="sm">{t('party.field.authorizationReference')}</FormLabel>
                     <Input
                       data-testid="party-authorization-reference"
                       value={form.authorizationReference}
                       onChange={(event) => patch({ authorizationReference: event.target.value })}
-                      placeholder="Identificador interno; no adjuntes el documento"
+                      placeholder={t('party.field.authorizationPlaceholder')}
                     />
                   </FormControl>
                 )}
@@ -770,10 +800,10 @@ function PartyEditorModal({
         </ModalBody>
         <ModalFooter>
           <Button variant="ghost" mr={3} onClick={onClose}>
-            Cancelar
+            {t('common.cancel')}
           </Button>
           <Button type="submit" colorScheme="brand" isLoading={saving} data-testid="party-submit">
-            {editing ? 'Guardar cambios' : 'Agregar a la reserva'}
+            {editing ? t('party.submit.save') : t('party.submit.add')}
           </Button>
         </ModalFooter>
       </ModalContent>

@@ -1,7 +1,8 @@
+import { SystemClock } from '../common/time/clock';
 import { TotpService, base32Decode, base32Encode } from './totp.service';
 
 describe('TotpService', () => {
-  const totp = new TotpService();
+  const totp = new TotpService(new SystemClock());
   const secret = 'JBSWY3DPEHPK3PXP'; // base32 for "Hello!\xde\xad\xbe\xef"
 
   it('round-trips base32', () => {

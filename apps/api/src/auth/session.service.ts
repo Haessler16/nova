@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RecordStatus } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
+import { Clock } from '../common/time/clock';
 import { PrismaService } from '../prisma/prisma.service';
 
 const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
@@ -50,6 +51,7 @@ export class SessionService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly clock: Clock,
     config: ConfigService,
   ) {
     const hours = config.get<number>('SESSION_TTL_HOURS', 8);
@@ -59,7 +61,7 @@ export class SessionService {
   async create(userId: string, metadata: SessionCreateMetadata = {}): Promise<CreatedSession> {
     const token = randomBytes(32).toString('base64url');
     const tokenHash = hashSessionToken(token);
-    const expiresAt = new Date(Date.now() + this.ttlMs);
+    const expiresAt = new Date(this.clock.now().getTime() + this.ttlMs);
 
     const session = await this.prisma.session.create({
       data: {
@@ -78,7 +80,7 @@ export class SessionService {
       await this.prisma.session.deleteMany({
         where: {
           userId,
-          OR: [{ expiresAt: { lte: new Date() } }, { revokedAt: { not: null } }],
+          OR: [{ expiresAt: { lte: this.clock.now() } }, { revokedAt: { not: null } }],
         },
       });
     } catch (error) {
@@ -95,7 +97,7 @@ export class SessionService {
       return null;
     }
 
-    const now = new Date();
+    const now = this.clock.now();
     const session = await this.prisma.session.findFirst({
       where: {
         tokenHash: hashSessionToken(token),
@@ -143,7 +145,7 @@ export class SessionService {
   async revoke(sessionId: string, reason: string): Promise<void> {
     await this.prisma.session.updateMany({
       where: { id: sessionId, revokedAt: null },
-      data: { revokedAt: new Date(), revokedReason: reason },
+      data: { revokedAt: this.clock.now(), revokedReason: reason },
     });
   }
 
@@ -152,7 +154,7 @@ export class SessionService {
       where: {
         userId,
         revokedAt: null,
-        expiresAt: { gt: new Date() },
+        expiresAt: { gt: this.clock.now() },
       },
       orderBy: [{ lastSeenAt: 'desc' }, { id: 'desc' }],
       select: {
@@ -168,7 +170,7 @@ export class SessionService {
   async revokeForUser(userId: string, sessionId: string, reason: string): Promise<boolean> {
     const updated = await this.prisma.session.updateMany({
       where: { id: sessionId, userId, revokedAt: null },
-      data: { revokedAt: new Date(), revokedReason: reason },
+      data: { revokedAt: this.clock.now(), revokedReason: reason },
     });
     return updated.count === 1;
   }
@@ -184,7 +186,7 @@ export class SessionService {
         revokedAt: null,
         ...(exceptSessionId !== undefined ? { id: { not: exceptSessionId } } : {}),
       },
-      data: { revokedAt: new Date(), revokedReason: reason },
+      data: { revokedAt: this.clock.now(), revokedReason: reason },
     });
     return updated.count;
   }

@@ -26,12 +26,13 @@ import { useSession } from '@/context/session';
 import { api, downloadFile, errorMessage, openProtectedPdf } from '@/lib/api';
 import {
   DOCUMENT_STATUS_COLORS,
-  DOCUMENT_STATUS_LABELS,
-  RESERVATION_DOCUMENT_LABELS,
-  RESERVATION_STATUS_LABELS,
+  documentStatusLabel,
   formatCalendarDate,
   formatDateTime,
+  reservationDocumentLabel,
+  reservationStatusLabel,
 } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type {
   DocumentPreviewResponse,
   DocumentTemplateSummary,
@@ -62,6 +63,7 @@ export function ReservationDocuments({
 }: ReservationDocumentsProps) {
   const modal = useDisclosure({ defaultIsOpen: defaultOpen });
   const toast = useToast();
+  const { t, locale } = useI18n();
   const { organizationId, propertyId } = useSession();
   const [activeReservationId, setActiveReservationId] = useState(reservationId);
 
@@ -133,7 +135,7 @@ export function ReservationDocuments({
 
   async function handlePreview(): Promise<void> {
     if (activeTemplate === null) {
-      toast({ title: 'No hay una plantilla publicada para este tipo', status: 'warning' });
+      toast({ title: t('documents.toast.noTemplate'), status: 'warning' });
       return;
     }
     setPreviewing(true);
@@ -166,7 +168,7 @@ export function ReservationDocuments({
       });
       setSelected(generated);
       setHistory((current) => [generated, ...current]);
-      toast({ title: 'Documento generado', status: 'success' });
+      toast({ title: t('documents.toast.generated'), status: 'success' });
       try {
         await downloadFile(
           `/api/v1/documents/${generated.id}/download`,
@@ -175,7 +177,7 @@ export function ReservationDocuments({
         );
       } catch (cause) {
         toast({
-          title: 'El PDF se generó, pero no se pudo descargar',
+          title: t('documents.toast.downloadError'),
           description: errorMessage(cause),
           status: 'warning',
           duration: 8000,
@@ -206,14 +208,14 @@ export function ReservationDocuments({
             type: document.printEventCount === 0 ? 'PRINT_DIALOG_OPENED' : 'REPRINT_REQUESTED',
             note:
               document.printEventCount === 0
-                ? 'Apertura del PDF para impresión desde la reserva.'
-                : 'Reimpresión solicitada desde la reserva.',
+                ? t('documents.note.printOpened')
+                : t('documents.note.reprint'),
           },
         });
         await load();
       } catch (cause) {
         toast({
-          title: 'El PDF se abrió, pero no se pudo registrar el evento de impresión',
+          title: t('documents.toast.printEventError'),
           description: errorMessage(cause),
           status: 'warning',
           duration: 8000,
@@ -251,11 +253,11 @@ export function ReservationDocuments({
         {
           method: 'POST',
           tenant: { organizationId, propertyId },
-          body: { notes: 'Recepción física registrada desde la reserva.' },
+          body: { notes: t('documents.note.signature') },
         },
       );
       setSelected(updated);
-      toast({ title: 'Firma física registrada', status: 'success' });
+      toast({ title: t('documents.toast.signature'), status: 'success' });
       await load();
     } catch (cause) {
       setError(cause);
@@ -273,7 +275,7 @@ export function ReservationDocuments({
     <>
       {!hideTrigger && (
         <Button size="xs" variant="outline" onClick={modal.onOpen}>
-          Documentos
+          {t('documents.trigger')}
         </Button>
       )}
 
@@ -281,9 +283,9 @@ export function ReservationDocuments({
         <ModalOverlay />
         <ModalContent maxW="1180px">
           <ModalHeader>
-            Documentos de la reserva {activeReservationCode}
+            {t('documents.title', { code: activeReservationCode })}
             <Text fontSize="sm" fontWeight="normal" color="gray.500">
-              Vista previa A4, PDF privado y trazabilidad de impresión y firma física.
+              {t('documents.subtitle')}
             </Text>
           </ModalHeader>
           <ModalCloseButton />
@@ -307,7 +309,7 @@ export function ReservationDocuments({
               <HStack justify="center" py={10}>
                 <Spinner size="sm" />
                 <Text fontSize="sm" color="gray.500">
-                  Cargando plantillas e historial…
+                  {t('documents.loading')}
                 </Text>
               </HStack>
             ) : (
@@ -317,10 +319,10 @@ export function ReservationDocuments({
                     {reservations !== undefined && reservations.length > 1 && (
                       <Box>
                         <Text fontSize="xs" color="gray.500" mb={1}>
-                          Reserva de origen
+                          {t('documents.origin')}
                         </Text>
                         <Select
-                          aria-label="Reserva de origen"
+                          aria-label={t('documents.origin')}
                           value={activeReservationId}
                           onChange={(event) => changeReservation(event.target.value)}
                         >
@@ -328,27 +330,27 @@ export function ReservationDocuments({
                             <option key={reservation.id} value={reservation.id}>
                               {reservation.code} · {formatCalendarDate(reservation.checkInDate)} →{' '}
                               {formatCalendarDate(reservation.checkOutDate)} ·{' '}
-                              {RESERVATION_STATUS_LABELS[reservation.status]}
+                              {reservationStatusLabel(locale, reservation.status)}
                             </option>
                           ))}
                         </Select>
                         <Text fontSize="xs" color="gray.500" mt={1}>
-                          Cambiar de reserva reinicia el historial y la vista previa de este modal.
+                          {t('documents.originHelper')}
                         </Text>
                       </Box>
                     )}
 
                     <Box>
                       <Text fontWeight="semibold" mb={2}>
-                        Nuevo documento
+                        {t('documents.new')}
                       </Text>
                       <Text fontSize="sm" color="gray.600" mb={3}>
-                        Elegí un tipo, revisá la vista previa y recién después generá el PDF.
+                        {t('documents.newHint')}
                       </Text>
                       <Stack spacing={3}>
                         <Box>
                           <Text fontSize="xs" color="gray.500" mb={1}>
-                            Tipo de documento
+                            {t('documents.typeLabel')}
                           </Text>
                           <Select
                             value={type}
@@ -356,14 +358,14 @@ export function ReservationDocuments({
                           >
                             {DOCUMENT_TYPES.map((item) => (
                               <option key={item} value={item}>
-                                {RESERVATION_DOCUMENT_LABELS[item]}
+                                {reservationDocumentLabel(locale, item)}
                               </option>
                             ))}
                           </Select>
                         </Box>
                         <Box>
                           <Text fontSize="xs" color="gray.500" mb={1}>
-                            Plantilla publicada
+                            {t('documents.templateLabel')}
                           </Text>
                           <Select
                             value={activeTemplate?.id ?? ''}
@@ -381,7 +383,7 @@ export function ReservationDocuments({
                           </Select>
                           {availableTemplates.length === 0 && (
                             <Text fontSize="xs" color="warning.600" mt={1}>
-                              No hay una plantilla publicada para este tipo en la propiedad.
+                              {t('documents.noTemplate')}
                             </Text>
                           )}
                         </Box>
@@ -393,7 +395,7 @@ export function ReservationDocuments({
                             isLoading={previewing}
                             isDisabled={activeTemplate === null}
                           >
-                            Vista previa
+                            {t('documents.preview')}
                           </Button>
                           <Button
                             size="sm"
@@ -402,18 +404,17 @@ export function ReservationDocuments({
                             isLoading={generating}
                             isDisabled={activeTemplate === null || preview === null}
                           >
-                            Generar PDF
+                            {t('documents.generate')}
                           </Button>
                         </HStack>
                         {preview === null && activeTemplate !== null && (
                           <Text fontSize="xs" color="gray.500">
-                            Generá la vista previa para habilitar la emisión.
+                            {t('documents.previewFirst')}
                           </Text>
                         )}
                         {activeTemplate?.signatureRequired === true && (
                           <Text fontSize="xs" color="gray.500">
-                            Este documento incluye líneas de firma. La firma física se registra
-                            después, desde el historial.
+                            {t('documents.signatureHint')}
                           </Text>
                         )}
                       </Stack>
@@ -423,14 +424,14 @@ export function ReservationDocuments({
 
                     <Box>
                       <HStack justify="space-between" mb={2}>
-                        <Text fontWeight="semibold">Historial</Text>
+                        <Text fontWeight="semibold">{t('documents.history')}</Text>
                         <Text fontSize="xs" color="gray.500">
-                          {history.length} documento(s)
+                          {t('documents.historyCount', { count: history.length })}
                         </Text>
                       </HStack>
                       {history.length === 0 ? (
                         <Text fontSize="sm" color="gray.500">
-                          Todavía no hay documentos generados para esta reserva.
+                          {t('documents.historyEmpty')}
                         </Text>
                       ) : (
                         <Stack spacing={2} maxH="340px" overflowY="auto" pr={1}>
@@ -446,19 +447,19 @@ export function ReservationDocuments({
                               <HStack justify="space-between" align="start">
                                 <Box>
                                   <Text fontSize="sm" fontWeight="medium">
-                                    {RESERVATION_DOCUMENT_LABELS[document.documentType]}
+                                    {reservationDocumentLabel(locale, document.documentType)}
                                   </Text>
                                   <Text fontSize="xs" color="gray.500" fontFamily="mono">
                                     {document.number}
                                   </Text>
                                 </Box>
                                 <Badge colorScheme={DOCUMENT_STATUS_COLORS[document.status]}>
-                                  {DOCUMENT_STATUS_LABELS[document.status]}
+                                  {documentStatusLabel(locale, document.status)}
                                 </Badge>
                               </HStack>
                               <Text fontSize="xs" color="gray.500" mt={1}>
                                 {formatDateTime(document.generatedAt)} · v{document.templateVersion}{' '}
-                                · {document.pageCount} pág.
+                                · {t('documents.pages', { count: document.pageCount })}
                               </Text>
                               <HStack mt={2} spacing={2} wrap="wrap">
                                 <Button
@@ -467,7 +468,7 @@ export function ReservationDocuments({
                                   onClick={() => void handleOpen(document)}
                                   isLoading={workingId === document.id}
                                 >
-                                  Abrir PDF
+                                  {t('documents.open')}
                                 </Button>
                                 <Button
                                   size="xs"
@@ -475,7 +476,7 @@ export function ReservationDocuments({
                                   onClick={() => void handleDownload(document)}
                                   isDisabled={workingId === document.id}
                                 >
-                                  Descargar
+                                  {t('documents.download')}
                                 </Button>
                                 {document.status === 'GENERATED' && (
                                   <Button
@@ -485,7 +486,7 @@ export function ReservationDocuments({
                                     onClick={() => void handleSignature(document)}
                                     isDisabled={workingId === document.id}
                                   >
-                                    Registrar firma física
+                                    {t('documents.signature')}
                                   </Button>
                                 )}
                               </HStack>
@@ -498,7 +499,7 @@ export function ReservationDocuments({
 
                   <Box>
                     <HStack justify="space-between" mb={2}>
-                      <Text fontWeight="semibold">Vista previa A4</Text>
+                      <Text fontWeight="semibold">{t('documents.previewTitle')}</Text>
                       {preview !== null && (
                         <Text fontSize="xs" color="gray.500">
                           {preview.template.name} · v{preview.template.version}
@@ -518,14 +519,13 @@ export function ReservationDocuments({
                         p={6}
                       >
                         <Text fontSize="sm" color="gray.500" textAlign="center">
-                          La vista previa se renderiza en el servidor con una plantilla versionada.
-                          No se guarda ningún PDF hasta que confirmes la generación.
+                          {t('documents.previewEmpty')}
                         </Text>
                       </Box>
                     ) : (
                       <Box
                         as="iframe"
-                        title="Vista previa del documento"
+                        title={t('documents.previewIframe')}
                         srcDoc={preview.html}
                         sandbox=""
                         w="100%"
@@ -538,8 +538,10 @@ export function ReservationDocuments({
                     )}
                     {selected !== null && (
                       <Text fontSize="xs" color="gray.500" mt={2}>
-                        Último documento generado: {selected.number} · SHA-256{' '}
-                        {selected.sha256.slice(0, 12)}…
+                        {t('documents.lastGenerated', {
+                          number: selected.number,
+                          hash: selected.sha256.slice(0, 12),
+                        })}
                       </Text>
                     )}
                   </Box>
@@ -549,7 +551,7 @@ export function ReservationDocuments({
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" onClick={closeModal}>
-              Cerrar
+              {t('documents.close')}
             </Button>
           </ModalFooter>
         </ModalContent>

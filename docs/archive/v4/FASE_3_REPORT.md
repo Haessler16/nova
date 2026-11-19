@@ -11,6 +11,7 @@
 ## Objetivo
 
 Mejorar la experiencia de room rack y check-in con:
+
 - Actualizaciones en tiempo real (SSE / WebSocket / Durable Objects)
 - Lease con TTL configurable y liberación forzada con auditoría
 - Room move que adquiere y transfiere lease entre sesiones
@@ -55,15 +56,15 @@ Mejorar la experiencia de room rack y check-in con:
 
 ## Criterios de aceptación (tentativos)
 
-| Criterio | Estado | Evidencia |
-|----------|--------|-----------|
-| Lease TTL configurable por entorno | Cumplido | `ROOM_ASSIGNMENT_LEASE_TTL_SECONDS` validado a 1–600 s; el e2e lo fija en 2 s para probar expiración |
-| Liberación forzada de lease con auditoría | Cumplido | `POST /inventory/rooms/:id/lease-release` → `200 { released, previousOwnerDisplayName }` + `AuditEvent room_lease_released_forced` con actor, dueño anterior y razón (e2e) |
-| Transferencia de lease para room move | Cumplido (coordinación) | `POST /inventory/rooms/:id/assignment-leases/transfer` → `{ from, to }`; `409 room_lease_held` si el destino está tomado y el origen conserva su lease (e2e). El movimiento real sigue en `POST /reservations/:id/room-assignment` |
-| SSE de actualizaciones del rack | Cumplido | `GET /inventory/rooms/updates` emite `ready` y propaga `room.updated` al cambiar una habitación; dos pestañas del mismo tenant reciben el mismo evento con el mismo `id`; una propiedad no recibe eventos de otra; sin sesión responde `401` (4 e2e) |
-| Realtime en frontend con fallback | Cumplido (código) | El rack consume el stream con `fetch`, refresca con debounce de 250 ms y cae a polling de 15 s con backoff; no verificado en navegador en esta sesión |
-| Dark mode contraste AA | Pendiente | Requiere paleta dark y revisión visual de 17 pantallas; no iniciado |
-| Badge subtle dark mode | Pendiente | Depende de la paleta dark |
+| Criterio                                  | Estado                  | Evidencia                                                                                                                                                                                                                                            |
+| ----------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lease TTL configurable por entorno        | Cumplido                | `ROOM_ASSIGNMENT_LEASE_TTL_SECONDS` validado a 1–600 s; el e2e lo fija en 2 s para probar expiración                                                                                                                                                 |
+| Liberación forzada de lease con auditoría | Cumplido                | `POST /inventory/rooms/:id/lease-release` → `200 { released, previousOwnerDisplayName }` + `AuditEvent room_lease_released_forced` con actor, dueño anterior y razón (e2e)                                                                           |
+| Transferencia de lease para room move     | Cumplido (coordinación) | `POST /inventory/rooms/:id/assignment-leases/transfer` → `{ from, to }`; `409 room_lease_held` si el destino está tomado y el origen conserva su lease (e2e). El movimiento real sigue en `POST /reservations/:id/room-assignment`                   |
+| SSE de actualizaciones del rack           | Cumplido                | `GET /inventory/rooms/updates` emite `ready` y propaga `room.updated` al cambiar una habitación; dos pestañas del mismo tenant reciben el mismo evento con el mismo `id`; una propiedad no recibe eventos de otra; sin sesión responde `401` (4 e2e) |
+| Realtime en frontend con fallback         | Cumplido (código)       | El rack consume el stream con `fetch`, refresca con debounce de 250 ms y cae a polling de 15 s con backoff; no verificado en navegador en esta sesión                                                                                                |
+| Dark mode contraste AA                    | Pendiente               | Requiere paleta dark y revisión visual de 17 pantallas; no iniciado                                                                                                                                                                                  |
+| Badge subtle dark mode                    | Pendiente               | Depende de la paleta dark                                                                                                                                                                                                                            |
 
 ---
 
@@ -79,49 +80,53 @@ Mejorar la experiencia de room rack y check-in con:
 
 ## Estado por sprint
 
-| Sprint | Alcance | Estado |
-|--------|---------|--------|
-| 1 | TTL configurable + liberación forzada + auditoría | **Entregado** — endpoint, servicio, `RedisService.del()` y e2e de liberación forzada (200, `released: false` idempotente, `403` sin permiso, auditoría con razón y dueño anterior) |
-| 2 | Room move con lease | **Entregado como transferencia de lease** — adquiere destino primero, libera solo origen propio, `409` si el destino está tomado y conserva el lease vigente. El movimiento de reserva/estancia no se duplica en inventory (ADR-052) |
-| 3 | SSE del rack | **Entregado en backend, integrado en frontend** — `RoomEventsService`, `GET /inventory/rooms/updates`, publicación tras commit, 3 e2e (stream, aislamiento por propiedad, autenticación). El rack usa SSE + polling de respaldo |
-| 4 | Dark mode | **No iniciado** — requiere definir la paleta dark y revisar 17 pantallas; ~170 superficies usan colores claros fijos, así que un modo parcial dejaría la UI inconsistente |
-| 5 | Piloto + reporte final | **Bloqueado** — falta elegir la propiedad piloto (OPEN QUESTION) |
+| Sprint | Alcance                                           | Estado                                                                                                                                                                                                                               |
+| ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1      | TTL configurable + liberación forzada + auditoría | **Entregado** — endpoint, servicio, `RedisService.del()` y e2e de liberación forzada (200, `released: false` idempotente, `403` sin permiso, auditoría con razón y dueño anterior)                                                   |
+| 2      | Room move con lease                               | **Entregado como transferencia de lease** — adquiere destino primero, libera solo origen propio, `409` si el destino está tomado y conserva el lease vigente. El movimiento de reserva/estancia no se duplica en inventory (ADR-052) |
+| 3      | SSE del rack                                      | **Entregado en backend, integrado en frontend** — `RoomEventsService`, `GET /inventory/rooms/updates`, publicación tras commit, 3 e2e (stream, aislamiento por propiedad, autenticación). El rack usa SSE + polling de respaldo      |
+| 4      | Dark mode                                         | **No iniciado** — requiere definir la paleta dark y revisar 17 pantallas; ~170 superficies usan colores claros fijos, así que un modo parcial dejaría la UI inconsistente                                                            |
+| 5      | Piloto + reporte final                            | **Bloqueado** — falta elegir la propiedad piloto (OPEN QUESTION)                                                                                                                                                                     |
 
 ## Verificación ejecutada
 
-| Comando | Resultado |
-|---------|-----------|
-| `pnpm --filter @nova/api typecheck` | OK |
-| `pnpm --filter @nova/api lint` | OK |
-| `pnpm --filter @nova/api test` | 115/115 |
-| `pnpm test:e2e:isolated` (suite completo sobre seed aislado) | 144/144 |
-| `pnpm --filter @nova/api test:e2e -- inventory.e2e-spec.ts front-office.e2e-spec.ts` | 35/35 |
-| `pnpm --filter @nova/api test:e2e -- room-updates.e2e-spec.ts` | 4/4 |
-| `pnpm --filter @nova/web typecheck` | OK |
-| `pnpm --filter @nova/web lint` | OK |
-| `pnpm --filter @nova/web exec playwright test e2e/inventory-validation.spec.ts` | 3/3 |
+| Comando                                                                              | Resultado |
+| ------------------------------------------------------------------------------------ | --------- |
+| `pnpm --filter @nova/api typecheck`                                                  | OK        |
+| `pnpm --filter @nova/api lint`                                                       | OK        |
+| `pnpm --filter @nova/api test`                                                       | 115/115   |
+| `pnpm test:e2e:isolated` (suite completo sobre seed aislado)                         | 144/144   |
+| `pnpm --filter @nova/api test:e2e -- inventory.e2e-spec.ts front-office.e2e-spec.ts` | 35/35     |
+| `pnpm --filter @nova/api test:e2e -- room-updates.e2e-spec.ts`                       | 4/4       |
+| `pnpm --filter @nova/web typecheck`                                                  | OK        |
+| `pnpm --filter @nova/web lint`                                                       | OK        |
+| `pnpm --filter @nova/web exec playwright test e2e/inventory-validation.spec.ts`      | 3/3       |
 
 No se ejecutaron: `front-office-checkin.spec.ts` ni la verificación visual de dos pestañas viendo el rack sincronizado; la sincronización está cubierta en el e2e de backend, no en navegador.
 
 ## Roadmap sugerido (órden de prioridad)
 
 1. **Sprint 1**: Lease TTL configurable + liberación forzada + auditoría
+
    - Endpoint `POST /inventory/rooms/:id/lease-release`
    - Validación de rango TTL (1–600)
    - Registro en tabla de auditoría `RoomLeaseEvent`
    - Test E2E: adquisición, renovación, liberación forzada, reasignación posterior
 
 2. **Sprint 2**: Room move con lease
+
    - Endpoint `POST /inventory/rooms/:id/room-move`
    - Flujo: adquiere lease destino → valida constraint PG → libera origen → retorna nuevo estado
    - Manejo de conflictos: 409 si destino tiene lease ajeno, 409 si origen lease ajeno y no se puede liberar
 
 3. **Sprint 3**: SSE updates para room rack
+
    - Endpoint `GET /inventory/rooms/updates?lastEventId=X`
    - Frontend: reconexión automática, fallback a polling cada 15 s si SSE error
    - Test E2E: dos pestañas ven mismo rack sincronizado en <2 s
 
 4. **Sprint 4**: Dark mode full stack
+
    - Expandir `theme/index.ts` con `dark` colorScheme usando los mismos tokens `sky.`, `mint.`, etc.
    - `date-field.tsx` dark mode: contraste AA verificado (usar `sky.100` fondo con `sky.900` texto, o inverso según legibilidad)
    - Badge `subtle` dark variant

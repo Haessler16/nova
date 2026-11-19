@@ -18,6 +18,7 @@ import {
 } from '@prisma/client';
 import { PERMISSIONS } from '../access/permissions';
 import { money } from '../common/money/decimal';
+import { Clock } from '../common/time/clock';
 import { computeFolioTotals, type FolioTotals } from '../folio/folio-totals';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
@@ -29,6 +30,7 @@ import {
 } from '../inventory/room-assignment-leases.service';
 import { computeOperationalDay } from '../operational-day/operational-day';
 import { PrismaService } from '../prisma/prisma.service';
+import { lockRow } from './infrastructure/row-locks';
 import {
   formatCalendarDate,
   nightsBetween,
@@ -44,11 +46,7 @@ import {
   NoShowDto,
   ResolveIncidentDto,
 } from './dto/front-office.dto';
-import {
-  groupOccupyingReservations,
-  occupiedRoomIds,
-  overlappingRoomIds,
-} from './room-occupancy';
+import { groupOccupyingReservations, occupiedRoomIds, overlappingRoomIds } from './room-occupancy';
 import {
   activeRoomBlockWhere,
   occupyingStayWhere,
@@ -423,6 +421,7 @@ export class FrontOfficeService {
     private readonly audit: AuditService,
     private readonly roomState: RoomStateService,
     private readonly leases: RoomAssignmentLeasesService,
+    private readonly clock: Clock,
   ) {}
 
   async overview(
@@ -432,7 +431,7 @@ export class FrontOfficeService {
     const propertyId = requirePropertyContext(context);
     const property = await this.loadProperty(context.organizationId, propertyId);
     const operationalDay = computeOperationalDay(
-      new Date(),
+      this.clock.now(),
       property.timezone,
       property.operationalDayStart,
     );
@@ -442,7 +441,7 @@ export class FrontOfficeService {
       operationalDay.operationalDate,
       'operationalDate',
     );
-    const now = new Date();
+    const now = this.clock.now();
     const isHistorical = date < operationalDay.operationalDate;
     const dayStart = isHistorical ? propertyDayStart(date, property.timezone) : null;
     const dayEnd = isHistorical
@@ -690,7 +689,7 @@ export class FrontOfficeService {
     const propertyId = requirePropertyContext(context);
     const property = await this.loadProperty(context.organizationId, propertyId);
     const operationalDay = computeOperationalDay(
-      new Date(),
+      this.clock.now(),
       property.timezone,
       property.operationalDayStart,
     );
@@ -840,7 +839,7 @@ export class FrontOfficeService {
     const propertyId = requirePropertyContext(context);
     const property = await this.loadProperty(context.organizationId, propertyId);
     const operationalDay = computeOperationalDay(
-      new Date(),
+      this.clock.now(),
       property.timezone,
       property.operationalDayStart,
     );
@@ -990,7 +989,7 @@ export class FrontOfficeService {
           });
         }
 
-        const now = new Date();
+        const now = this.clock.now();
         const blocking = await transaction.roomBlock.findFirst({
           where: {
             organizationId: context.organizationId,
@@ -1265,13 +1264,14 @@ export class FrontOfficeService {
           if (balanceReason.length < 3) {
             throw new BadRequestException({
               code: 'balance_reason_required',
-              message: 'A reason with at least 3 characters is required to check out with a balance.',
+              message:
+                'A reason with at least 3 characters is required to check out with a balance.',
             });
           }
         }
       }
 
-      const now = new Date();
+      const now = this.clock.now();
 
       if (closeFolios) {
         for (const folio of openFolios) {
@@ -1372,7 +1372,11 @@ export class FrontOfficeService {
             entityId: room.id,
             correlationId: context.correlationId,
             reason: 'Checkout.',
-            metadata: { roomNumber: room.number, from: fromHousekeeping, to: HousekeepingState.DIRTY },
+            metadata: {
+              roomNumber: room.number,
+              from: fromHousekeeping,
+              to: HousekeepingState.DIRTY,
+            },
           },
           transaction,
         );
@@ -1420,10 +1424,7 @@ export class FrontOfficeService {
    * applies, so the operator can see why a room is not selectable before
    * submitting the change. It never reserves a room.
    */
-  async roomMoveCandidates(
-    context: TenantContext,
-    stayId: string,
-  ): Promise<RoomMoveCandidates> {
+  async roomMoveCandidates(context: TenantContext, stayId: string): Promise<RoomMoveCandidates> {
     const propertyId = requirePropertyContext(context);
     const stay = await this.prisma.stay.findFirst({
       where: { id: stayId, organizationId: context.organizationId, propertyId },
@@ -1479,7 +1480,7 @@ export class FrontOfficeService {
 
     const destinations = rooms.filter((room) => room.id !== stay.roomId);
     const roomIds = destinations.map((room) => room.id);
-    const now = new Date();
+    const now = this.clock.now();
     const [occupyingStays, blocks, overlapping] = await Promise.all([
       this.prisma.stay.findMany({
         where: occupyingStayWhere({
@@ -1545,9 +1546,7 @@ export class FrontOfficeService {
         operationalState: room.operationalState,
         occupancy: occupiedRooms.has(room.id) ? 'OCCUPIED' : 'VACANT',
         activeBlock:
-          block === undefined
-            ? null
-            : { id: block.id, type: block.type, endsAt: block.endsAt },
+          block === undefined ? null : { id: block.id, type: block.type, endsAt: block.endsAt },
         eligible: blockers.length === 0,
         blockers,
         warnings: roomMoveWarnings(room.housekeepingState),
@@ -1615,7 +1614,7 @@ export class FrontOfficeService {
         });
       }
 
-      const now = new Date();
+      const now = this.clock.now();
       const blocking = await transaction.roomBlock.findFirst({
         where: activeRoomBlockWhere({
           organizationId: context.organizationId,
@@ -1734,7 +1733,7 @@ export class FrontOfficeService {
     const propertyId = requirePropertyContext(context);
     const property = await this.loadProperty(context.organizationId, propertyId);
     const operationalDay = computeOperationalDay(
-      new Date(),
+      this.clock.now(),
       property.timezone,
       property.operationalDayStart,
     );
@@ -1785,7 +1784,7 @@ export class FrontOfficeService {
         where: { id: reservation.id },
         data: {
           status: ReservationStatus.NO_SHOW,
-          noShowAt: new Date(),
+          noShowAt: this.clock.now(),
         },
         select: RESERVATION_SUMMARY_SELECT,
       });
@@ -1988,7 +1987,7 @@ export class FrontOfficeService {
         data: {
           status: IncidentStatus.RESOLVED,
           resolution,
-          resolvedAt: new Date(),
+          resolvedAt: this.clock.now(),
           resolvedByUserId: context.actor.id,
         },
         select: INCIDENT_SELECT,
@@ -2073,19 +2072,11 @@ export class FrontOfficeService {
     propertyId: string,
     reservationId: string,
   ): Promise<ReservationSummaryRow> {
-    const locked = await transaction.$queryRaw<Array<{ id: string }>>`
-      SELECT "id" FROM "Reservation"
-      WHERE "id" = ${reservationId}::uuid
-        AND "organizationId" = ${organizationId}::uuid
-        AND "propertyId" = ${propertyId}::uuid
-      FOR UPDATE
-    `;
-    if (locked.length === 0) {
-      throw new NotFoundException({
-        code: 'reservation_not_found',
-        message: 'Reservation not found in the selected property.',
-      });
-    }
+    await lockRow(transaction, 'Reservation', {
+      organizationId,
+      propertyId,
+      id: reservationId,
+    });
     return transaction.reservation.findFirstOrThrow({
       where: { id: reservationId },
       select: RESERVATION_SUMMARY_SELECT,
@@ -2098,19 +2089,7 @@ export class FrontOfficeService {
     propertyId: string,
     stayId: string,
   ): Promise<StayRow> {
-    const locked = await transaction.$queryRaw<Array<{ id: string }>>`
-      SELECT "id" FROM "Stay"
-      WHERE "id" = ${stayId}::uuid
-        AND "organizationId" = ${organizationId}::uuid
-        AND "propertyId" = ${propertyId}::uuid
-      FOR UPDATE
-    `;
-    if (locked.length === 0) {
-      throw new NotFoundException({
-        code: 'stay_not_found',
-        message: 'Stay not found in the selected property.',
-      });
-    }
+    await lockRow(transaction, 'Stay', { organizationId, propertyId, id: stayId });
     return transaction.stay.findFirstOrThrow({
       where: { id: stayId },
       select: STAY_SELECT,

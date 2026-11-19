@@ -29,19 +29,19 @@ idempotencia y auditoría.
 
 ## 2. Existente / falta / se modifica
 
-| Requisito de la ficha | Antes | Ahora |
-| --------------------- | ----- | ----- |
-| Catálogo de productos/servicios | No existía | `FolioProduct` por propiedad + `GET/POST/PATCH /products` + pantalla `/catalog` |
-| Consumo de habitación (minibar y otros) | Sólo cargo manual con texto y precio libres | Cargo por `productId` + `quantity` con precio resuelto en servidor y snapshot en la línea |
-| Cargo manual autorizado | Existía | Se conserva; exige `description` + `amount` y admite `source` |
-| Origen del cargo | No se registraba | `FolioLine.source` (`MANUAL`, `MINIBAR`, `FRONT_DESK`, `PARKING`, `SERVICE`, `INTEGRATION`) derivado de la categoría o explícito |
-| Snapshot de precio | No aplicaba | `unitAmount`, `unit`, `quantity`, `description` guardados en la línea |
-| Void con motivo y auditoría | Existía | Se conserva (sin cambios de contrato) |
-| Búsqueda de Caixa por UH | Sólo número de folio, código de reserva y huésped | Se agrega UH por `stay.room.number` y `reservation.room.number` |
-| UI de cuenta (cargos, pagos, saldo) | Existía | Se agrega consumo desde catálogo y detalle `cantidad × precio · origen` por línea |
-| Checkout coordinado | Marcaba estancia/reserva y liberaba habitación; no tocaba cuenta ni housekeeping | Cierra cuentas + estancia + housekeeping en una transacción, con revisión previa |
-| Falla de cierre no libera habitación | No estaba garantizado (el checkout no intentaba cerrar la cuenta) | Garantizado por transacción única; cubierto por E2E |
-| Política de saldo pendiente | Inexistente | Default reversible: bloquea; excepción explícita por operación con motivo auditado (ADR-055) |
+| Requisito de la ficha                   | Antes                                                                            | Ahora                                                                                                                            |
+| --------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Catálogo de productos/servicios         | No existía                                                                       | `FolioProduct` por propiedad + `GET/POST/PATCH /products` + pantalla `/catalog`                                                  |
+| Consumo de habitación (minibar y otros) | Sólo cargo manual con texto y precio libres                                      | Cargo por `productId` + `quantity` con precio resuelto en servidor y snapshot en la línea                                        |
+| Cargo manual autorizado                 | Existía                                                                          | Se conserva; exige `description` + `amount` y admite `source`                                                                    |
+| Origen del cargo                        | No se registraba                                                                 | `FolioLine.source` (`MANUAL`, `MINIBAR`, `FRONT_DESK`, `PARKING`, `SERVICE`, `INTEGRATION`) derivado de la categoría o explícito |
+| Snapshot de precio                      | No aplicaba                                                                      | `unitAmount`, `unit`, `quantity`, `description` guardados en la línea                                                            |
+| Void con motivo y auditoría             | Existía                                                                          | Se conserva (sin cambios de contrato)                                                                                            |
+| Búsqueda de Caixa por UH                | Sólo número de folio, código de reserva y huésped                                | Se agrega UH por `stay.room.number` y `reservation.room.number`                                                                  |
+| UI de cuenta (cargos, pagos, saldo)     | Existía                                                                          | Se agrega consumo desde catálogo y detalle `cantidad × precio · origen` por línea                                                |
+| Checkout coordinado                     | Marcaba estancia/reserva y liberaba habitación; no tocaba cuenta ni housekeeping | Cierra cuentas + estancia + housekeeping en una transacción, con revisión previa                                                 |
+| Falla de cierre no libera habitación    | No estaba garantizado (el checkout no intentaba cerrar la cuenta)                | Garantizado por transacción única; cubierto por E2E                                                                              |
+| Política de saldo pendiente             | Inexistente                                                                      | Default reversible: bloquea; excepción explícita por operación con motivo auditado (ADR-055)                                     |
 
 ---
 
@@ -65,14 +65,14 @@ requisitos confirmados (ADR-054).
 
 ## 4. API
 
-| Método | Ruta | Permiso | Notas |
-| ------ | ---- | ------- | ----- |
-| GET | `/api/v1/products` | `folio.read` | Filtros `search`, `category`, `isActive` |
-| POST | `/api/v1/products` | `folio.manage` | SKU único por propiedad (`409 product_sku_exists`); moneda = moneda de la propiedad |
-| PATCH | `/api/v1/products/:id` | `folio.manage` | Precio, nombre, categoría, unidad, `isActive`; SKU inmutable; audita sólo cambios reales |
-| POST | `/api/v1/folios/:id/charges` | `folio.manage` | `productId`+`quantity` **o** `description`+`amount` |
-| GET | `/api/v1/front-office/stays/:id/checkout-readiness` | `front_office.read` + `folio.read` | Resumen de cuentas, saldo, housekeeping objetivo y advertencias |
-| POST | `/api/v1/front-office/stays/:id/check-out` | `front_office.manage` (+`folio.manage` si cierra cuentas) | Transaccional; añade `checkout` a la respuesta |
+| Método | Ruta                                                | Permiso                                                   | Notas                                                                                    |
+| ------ | --------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/products`                                  | `folio.read`                                              | Filtros `search`, `category`, `isActive`                                                 |
+| POST   | `/api/v1/products`                                  | `folio.manage`                                            | SKU único por propiedad (`409 product_sku_exists`); moneda = moneda de la propiedad      |
+| PATCH  | `/api/v1/products/:id`                              | `folio.manage`                                            | Precio, nombre, categoría, unidad, `isActive`; SKU inmutable; audita sólo cambios reales |
+| POST   | `/api/v1/folios/:id/charges`                        | `folio.manage`                                            | `productId`+`quantity` **o** `description`+`amount`                                      |
+| GET    | `/api/v1/front-office/stays/:id/checkout-readiness` | `front_office.read` + `folio.read`                        | Resumen de cuentas, saldo, housekeeping objetivo y advertencias                          |
+| POST   | `/api/v1/front-office/stays/:id/check-out`          | `front_office.manage` (+`folio.manage` si cierra cuentas) | Transaccional; añade `checkout` a la respuesta                                           |
 
 Reglas financieras aplicadas:
 
@@ -119,16 +119,16 @@ Nueva suite `apps/api/test/catalog-checkout.e2e-spec.ts` (8 casos):
 
 ### Comandos ejecutados
 
-| Comando | Resultado |
-| ------- | --------- |
-| `pnpm exec prisma format` + `pnpm exec prisma generate` | OK |
-| `pnpm exec prisma migrate deploy` | OK — 19 migraciones, aplica `20261117120000_phase4_catalog_consumptions` |
-| `pnpm --filter @nova/api typecheck` | OK |
-| `pnpm --filter @nova/api lint` | OK |
-| `pnpm --filter @nova/api test` | 20 suites / 115 tests OK |
-| `pnpm test:e2e:isolated` | 17 suites / 152 tests OK (schema temporal creado y eliminado) |
-| `pnpm --filter @nova/web typecheck` | OK |
-| `pnpm --filter @nova/web lint` | OK |
+| Comando                                                 | Resultado                                                                |
+| ------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `pnpm exec prisma format` + `pnpm exec prisma generate` | OK                                                                       |
+| `pnpm exec prisma migrate deploy`                       | OK — 19 migraciones, aplica `20261117120000_phase4_catalog_consumptions` |
+| `pnpm --filter @nova/api typecheck`                     | OK                                                                       |
+| `pnpm --filter @nova/api lint`                          | OK                                                                       |
+| `pnpm --filter @nova/api test`                          | 20 suites / 115 tests OK                                                 |
+| `pnpm test:e2e:isolated`                                | 17 suites / 152 tests OK (schema temporal creado y eliminado)            |
+| `pnpm --filter @nova/web typecheck`                     | OK                                                                       |
+| `pnpm --filter @nova/web lint`                          | OK                                                                       |
 
 No se ejecutó `pnpm build` completo, la suite Playwright de navegador ni capturas: no hubo
 verificación visual de las pantallas nuevas (ver limitaciones).
@@ -137,18 +137,18 @@ verificación visual de las pantallas nuevas (ver limitaciones).
 
 ## 7. Estado de aceptación (Fase 4)
 
-| Criterio de la ficha | Estado | Evidencia |
-| -------------------- | ------ | --------- |
-| Crear/administrar catálogo inicial | `PROBADO` | `/products`, `/catalog`, E2E 1–2 |
-| Registrar consumos y verlos en el folio | `PROBADO` | E2E 4–5, formulario en `/folios/[id]` |
-| Registrar pagos manuales con idempotencia y permisos | `PROBADO` | `folio.e2e-spec.ts` (existente) + `/folios/[id]` |
-| Calcular saldo correctamente | `PROBADO` | `folio-totals.ts`, E2E de totales y readiness |
-| Estornar con motivo y auditoría | `PROBADO` | `folio.e2e-spec.ts` (sin cambios de contrato) |
-| Checkout con pasos consistentes y errores recuperables | `PROBADO` | E2E 7–8 |
-| Una falla de cierre no libera habitación | `PROBADO` | E2E 7 (estancia, habitación y folio sin cambios) |
-| Pruebas API/E2E | `PROBADO` | 17 suites / 152 tests |
-| Pruebas UI del flujo completo en navegador | `NO INICIADO` | Requiere Playwright y servidores; no ejecutado en esta sesión |
-| Evidencia visual (desktop/tablet/estados) | `NO INICIADO` | Sin capturas |
+| Criterio de la ficha                                   | Estado        | Evidencia                                                     |
+| ------------------------------------------------------ | ------------- | ------------------------------------------------------------- |
+| Crear/administrar catálogo inicial                     | `PROBADO`     | `/products`, `/catalog`, E2E 1–2                              |
+| Registrar consumos y verlos en el folio                | `PROBADO`     | E2E 4–5, formulario en `/folios/[id]`                         |
+| Registrar pagos manuales con idempotencia y permisos   | `PROBADO`     | `folio.e2e-spec.ts` (existente) + `/folios/[id]`              |
+| Calcular saldo correctamente                           | `PROBADO`     | `folio-totals.ts`, E2E de totales y readiness                 |
+| Estornar con motivo y auditoría                        | `PROBADO`     | `folio.e2e-spec.ts` (sin cambios de contrato)                 |
+| Checkout con pasos consistentes y errores recuperables | `PROBADO`     | E2E 7–8                                                       |
+| Una falla de cierre no libera habitación               | `PROBADO`     | E2E 7 (estancia, habitación y folio sin cambios)              |
+| Pruebas API/E2E                                        | `PROBADO`     | 17 suites / 152 tests                                         |
+| Pruebas UI del flujo completo en navegador             | `NO INICIADO` | Requiere Playwright y servidores; no ejecutado en esta sesión |
+| Evidencia visual (desktop/tablet/estados)              | `NO INICIADO` | Sin capturas                                                  |
 
 ---
 

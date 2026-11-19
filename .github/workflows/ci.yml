@@ -88,8 +88,100 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: Web unit tests
+        run: pnpm --filter @nova/web test
+
+      - name: API coverage threshold
+        run: pnpm --filter @nova/api test:coverage
+
+      - name: Audit dependencies
+        run: pnpm audit --prod --audit-level=high
+
       - name: Build
         run: pnpm build
 
       - name: E2E tests (isolated schemas)
         run: pnpm test:e2e:all:isolated
+
+  e2e-web:
+    name: Web e2e (Playwright)
+    runs-on: ubuntu-latest
+    needs: verify
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: nova
+          POSTGRES_PASSWORD: nova_local_only
+          POSTGRES_DB: nova_pms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nova -d nova_pms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      NODE_ENV: test
+      AUTH_MODE: dev-header
+      DATABASE_URL: postgresql://nova:nova_local_only@localhost:5432/nova_pms?schema=public
+      REDIS_URL: redis://localhost:6379
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+      PLAYWRIGHT_API_URL: http://localhost:3001
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Apply migrations and seed synthetic data
+        run: pnpm db:migrate:deploy && pnpm db:seed
+
+      - name: Build API and web
+        run: pnpm --filter @nova/api build && pnpm --filter @nova/web build
+
+      - name: Install Playwright browser
+        run: pnpm --filter @nova/web exec playwright install --with-deps chromium
+
+      - name: Start API and web
+        run: |
+          (pnpm --filter @nova/api start > api.log 2>&1 &)
+          (pnpm --filter @nova/web start > web.log 2>&1 &)
+          npx --yes wait-on http://localhost:3001/health/ready http://localhost:3000 --timeout 120000
+
+      - name: Playwright
+        run: pnpm --filter @nova/web test:e2e:ui
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-debug
+          path: |
+            apps/web/test-results
+            api.log
+            web.log

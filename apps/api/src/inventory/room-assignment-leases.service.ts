@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { TenantContext } from '../common/http/request-context';
+import { Clock } from '../common/time/clock';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { requirePropertyContext } from './room-state.service';
@@ -53,19 +54,25 @@ export class RoomAssignmentLeasesService {
     config: ConfigService,
     private readonly audit: AuditService,
     private readonly events: RoomEventsService,
+    private readonly clock: Clock,
   ) {
     const configured = Number(config.get<string>('ROOM_ASSIGNMENT_LEASE_TTL_SECONDS', '120'));
     const seconds = Number.isFinite(configured) ? Math.min(Math.max(configured, 1), 600) : 120;
     this.ttlMs = Math.round(seconds * 1000);
   }
 
-  async getMany(context: TenantContext, roomIds: string[]): Promise<Map<string, RoomAssignmentLease>> {
+  async getMany(
+    context: TenantContext,
+    roomIds: string[],
+  ): Promise<Map<string, RoomAssignmentLease>> {
     const propertyId = requirePropertyContext(context);
     if (roomIds.length === 0) {
       return new Map();
     }
 
-    const raw = await this.redis.getMany(roomIds.map((roomId) => this.key(context, propertyId, roomId)));
+    const raw = await this.redis.getMany(
+      roomIds.map((roomId) => this.key(context, propertyId, roomId)),
+    );
     const leases = new Map<string, RoomAssignmentLease>();
     raw.forEach((value, index) => {
       const lease = this.parse(value);
@@ -97,7 +104,7 @@ export class RoomAssignmentLeasesService {
       return this.renewLease(key, existing, reservationId);
     }
 
-    const now = new Date();
+    const now = this.clock.now();
     const lease: RoomAssignmentLease = {
       leaseId: randomUUID(),
       roomId,
@@ -298,11 +305,7 @@ export class RoomAssignmentLeasesService {
     return { from: previous, to };
   }
 
-  private publishLeaseChange(
-    context: TenantContext,
-    propertyId: string,
-    roomId: string,
-  ): void {
+  private publishLeaseChange(context: TenantContext, propertyId: string, roomId: string): void {
     this.events.publish(context.organizationId, propertyId, {
       roomId,
       type: 'room.lease_changed',
@@ -314,7 +317,7 @@ export class RoomAssignmentLeasesService {
     existing: RoomAssignmentLease,
     reservationId: string | undefined,
   ): Promise<RoomAssignmentLease> {
-    const now = new Date();
+    const now = this.clock.now();
     const renewed: RoomAssignmentLease = {
       ...existing,
       reservationId: reservationId ?? existing.reservationId,
@@ -373,7 +376,7 @@ export class RoomAssignmentLeasesService {
       ) {
         return null;
       }
-      if (new Date(parsed.expiresAt).getTime() <= Date.now()) {
+      if (new Date(parsed.expiresAt).getTime() <= this.clock.now().getTime()) {
         return null;
       }
       return {
@@ -381,8 +384,7 @@ export class RoomAssignmentLeasesService {
         roomId: parsed.roomId,
         ownerUserId: parsed.ownerUserId,
         ownerDisplayName: parsed.ownerDisplayName,
-        reservationId:
-          typeof parsed.reservationId === 'string' ? parsed.reservationId : null,
+        reservationId: typeof parsed.reservationId === 'string' ? parsed.reservationId : null,
         createdAt: parsed.createdAt,
         expiresAt: parsed.expiresAt,
       };

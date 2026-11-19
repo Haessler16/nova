@@ -1,11 +1,20 @@
-export const metadata = {
-  title: 'Sin conexión — NOVA PMS',
-};
+import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
+import { LOCALE_COOKIE, resolveLocale, translate, type TranslationKey } from '@/lib/i18n';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = resolveLocale(cookies().get(LOCALE_COOKIE)?.value);
+  return { title: translate(locale, 'offline.metadataTitle') };
+}
 
 export default function OfflinePage() {
+  const locale = resolveLocale(cookies().get(LOCALE_COOKIE)?.value);
+  const t = (key: TranslationKey): string => translate(locale, key);
+
   return (
     <main
       id="main-content"
+      lang={locale}
       style={{
         minHeight: '100vh',
         display: 'grid',
@@ -28,11 +37,10 @@ export default function OfflinePage() {
         }}
       >
         <h1 id="offline-title" style={{ fontSize: '24px', marginBottom: '12px' }}>
-          Sin conexión
+          {t('offline.title')}
         </h1>
         <p style={{ color: '#4a5568', lineHeight: 1.6, marginBottom: '20px' }}>
-          NOVA PMS necesita conexión para leer y modificar datos operativos. Las operaciones no
-          enviadas no se muestran como confirmadas; reintentá cuando vuelvas a estar en línea.
+          {t('offline.body')}
         </p>
         <a
           href="/dashboard"
@@ -46,7 +54,7 @@ export default function OfflinePage() {
             fontWeight: 600,
           }}
         >
-          Reintentar
+          {t('offline.retry')}
         </a>
       </section>
     </main>

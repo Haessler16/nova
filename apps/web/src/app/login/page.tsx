@@ -8,7 +8,6 @@ import {
   Box,
   Button,
   Center,
-  Code,
   Divider,
   Heading,
   HStack,
@@ -26,10 +25,12 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { errorMessage } from '@/lib/api';
 import { DEMO_PASSWORD, DEMO_USERS } from '@/lib/demo';
+import { useI18n } from '@/lib/i18n';
 import { ErrorAlert } from '@/components/ui';
 
 export default function LoginPage() {
   const { status, authMode, login, completeMfa, loginDev } = useSession();
+  const { t } = useI18n();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
@@ -52,7 +53,7 @@ export default function LoginPage() {
     try {
       if (challengeToken !== null) {
         if (!/^\d{6}$/.test(mfaCode)) {
-          throw new Error('Ingresá el código de 6 dígitos de tu autenticador.');
+          throw new Error(t('login.error.mfaCode'));
         }
         await completeMfa(challengeToken, mfaCode);
         router.replace('/dashboard');
@@ -61,10 +62,10 @@ export default function LoginPage() {
 
       const normalizedEmail = email.trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-        throw new Error('Ingresá un email válido.');
+        throw new Error(t('login.error.email'));
       }
       if (password === '') {
-        throw new Error('Ingresá tu contraseña.');
+        throw new Error(t('login.error.password'));
       }
       const result = await login(normalizedEmail, password);
       if (result.kind === 'mfa' && result.challengeToken !== undefined) {
@@ -133,14 +134,14 @@ export default function LoginPage() {
           boxShadow="card"
         >
           <Heading size="md" mb={1}>
-            Iniciar sesión
+            {t('login.title')}
           </Heading>
           <Text fontSize="sm" color="gray.600" mb={5}>
             {authMode === 'local-session'
-              ? 'Sesión local con usuario y contraseña. La cookie es HttpOnly y las mutaciones requieren CSRF.'
+              ? t('login.subtitle.local')
               : authMode === 'dev-header'
-                ? 'La API está en modo desarrollo: elegí un usuario sintético del seed.'
-                : 'La autenticación está deshabilitada en este entorno.'}
+                ? t('login.subtitle.dev')
+                : t('login.subtitle.disabled')}
           </Text>
 
           {error !== null && (
@@ -156,7 +157,7 @@ export default function LoginPage() {
                   <>
                     <Box>
                       <Text fontSize="sm" fontWeight="medium" mb={1}>
-                        Email
+                        {t('login.field.email')}
                       </Text>
                       <Input
                         type="email"
@@ -169,7 +170,7 @@ export default function LoginPage() {
                     </Box>
                     <Box>
                       <Text fontSize="sm" fontWeight="medium" mb={1}>
-                        Contraseña
+                        {t('login.field.password')}
                       </Text>
                       <Input
                         type="password"
@@ -184,9 +185,7 @@ export default function LoginPage() {
                   <>
                     <Alert status="info" borderRadius="md">
                       <AlertIcon />
-                      <AlertDescription fontSize="sm">
-                        Tu cuenta tiene MFA activo. Ingresá el código de 6 dígitos del autenticador.
-                      </AlertDescription>
+                      <AlertDescription fontSize="sm">{t('login.mfa.alert')}</AlertDescription>
                     </Alert>
                     <HStack justify="center">
                       <PinInput
@@ -194,7 +193,7 @@ export default function LoginPage() {
                         size="lg"
                         value={mfaCode}
                         onChange={setMfaCode}
-                        aria-label="Código MFA"
+                        aria-label={t('login.mfa.aria')}
                       >
                         <PinInputField />
                         <PinInputField />
@@ -213,12 +212,12 @@ export default function LoginPage() {
                         setError(null);
                       }}
                     >
-                      Volver
+                      {t('login.back')}
                     </Button>
                   </>
                 )}
                 <Button type="submit" colorScheme="brand" isLoading={busy}>
-                  {challengeToken === null ? 'Entrar' : 'Validar código'}
+                  {challengeToken === null ? t('login.submit') : t('login.submitMfa')}
                 </Button>
               </Stack>
             </form>
@@ -247,8 +246,7 @@ export default function LoginPage() {
                 </Button>
               ))}
               <Text fontSize="xs" color="gray.500" mt={2}>
-                El modo dev-header solo existe fuera de producción. Todos los usuarios sintéticos
-                usan la misma contraseña de seed: <Code>{DEMO_PASSWORD}</Code>.
+                {t('login.dev.hint', { password: DEMO_PASSWORD })}
               </Text>
             </Stack>
           )}
@@ -256,28 +254,24 @@ export default function LoginPage() {
           {authMode === 'disabled' && (
             <Alert status="warning" borderRadius="md">
               <AlertIcon />
-              <AlertDescription fontSize="sm">
-                Configurá <Code>AUTH_MODE=local-session</Code> o <Code>dev-header</Code> en la API
-                para habilitar el acceso.
-              </AlertDescription>
+              <AlertDescription fontSize="sm">{t('login.disabled.alert')}</AlertDescription>
             </Alert>
           )}
         </Box>
 
         <Divider my={5} />
         <Stack spacing={1} fontSize="xs" color="gray.500" textAlign="center">
-          <Text>
-            Autenticación local transitoria: MFA TOTP, recuperación de contraseña y bloqueo por
-            intentos están disponibles en la API.
-          </Text>
+          <Text>{t('login.footer.auth')}</Text>
           {authMode === 'local-session' && (
             <Text>
-              Usuario demo: <Code>admin@demo.nova.local</Code> · contraseña{' '}
-              <Code>{DEMO_PASSWORD}</Code>
+              {t('login.footer.demo', {
+                email: 'admin@demo.nova.local',
+                password: DEMO_PASSWORD,
+              })}
             </Text>
           )}
           <Link as={NextLink} href="/dashboard" color="brand.600">
-            Ir al panel
+            {t('login.footer.dashboard')}
           </Link>
         </Stack>
       </Box>

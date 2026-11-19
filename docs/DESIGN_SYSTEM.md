@@ -383,3 +383,14 @@ Use the following prompt when starting implementation:
 - The component is used by the Front Office day selector, Reservation filters/create/edit, Audit filters, Cashier operational dates and the Calendar start date. Native `input[type=date]` controls were removed from the web app.
 - Front Office historical consultation uses the same field with `max` set to the current operational date. Historical dates show a warning banner, hide Room rack/Incidencias and hide operational actions; the three remaining tabs are read-only.
 - The calendar uses property calendar dates, not browser-local instants, so a selected day is not shifted by the browser timezone.
+
+## Implementation status — 2026-11-17 (sistema de diálogos, Fase 6)
+
+- Nuevo `apps/web/src/components/action-dialog.tsx`: un `ActionDialog` con tono `info`, `warning` o `critical`. Cada tono aporta icono, eyebrow textual y color de confirmación; el color nunca es el único indicador.
+- Jerarquía fija: eyebrow + título + resumen de una o dos frases con la consecuencia; el detalle operativo (cuentas, filtros, formularios, resultado) va en el cuerpo; acción primaria con verbo concreto y secundaria en `variant="ghost"`.
+- Comportamiento fijo: foco inicial en la acción segura (cancelar/cerrar), retorno del foco al disparador, `Escape`/overlay/X bloqueados en tono `critical` y durante una petición en vuelo, confirmación como `submit` deshabilitado mientras carga y errores del servidor renderizados dentro del diálogo.
+- `hasUnsavedChanges`: si hay notas, motivo o resolución escritos, cualquier intento de cierre abre «¿Descartar lo escrito?» («Seguir editando» / «Descartar»). El cierre exitoso no pasa por el aviso y el formulario se reinicia al abrir, sin arrastrar texto entre huéspedes.
+- Adoptado en Front Office para check-out (crítico), cambio de habitación (información), no-show (advertencia) y resolución de incidencias (información). El alta de incidencias y el wizard de check-in conservan su composición por ser formularios de varios pasos.
+- `InfoIcon` se agregó al set local de iconos; no se añadieron dependencias.
+- Pruebas: `apps/web/e2e/action-dialog.spec.ts` cubre foco inicial y retorno, Escape permitido/bloqueado, envío único con doble clic, error inline y confirmación de descarte con contenido escrito. Sin revisión con lector de pantalla real.
+- Pendiente: detalle plegable para cuerpos largos, aviso de descarte para selecciones (hoy solo texto) y adopción en el resto de las pantallas.

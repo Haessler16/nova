@@ -2,7 +2,7 @@
   "name": "nova-pms",
   "version": "0.1.0",
   "private": true,
-  "description": "NOVA PMS — hotel operations SaaS. Phase 1 foundation.",
+  "description": "NOVA PMS — multi-tenant hotel operations SaaS (API + web).",
   "license": "UNLICENSED",
   "packageManager": "pnpm@8.15.1",
   "engines": {

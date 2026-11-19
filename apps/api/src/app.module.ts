@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CsrfGuard } from './auth/csrf.guard';
+import { ClockModule } from './common/time/clock.module';
 import { DocumentsModule } from './documents/documents.module';
 import { ExportsModule } from './exports/exports.module';
 import { validateEnv } from './config/env.validation';
@@ -45,6 +46,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
       ],
       validate: validateEnv,
     }),
+    ClockModule,
     PrismaModule,
     RedisModule,
     RateLimitModule,

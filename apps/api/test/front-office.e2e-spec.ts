@@ -72,91 +72,91 @@ describe('Front Office (E2E)', () => {
     // rooms keep this suite deterministic without mutating demo data.
     const [roomA, roomB, dirtyRoom, dirtyCheckInRoom, blockedRoom, deluxeRoom, occupiedRoom] =
       await Promise.all([
-      prisma.room.create({
-        data: {
-          organizationId: ORG_A,
-          propertyId: PROPERTY_CENTRO,
-          roomTypeId: ROOM_TYPE_STD,
-          number: `E2E-${suffix.slice(-4)}-A`,
-          floor: '9',
-          building: 'E2E',
-          housekeepingState: HousekeepingState.CLEAN,
-        },
-        select: { id: true },
-      }),
-      prisma.room.create({
-        data: {
-          organizationId: ORG_A,
-          propertyId: PROPERTY_CENTRO,
-          roomTypeId: ROOM_TYPE_STD,
-          number: `E2E-${suffix.slice(-4)}-B`,
-          floor: '9',
-          building: 'E2E',
-          housekeepingState: HousekeepingState.CLEAN,
-        },
-        select: { id: true },
-      }),
-      prisma.room.create({
-        data: {
-          organizationId: ORG_A,
-          propertyId: PROPERTY_CENTRO,
-          roomTypeId: ROOM_TYPE_STD,
-          number: `E2E-${suffix.slice(-4)}-C`,
-          floor: '9',
-          building: 'E2E',
-          housekeepingState: HousekeepingState.DIRTY,
-        },
-        select: { id: true },
-      }),
-      prisma.room.create({
-        data: {
-          organizationId: ORG_A,
-          propertyId: PROPERTY_CENTRO,
-          roomTypeId: ROOM_TYPE_STD,
-          number: `E2E-${suffix.slice(-4)}-F`,
-          floor: '9',
-          building: 'E2E',
-          housekeepingState: HousekeepingState.DIRTY,
-        },
-        select: { id: true },
-      }),
-      prisma.room.create({
-        data: {
-          organizationId: ORG_A,
-          propertyId: PROPERTY_CENTRO,
-          roomTypeId: ROOM_TYPE_STD,
-          number: `E2E-${suffix.slice(-4)}-D`,
-          floor: '9',
-          building: 'E2E',
-          housekeepingState: HousekeepingState.CLEAN,
-        },
-        select: { id: true },
-      }),
-      prisma.room.create({
-        data: {
-          organizationId: ORG_A,
-          propertyId: PROPERTY_CENTRO,
-          roomTypeId: ROOM_TYPE_DLX,
-          number: `E2E-${suffix.slice(-4)}-E`,
-          floor: '9',
-          building: 'E2E',
-          housekeepingState: HousekeepingState.CLEAN,
-        },
-        select: { id: true },
-      }),
-      prisma.room.create({
-        data: {
-          organizationId: ORG_A,
-          propertyId: PROPERTY_CENTRO,
-          roomTypeId: ROOM_TYPE_STD,
-          number: `E2E-${suffix.slice(-4)}-G`,
-          floor: '9',
-          building: 'E2E',
-          housekeepingState: HousekeepingState.CLEAN,
-        },
-        select: { id: true },
-      }),
-    ]);
+        prisma.room.create({
+          data: {
+            organizationId: ORG_A,
+            propertyId: PROPERTY_CENTRO,
+            roomTypeId: ROOM_TYPE_STD,
+            number: `E2E-${suffix.slice(-4)}-A`,
+            floor: '9',
+            building: 'E2E',
+            housekeepingState: HousekeepingState.CLEAN,
+          },
+          select: { id: true },
+        }),
+        prisma.room.create({
+          data: {
+            organizationId: ORG_A,
+            propertyId: PROPERTY_CENTRO,
+            roomTypeId: ROOM_TYPE_STD,
+            number: `E2E-${suffix.slice(-4)}-B`,
+            floor: '9',
+            building: 'E2E',
+            housekeepingState: HousekeepingState.CLEAN,
+          },
+          select: { id: true },
+        }),
+        prisma.room.create({
+          data: {
+            organizationId: ORG_A,
+            propertyId: PROPERTY_CENTRO,
+            roomTypeId: ROOM_TYPE_STD,
+            number: `E2E-${suffix.slice(-4)}-C`,
+            floor: '9',
+            building: 'E2E',
+            housekeepingState: HousekeepingState.DIRTY,
+          },
+          select: { id: true },
+        }),
+        prisma.room.create({
+          data: {
+            organizationId: ORG_A,
+            propertyId: PROPERTY_CENTRO,
+            roomTypeId: ROOM_TYPE_STD,
+            number: `E2E-${suffix.slice(-4)}-F`,
+            floor: '9',
+            building: 'E2E',
+            housekeepingState: HousekeepingState.DIRTY,
+          },
+          select: { id: true },
+        }),
+        prisma.room.create({
+          data: {
+            organizationId: ORG_A,
+            propertyId: PROPERTY_CENTRO,
+            roomTypeId: ROOM_TYPE_STD,
+            number: `E2E-${suffix.slice(-4)}-D`,
+            floor: '9',
+            building: 'E2E',
+            housekeepingState: HousekeepingState.CLEAN,
+          },
+          select: { id: true },
+        }),
+        prisma.room.create({
+          data: {
+            organizationId: ORG_A,
+            propertyId: PROPERTY_CENTRO,
+            roomTypeId: ROOM_TYPE_DLX,
+            number: `E2E-${suffix.slice(-4)}-E`,
+            floor: '9',
+            building: 'E2E',
+            housekeepingState: HousekeepingState.CLEAN,
+          },
+          select: { id: true },
+        }),
+        prisma.room.create({
+          data: {
+            organizationId: ORG_A,
+            propertyId: PROPERTY_CENTRO,
+            roomTypeId: ROOM_TYPE_STD,
+            number: `E2E-${suffix.slice(-4)}-G`,
+            floor: '9',
+            building: 'E2E',
+            housekeepingState: HousekeepingState.CLEAN,
+          },
+          select: { id: true },
+        }),
+      ]);
     roomAId = roomA.id;
     roomBId = roomB.id;
     dirtyRoomId = dirtyRoom.id;

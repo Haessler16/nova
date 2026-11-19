@@ -30,6 +30,7 @@ import {
   useDisclosure,
   useToast,
 } from '@chakra-ui/react';
+import { ActionDialog } from '@/components/action-dialog';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { DateField } from '@/components/date-field';
@@ -86,12 +87,14 @@ function CashierContent() {
   const { tenant } = useSession();
   const toast = useToast();
   const reopenModal = useDisclosure();
+  const [reopenApiError, setReopenApiError] = useState<string | null>(null);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [blockers, setBlockers] = useState<NightAuditBlocker[]>([]);
   const [reopenTarget, setReopenTarget] = useState<OperationalClose | null>(null);
   const [reopenReason, setReopenReason] = useState('');
+  const [closeApiError, setCloseApiError] = useState<string | null>(null);
 
   const [openForm, setOpenForm] = useState({
     name: '',
@@ -238,8 +241,7 @@ function CashierContent() {
     }
   }
 
-  async function submitClose(event: FormEvent): Promise<void> {
-    event.preventDefault();
+  async function submitClose(): Promise<void> {
     if (openSession === null) {
       return;
     }
@@ -256,6 +258,7 @@ function CashierContent() {
       return;
     }
     setBusy('close');
+    setCloseApiError(null);
     try {
       await api(`/api/v1/cash-sessions/${openSession.id}/close`, {
         method: 'POST',
@@ -271,10 +274,13 @@ function CashierContent() {
       });
       toast({ title: 'Caja cerrada', status: 'success' });
       sessions.reload();
+      setCloseForm({ closingAmount: '', varianceReason: '', notes: '' });
     } catch (cause) {
+      const message = errorMessage(cause);
+      setCloseApiError(message);
       toast({
         title: 'No se pudo cerrar la caja',
-        description: errorMessage(cause),
+        description: message,
         status: 'error',
       });
     } finally {
@@ -350,8 +356,7 @@ function CashierContent() {
     reopenModal.onOpen();
   }
 
-  async function submitReopen(event: FormEvent): Promise<void> {
-    event.preventDefault();
+  async function submitReopen(): Promise<void> {
     if (reopenTarget === null) {
       return;
     }
@@ -361,6 +366,7 @@ function CashierContent() {
       return;
     }
     setBusy('reopen');
+    setReopenApiError(null);
     try {
       await api(`/api/v1/operational-days/${reopenTarget.id}/reopen`, {
         method: 'POST',
@@ -374,9 +380,11 @@ function CashierContent() {
       reopenModal.onClose();
       closes.reload();
     } catch (cause) {
+      const message = errorMessage(cause);
+      setReopenApiError(message);
       toast({
         title: 'No se pudo reabrir el día',
-        description: errorMessage(cause),
+        description: message,
         status: 'error',
       });
     } finally {
@@ -744,12 +752,18 @@ function CashierContent() {
                 </SimpleGrid>
               </Stack>
             )}
+            {closeApiError !== null && (
+              <Text fontSize="xs" color="danger.500" mt={1}>
+                {closeApiError}
+              </Text>
+            )}
           </QueryFeedback>
         </SectionCard>
 
         <SectionCard>
           <Box mb={4}>
             <Text fontWeight="semibold">Cierre del día operativo</Text>
+
             <Text fontSize="xs" color="textSecondary">
               Night audit: exige caja cerrada, folios resueltos y llegadas o estancias pendientes
               resueltas. Podés forzar el cierre con un motivo auditado.
@@ -996,39 +1010,43 @@ function CashierContent() {
         </SectionCard>
       </SimpleGrid>
 
-      <Modal isOpen={reopenModal.isOpen} onClose={reopenModal.onClose}>
-        <ModalOverlay />
-        <ModalContent as="form" onSubmit={submitReopen}>
-          <ModalHeader>Reabrir día operativo</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Stack spacing={4}>
-              <Text fontSize="sm" color="textSecondary">
-                Vas a reabrir el cierre de{' '}
-                {reopenTarget === null ? '—' : formatCalendarDate(reopenTarget.operationalDate)}. La
-                acción queda auditada con el motivo.
-              </Text>
-              <Field label="Motivo" isRequired error={errors['reopen.reason']}>
-                <Textarea
-                  value={reopenReason}
-                  onChange={(event) => setReopenReason(event.target.value)}
-                  maxLength={500}
-                  rows={3}
-                  required
-                />
-              </Field>
-            </Stack>
-          </ModalBody>
-          <ModalFooter gap={2}>
-            <Button variant="ghost" onClick={reopenModal.onClose}>
-              Volver
-            </Button>
-            <Button type="submit" colorScheme="warning" isLoading={busy === 'reopen'}>
-              Reabrir día
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <ActionDialog
+        isOpen={reopenModal.isOpen}
+        onClose={() => {
+          reopenModal.onClose();
+          setReopenApiError(null);
+        }}
+        tone="critical"
+        title="Reabrir día operativo"
+        summary={
+          reopenTarget === null
+            ? 'Seleccioná un cierre para ver el resumen aquí.'
+            : `Reabrir el cierre de ${formatCalendarDate(reopenTarget.operationalDate)} vuelve a dejar el día
+            operativo pendiente de noche. La acción queda auditada con el motivo y no borra el
+            registro anterior.`
+        }
+        confirmLabel="Reabrir día"
+        hasUnsavedChanges={reopenReason.trim().length > 0}
+        isLoading={busy === 'reopen'}
+        error={reopenApiError ?? undefined}
+        onConfirm={() => void submitReopen()}
+      >
+        <Stack spacing={3}>
+          <Field label="Motivo" isRequired error={errors['reopen.reason']}>
+            <Textarea
+              value={reopenReason}
+              onChange={(event) => setReopenReason(event.target.value)}
+              maxLength={500}
+              rows={3}
+              required
+            />
+          </Field>
+          <Text fontSize="xs" color="textSecondary">
+            Reabrir un día ya cerrado solo debe usarse para corregir errores de cierre; el motivo
+            queda registrado en la auditoría.
+          </Text>
+        </Stack>
+      </ActionDialog>
     </>
   );
 }

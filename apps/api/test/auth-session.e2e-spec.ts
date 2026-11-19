@@ -6,6 +6,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PasswordService } from '../src/auth/password.service';
 import { TotpService } from '../src/auth/totp.service';
+import { SystemClock } from '../src/common/time/clock';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 const ADMIN_EMAIL = 'admin@demo.nova.local';
@@ -53,7 +54,7 @@ describe('Local session authentication (E2E)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let passwords: PasswordService;
-  const totp = new TotpService();
+  const totp = new TotpService(new SystemClock());
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();

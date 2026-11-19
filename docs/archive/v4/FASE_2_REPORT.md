@@ -58,17 +58,17 @@ Convertir `/inventory/rooms` en un room rack operativo para recepción y houseke
 
 ## Criterios de aceptación
 
-| Criterio | Estado | Evidencia |
-| --- | --- | --- |
-| Filtros por UH, piso, ala, tipo, capacidad, ocupación, housekeeping y operativo | Cumplido | E2E inventory: ocupación, piso/ala, capacidad y modificador |
-| Contadores correctos e independientes de filtros | Cumplido | `summary` calculado sobre la propiedad; captura desktop |
-| Columnas mínimas y acciones accesibles | Cumplido | Capturas desktop/tablet; acciones sticky |
-| Drawer con contexto y acciones autorizadas | Cumplido | Estancia/próxima llegada, lease, incidencia, housekeeping, bloqueos, historial |
-| Housekeeping auditado y separado de ocupación | Cumplido | E2E inventory + `RoomStatusHistory`; ADR-051 |
-| Dos sesiones ven la selección y no inician una asignación conflictiva | Cumplido | E2E lease: listado, `409` de adquisición y `409` de asignación; polling 15 s |
-| Lease expira y se libera sin bloquear la operación confirmada | Cumplido | E2E TTL 2 s, renovación, liberación y reasignación posterior |
-| Integridad final ante doble asignación | Cumplido | Constraint PostgreSQL existente; lease advisory |
-| Migración aditiva y multi-tenant | Cumplido | FK compuesta, consultas por `organizationId`/`propertyId` |
+| Criterio                                                                        | Estado   | Evidencia                                                                      |
+| ------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
+| Filtros por UH, piso, ala, tipo, capacidad, ocupación, housekeeping y operativo | Cumplido | E2E inventory: ocupación, piso/ala, capacidad y modificador                    |
+| Contadores correctos e independientes de filtros                                | Cumplido | `summary` calculado sobre la propiedad; captura desktop                        |
+| Columnas mínimas y acciones accesibles                                          | Cumplido | Capturas desktop/tablet; acciones sticky                                       |
+| Drawer con contexto y acciones autorizadas                                      | Cumplido | Estancia/próxima llegada, lease, incidencia, housekeeping, bloqueos, historial |
+| Housekeeping auditado y separado de ocupación                                   | Cumplido | E2E inventory + `RoomStatusHistory`; ADR-051                                   |
+| Dos sesiones ven la selección y no inician una asignación conflictiva           | Cumplido | E2E lease: listado, `409` de adquisición y `409` de asignación; polling 15 s   |
+| Lease expira y se libera sin bloquear la operación confirmada                   | Cumplido | E2E TTL 2 s, renovación, liberación y reasignación posterior                   |
+| Integridad final ante doble asignación                                          | Cumplido | Constraint PostgreSQL existente; lease advisory                                |
+| Migración aditiva y multi-tenant                                                | Cumplido | FK compuesta, consultas por `organizationId`/`propertyId`                      |
 
 ## Verificación ejecutada
 
@@ -85,6 +85,7 @@ pnpm --filter @nova/web exec playwright test e2e/front-office-checkin.spec.ts  #
 La suite aislada crea un schema temporal, aplica las 18 migraciones, ejecuta el seed sintético y lo elimina. El test de lease usa `ROOM_ASSIGNMENT_LEASE_TTL_SECONDS=2` para no esperar el TTL de producción.
 
 Verificación visual: Chromium real contra web `:3000` y API `:3001`.
+
 - Desktop 1440×1000: tabla completa sin overflow, 45 habitaciones, contadores 34 libres / 11 ocupadas / 34 limpias / 4 sucias / 0 en limpieza / 7 inspeccionadas / 1 fuera de orden / 0 fuera de servicio.
 - Drawer: lease visible, acciones de renovar/liberar y formulario de incidencia.
 - Tablet 768×1024: UH, tipo, piso, ocupación y acciones visibles; housekeeping/operativo/actualizada requieren scroll horizontal interno.

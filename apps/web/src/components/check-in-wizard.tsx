@@ -27,20 +27,21 @@ import { QueryFeedback, StatusBadge } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api, errorMessage, type TenantSelection } from '@/lib/api';
 import {
-  CHECK_IN_BLOCK_REASON_LABELS,
   HOUSEKEEPING_COLORS,
-  HOUSEKEEPING_LABELS,
-  INSTRUCTION_ACTION_LABELS,
-  INSTRUCTION_CATEGORY_LABELS,
-  INSTRUCTION_MOMENT_LABELS,
   INSTRUCTION_PRIORITY_COLORS,
-  INSTRUCTION_PRIORITY_LABELS,
-  INSTRUCTION_STATUS_LABELS,
   OPERATIONAL_COLORS,
-  OPERATIONAL_LABELS,
+  checkInBlockReasonLabel,
   formatCalendarDate,
   formatDateTime,
+  housekeepingLabel,
+  instructionActionLabel,
+  instructionCategoryLabel,
+  instructionMomentLabel,
+  instructionPriorityLabel,
+  instructionStatusLabel,
+  roomOperationalLabel,
 } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type {
   CheckInReadiness,
   CheckInRoomOption,
@@ -52,21 +53,31 @@ import type {
 } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 
-const STEPS = ['Reserva', 'Habitación', 'Huéspedes', 'Confirmar'] as const;
+type Translator = ReturnType<typeof useI18n>['t'];
 
-function blockedWindowMessage(window: CheckInWindow): string {
+function nightsLabel(t: Translator, count: number): string {
+  return t(count === 1 ? 'common.nightsOne' : 'common.nightsOther', { count });
+}
+
+function adultsLabel(t: Translator, count: number): string {
+  return t(count === 1 ? 'common.adultsOne' : 'common.adultsOther', { count });
+}
+
+function minorsLabel(t: Translator, count: number): string {
+  return t(count === 1 ? 'common.minorsOne' : 'common.minorsOther', { count });
+}
+
+function blockedWindowMessage(window: CheckInWindow, t: Translator): string {
   if (window.code === 'check_in_too_early') {
-    return `La ventana de check-in abre el ${formatCalendarDate(
-      window.checkInDate,
-    )}. Hoy es ${formatCalendarDate(
-      window.localDate,
-    )}; el backend rechazará la confirmación (check_in_too_early).`;
+    return t('checkIn.blockedTooEarly', {
+      date: formatCalendarDate(window.checkInDate),
+      today: formatCalendarDate(window.localDate),
+    });
   }
-  return `La ventana de check-in cerró al llegar la fecha de salida (${formatCalendarDate(
-    window.checkOutDate,
-  )}). Hoy es ${formatCalendarDate(
-    window.localDate,
-  )}; el backend rechazará la confirmación (check_in_window_elapsed).`;
+  return t('checkIn.blockedElapsed', {
+    date: formatCalendarDate(window.checkOutDate),
+    today: formatCalendarDate(window.localDate),
+  });
 }
 
 /**
@@ -103,9 +114,9 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function documentLabel(member: ReservationPartyMember): string {
+function documentLabel(member: ReservationPartyMember, t: Translator): string {
   if (member.documentType === null || member.documentNumber === null) {
-    return 'Sin documento registrado';
+    return t('checkIn.party.documentMissing');
   }
   return `${member.documentType} ${member.documentNumber}`;
 }
@@ -124,6 +135,7 @@ export function CheckInWizard({
   onCompleted: () => void;
 }) {
   const { actor } = useSession();
+  const { t, locale } = useI18n();
   const toast = useToast();
   const [step, setStep] = useState(0);
   const [roomId, setRoomId] = useState('');
@@ -189,7 +201,9 @@ export function CheckInWizard({
   const partyBlocked = party.data?.readiness.checkIn === 'BLOCKED';
   const checkInWindow = readiness.data?.checkInWindow ?? null;
   const windowMessage =
-    checkInWindow !== null && !checkInWindow.allowed ? blockedWindowMessage(checkInWindow) : null;
+    checkInWindow !== null && !checkInWindow.allowed
+      ? blockedWindowMessage(checkInWindow, t)
+      : null;
   const windowBlocked = windowMessage !== null;
   const unreadInstructions = relevantInstructions.filter(
     (instruction) => instruction.status === 'NEW',
@@ -214,8 +228,8 @@ export function CheckInWizard({
   async function selectRoom(room: CheckInRoomOption): Promise<void> {
     if (room.lease !== null && room.lease.ownerUserId !== actor?.id) {
       toast({
-        title: 'Habitación en selección',
-        description: `${room.lease.ownerDisplayName} la está seleccionando en otra sesión.`,
+        title: t('checkIn.toast.leaseHeldTitle'),
+        description: t('checkIn.toast.leaseHeldHelp', { name: room.lease.ownerDisplayName }),
         status: 'warning',
       });
       readiness.reload();
@@ -247,7 +261,7 @@ export function CheckInWizard({
       setRoomId(room.id);
     } catch (cause) {
       toast({
-        title: 'No se pudo seleccionar la habitación',
+        title: t('checkIn.toast.selectError'),
         description: errorMessage(cause),
         status: 'warning',
         duration: 8000,
@@ -268,10 +282,10 @@ export function CheckInWizard({
       return;
     }
     const timer = window.setInterval(() => {
-      void api(
-        `/api/v1/inventory/rooms/${lease.roomId}/assignment-leases/${lease.leaseId}/renew`,
-        { method: 'POST', tenant },
-      ).catch(() => setLease(null));
+      void api(`/api/v1/inventory/rooms/${lease.roomId}/assignment-leases/${lease.leaseId}/renew`, {
+        method: 'POST',
+        tenant,
+      }).catch(() => setLease(null));
     }, 45_000);
     return () => window.clearInterval(timer);
   }, [isOpen, lease, tenant]);
@@ -287,10 +301,10 @@ export function CheckInWizard({
         { method: 'POST', tenant, body: {} },
       );
       instructions.reload();
-      toast({ title: 'Lectura registrada', status: 'success' });
+      toast({ title: t('checkIn.toast.ackOk'), status: 'success' });
     } catch (cause) {
       toast({
-        title: 'No se pudo registrar la lectura',
+        title: t('checkIn.toast.ackError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -306,7 +320,7 @@ export function CheckInWizard({
     }
     if (windowBlocked) {
       toast({
-        title: 'Check-in fuera de la ventana',
+        title: t('checkIn.toast.windowBlocked'),
         description: windowMessage ?? undefined,
         status: 'warning',
       });
@@ -314,7 +328,7 @@ export function CheckInWizard({
     }
     if (step === 1) {
       if (selectedRoom === null || !selectedRoom.eligible) {
-        toast({ title: 'Seleccioná una habitación elegible', status: 'warning' });
+        toast({ title: t('checkIn.toast.roomRequired'), status: 'warning' });
         return;
       }
       if (readiness.data?.currentRoomId !== selectedRoom.id) {
@@ -326,14 +340,14 @@ export function CheckInWizard({
             body: { roomId: selectedRoom.id },
           });
           toast({
-            title: `Habitación ${selectedRoom.number} asignada`,
+            title: t('checkIn.toast.roomAssigned', { number: selectedRoom.number }),
             status: 'success',
           });
           bumpVersion();
           await releaseHeldLease();
         } catch (cause) {
           toast({
-            title: 'No se pudo asignar la habitación',
+            title: t('checkIn.toast.assignError'),
             description: errorMessage(cause),
             status: 'error',
             duration: 8000,
@@ -354,7 +368,7 @@ export function CheckInWizard({
     }
     if (windowBlocked) {
       toast({
-        title: 'Check-in fuera de la ventana',
+        title: t('checkIn.toast.windowBlocked'),
         description: windowMessage ?? undefined,
         status: 'warning',
       });
@@ -367,7 +381,7 @@ export function CheckInWizard({
         tenant,
       });
       toast({
-        title: `Check-in registrado para ${reservation.guest.fullName}`,
+        title: t('checkIn.toast.confirmed', { name: reservation.guest.fullName }),
         status: 'success',
       });
       await releaseHeldLease();
@@ -377,7 +391,7 @@ export function CheckInWizard({
       // The backend revalidated the room and the party inside its transaction.
       // Keep the wizard open and refresh so the operator sees the new state.
       toast({
-        title: 'No se pudo confirmar el check-in',
+        title: t('checkIn.toast.confirmError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 10000,
@@ -389,6 +403,13 @@ export function CheckInWizard({
     }
   }
 
+  const stepLabels = [
+    t('checkIn.step.reservation'),
+    t('checkIn.step.room'),
+    t('checkIn.step.party'),
+    t('checkIn.step.confirm'),
+  ];
+
   return (
     <Modal
       isOpen={isOpen}
@@ -399,12 +420,16 @@ export function CheckInWizard({
     >
       <ModalOverlay />
       <ModalContent>
-        <ModalHeader>Check-in — {reservation?.guest.fullName ?? 'huésped'}</ModalHeader>
+        <ModalHeader>
+          {t('checkIn.header', {
+            name: reservation?.guest.fullName ?? t('checkIn.guestFallback'),
+          })}
+        </ModalHeader>
         <ModalCloseButton isDisabled={busy !== null} />
         <ModalBody maxH="70vh" overflowY="auto">
           <Stack spacing={4}>
             <HStack spacing={2} wrap="wrap">
-              {STEPS.map((label, index) => (
+              {stepLabels.map((label, index) => (
                 <Badge
                   key={label}
                   colorScheme={index === step ? 'brand' : index < step ? 'mint' : 'gray'}
@@ -428,27 +453,37 @@ export function CheckInWizard({
             {step === 0 && reservation !== null && (
               <Stack spacing={3}>
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                  <SummaryRow label="Huésped" value={reservation.guest.fullName} />
-                  <SummaryRow label="Reserva" value={reservation.code} />
-                  <SummaryRow label="Llegada" value={formatCalendarDate(reservation.checkInDate)} />
-                  <SummaryRow label="Salida" value={formatCalendarDate(reservation.checkOutDate)} />
                   <SummaryRow
-                    label="Ocupación"
-                    value={`${reservation.adults} adultos${
-                      reservation.children > 0 ? ` · ${reservation.children} menores` : ''
+                    label={t('checkIn.summary.guest')}
+                    value={reservation.guest.fullName}
+                  />
+                  <SummaryRow label={t('checkIn.summary.reservation')} value={reservation.code} />
+                  <SummaryRow
+                    label={t('checkIn.summary.arrival')}
+                    value={formatCalendarDate(reservation.checkInDate)}
+                  />
+                  <SummaryRow
+                    label={t('checkIn.summary.departure')}
+                    value={formatCalendarDate(reservation.checkOutDate)}
+                  />
+                  <SummaryRow
+                    label={t('checkIn.summary.occupancy')}
+                    value={`${adultsLabel(t, reservation.adults)}${
+                      reservation.children > 0 ? ` · ${minorsLabel(t, reservation.children)}` : ''
                     }`}
                   />
                   <SummaryRow
-                    label="Tipo de habitación"
-                    value={`${reservation.roomType.name} (${reservation.nights} ${
-                      reservation.nights === 1 ? 'noche' : 'noches'
-                    })`}
+                    label={t('checkIn.summary.roomType')}
+                    value={t('checkIn.summary.roomTypeValue', {
+                      type: reservation.roomType.name,
+                      nights: nightsLabel(t, reservation.nights),
+                    })}
                   />
                 </SimpleGrid>
                 {reservation.notes !== null && reservation.notes.trim() !== '' && (
                   <Box borderLeftWidth="3px" borderColor="sky.300" pl={3}>
                     <Text fontSize="xs" color="gray.500">
-                      Observaciones de la reserva
+                      {t('checkIn.notes')}
                     </Text>
                     <Text fontSize="sm" whiteSpace="pre-wrap">
                       {reservation.notes}
@@ -457,18 +492,17 @@ export function CheckInWizard({
                 )}
                 <Divider />
                 <Text fontWeight="semibold" fontSize="sm">
-                  Instrucciones de llegada
+                  {t('checkIn.instructions.title')}
                 </Text>
                 <Text fontSize="xs" color="gray.500">
-                  El check-in no inicia preautorizaciones, no cobra pagos y no modifica tarifas.
-                  Confirmá la lectura de lo que el huésped necesita al llegar.
+                  {t('checkIn.instructions.help')}
                 </Text>
                 <QueryFeedback
                   loading={instructions.loading}
                   error={instructions.error}
                   onRetry={instructions.reload}
                   isEmpty={relevantInstructions.length === 0}
-                  emptyText="Sin instrucciones relevantes para esta llegada."
+                  emptyText={t('checkIn.instructions.empty')}
                 >
                   <Stack spacing={2}>
                     {relevantInstructions.map((instruction) => (
@@ -482,21 +516,21 @@ export function CheckInWizard({
                         <HStack spacing={2} wrap="wrap">
                           <StatusBadge
                             color={INSTRUCTION_PRIORITY_COLORS[instruction.priority]}
-                            label={INSTRUCTION_PRIORITY_LABELS[instruction.priority]}
+                            label={instructionPriorityLabel(locale, instruction.priority)}
                           />
                           <Badge colorScheme="gray">
-                            {INSTRUCTION_CATEGORY_LABELS[instruction.category]}
+                            {instructionCategoryLabel(locale, instruction.category)}
                           </Badge>
                           {instruction.executionMoment !== null && (
                             <Badge colorScheme="brand" textTransform="none">
-                              {INSTRUCTION_MOMENT_LABELS[instruction.executionMoment]}
+                              {instructionMomentLabel(locale, instruction.executionMoment)}
                             </Badge>
                           )}
                           {instruction.status !== 'NEW' && (
                             <Badge colorScheme="gray" textTransform="none">
                               {instruction.status === 'ACKNOWLEDGED'
-                                ? 'Leída'
-                                : INSTRUCTION_STATUS_LABELS[instruction.status]}
+                                ? t('checkIn.instructions.read')
+                                : instructionStatusLabel(locale, instruction.status)}
                             </Badge>
                           )}
                         </HStack>
@@ -508,9 +542,9 @@ export function CheckInWizard({
                         </Text>
                         {instruction.actionType === 'PAYMENT_PREAUTHORIZATION' && (
                           <Text fontSize="xs" color="warning.600" mt={1}>
-                            {INSTRUCTION_ACTION_LABELS[instruction.actionType]}: pendiente de
-                            ejecución en el módulo de pagos. No es un pago realizado ni una
-                            autorización aprobada.
+                            {t('checkIn.instructions.actionNote', {
+                              action: instructionActionLabel(locale, instruction.actionType),
+                            })}
                           </Text>
                         )}
                         {instruction.status === 'NEW' && (
@@ -522,7 +556,7 @@ export function CheckInWizard({
                             isLoading={instructionBusyId === instruction.id}
                             onClick={() => void acknowledgeInstruction(instruction)}
                           >
-                            Confirmar lectura
+                            {t('checkIn.instructions.ack')}
                           </Button>
                         )}
                       </Box>
@@ -535,28 +569,25 @@ export function CheckInWizard({
             {step === 1 && (
               <Stack spacing={3}>
                 <Text fontSize="sm" color="gray.600">
-                  Solo se puede hacer check-in en una habitación activa, disponible, sin bloqueo
-                  vigente, libre y con housekeeping listo. Una habitación limpia sin inspección
-                  registrada se admite según la política del hotel.
+                  {t('checkIn.room.help')}
                 </Text>
                 <QueryFeedback
                   loading={readiness.loading}
                   error={readiness.error}
                   onRetry={readiness.reload}
                   isEmpty={readiness.data === null}
-                  emptyText="No se pudo cargar la elegibilidad de habitaciones."
+                  emptyText={t('checkIn.room.loadError')}
                 >
                   {readiness.data !== null && (
                     <Stack spacing={3}>
                       {readiness.data.currentRoomEligible === false && (
                         <Text fontSize="xs" color="warning.700">
-                          La habitación asignada actualmente no cumple las reglas. Elegí otra para
-                          continuar.
+                          {t('checkIn.room.currentInvalid')}
                         </Text>
                       )}
                       {rooms.length === 0 && (
                         <Text fontSize="sm" color="warning.600">
-                          El tipo de habitación de la reserva no tiene unidades activas.
+                          {t('checkIn.room.noActive')}
                         </Text>
                       )}
                       <Stack spacing={2}>
@@ -576,38 +607,42 @@ export function CheckInWizard({
                                 <Box>
                                   <HStack spacing={2} wrap="wrap">
                                     <Text fontSize="sm" fontWeight="semibold">
-                                      Hab. {room.number}
+                                      {t('frontOffice.rack.room', { number: room.number })}
                                     </Text>
                                     <Text fontSize="xs" color="gray.500">
                                       {reservation?.roomType.name}
-                                      {room.floor !== null ? ` · piso ${room.floor}` : ''}
+                                      {room.floor !== null
+                                        ? t('checkIn.room.floor', { floor: room.floor })
+                                        : ''}
                                     </Text>
                                     <StatusBadge
                                       color={HOUSEKEEPING_COLORS[room.housekeepingState]}
-                                      label={HOUSEKEEPING_LABELS[room.housekeepingState]}
+                                      label={housekeepingLabel(locale, room.housekeepingState)}
                                     />
                                     {room.operationalState !== 'AVAILABLE' && (
                                       <StatusBadge
                                         color={OPERATIONAL_COLORS[room.operationalState]}
-                                        label={OPERATIONAL_LABELS[room.operationalState]}
+                                        label={roomOperationalLabel(locale, room.operationalState)}
                                       />
                                     )}
                                     {room.occupancy === 'OCCUPIED' && (
                                       <Badge colorScheme="warning" textTransform="none">
-                                        Ocupada
+                                        {t('checkIn.room.occupied')}
                                       </Badge>
                                     )}
                                   </HStack>
                                   {room.reasons.length > 0 && (
                                     <Text fontSize="xs" color="danger.600" mt={1}>
                                       {room.reasons
-                                        .map((reason) => CHECK_IN_BLOCK_REASON_LABELS[reason])
+                                        .map((reason) => checkInBlockReasonLabel(locale, reason))
                                         .join(' · ')}
                                     </Text>
                                   )}
                                   {room.activeBlock !== null && (
                                     <Text fontSize="xs" color="gray.500" mt={0.5}>
-                                      Bloqueo hasta {formatDateTime(room.activeBlock.endsAt)}
+                                      {t('checkIn.room.block', {
+                                        time: formatDateTime(room.activeBlock.endsAt),
+                                      })}
                                     </Text>
                                   )}
                                   {room.lease !== null && (
@@ -621,9 +656,14 @@ export function CheckInWizard({
                                       mt={0.5}
                                     >
                                       {room.lease.ownerUserId === actor?.id
-                                        ? 'Selección temporal tuya'
-                                        : `En selección por ${room.lease.ownerDisplayName}`}
-                                      {' · '}vence {formatDateTime(room.lease.expiresAt)}
+                                        ? t('checkIn.room.leaseOwn')
+                                        : t('checkIn.room.leaseOther', {
+                                            name: room.lease.ownerDisplayName,
+                                          })}
+                                      {' · '}
+                                      {t('checkIn.room.leaseExpires', {
+                                        time: formatDateTime(room.lease.expiresAt),
+                                      })}
                                     </Text>
                                   )}
                                 </Box>
@@ -639,7 +679,7 @@ export function CheckInWizard({
                                   isLoading={roomBusyId === room.id}
                                   onClick={() => void selectRoom(room)}
                                 >
-                                  {selected ? 'Seleccionada' : 'Elegir'}
+                                  {selected ? t('checkIn.room.selected') : t('checkIn.room.choose')}
                                 </Button>
                               </HStack>
                             </Box>
@@ -656,14 +696,11 @@ export function CheckInWizard({
               <Stack spacing={3}>
                 <HStack justify="space-between" wrap="wrap">
                   <Text fontSize="sm" color="gray.600">
-                    Verificá contacto y documento del huésped principal y de los acompañantes
-                    requeridos.
+                    {t('checkIn.party.help')}
                   </Text>
                   {party.data !== null && (
                     <Badge colorScheme={partyBlocked ? 'danger' : 'mint'} textTransform="none">
-                      {partyBlocked
-                        ? 'Check-in bloqueado por la fiesta'
-                        : 'Fiesta sin bloqueo legal'}
+                      {partyBlocked ? t('checkIn.party.blockedBadge') : t('checkIn.party.okBadge')}
                     </Badge>
                   )}
                 </HStack>
@@ -672,7 +709,7 @@ export function CheckInWizard({
                   error={party.error}
                   onRetry={party.reload}
                   isEmpty={party.data === null || partyMembers.length === 0}
-                  emptyText="No hay fiesta registrada. El backend validará la reserva al confirmar."
+                  emptyText={t('checkIn.party.empty')}
                 >
                   <Stack spacing={2}>
                     {partyMembers.map((member) => (
@@ -688,17 +725,22 @@ export function CheckInWizard({
                             {member.fullName}
                           </Text>
                           <Badge colorScheme={member.role === 'PRIMARY' ? 'brand' : 'gray'}>
-                            {member.role === 'PRIMARY' ? 'Principal' : 'Acompañante'}
+                            {member.role === 'PRIMARY'
+                              ? t('checkIn.party.primary')
+                              : t('checkIn.party.companion')}
                           </Badge>
                         </HStack>
                         <Text fontSize="xs" color="gray.500">
-                          {documentLabel(member)}
+                          {documentLabel(member, t)}
                           {member.phone !== null ? ` · ${member.phone}` : ''}
                           {member.email !== null ? ` · ${member.email}` : ''}
                         </Text>
                         {member.ageGroup === 'MINOR' && (
                           <Text fontSize="xs" color="warning.700">
-                            Menor · supervisión {member.minorSupervision ?? 'sin definir'}
+                            {t('checkIn.party.minor', {
+                              supervision:
+                                member.minorSupervision ?? t('checkIn.party.noSupervision'),
+                            })}
                           </Text>
                         )}
                       </Box>
@@ -707,8 +749,7 @@ export function CheckInWizard({
                 </QueryFeedback>
                 {partyBlocked && (
                   <Text fontSize="sm" color="danger.600">
-                    Resolvé el bloqueo legal de la fiesta antes de confirmar. El backend rechazará
-                    el check-in con `reservation_party_check_in_blocked`.
+                    {t('checkIn.party.blockedNote')}
                   </Text>
                 )}
                 {reservation !== null && (
@@ -718,7 +759,7 @@ export function CheckInWizard({
                     size="xs"
                     variant="link"
                   >
-                    Abrir perfil del huésped
+                    {t('checkIn.party.openGuest')}
                   </Button>
                 )}
               </Stack>
@@ -727,44 +768,48 @@ export function CheckInWizard({
             {step === 3 && reservation !== null && (
               <Stack spacing={3}>
                 <Text fontSize="sm" color="gray.600">
-                  Resumen final. Al confirmar, el backend revalida la habitación, la ocupación, los
-                  bloqueos, el housekeeping y la fiesta dentro de una transacción. Solo verás éxito
-                  después de la respuesta del servidor.
+                  {t('checkIn.review.help')}
                 </Text>
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                  <SummaryRow label="Huésped" value={reservation.guest.fullName} />
-                  <SummaryRow label="Reserva" value={reservation.code} />
                   <SummaryRow
-                    label="Estadía"
+                    label={t('checkIn.summary.guest')}
+                    value={reservation.guest.fullName}
+                  />
+                  <SummaryRow label={t('checkIn.summary.reservation')} value={reservation.code} />
+                  <SummaryRow
+                    label={t('checkIn.review.stay')}
                     value={`${formatCalendarDate(reservation.checkInDate)} → ${formatCalendarDate(
                       reservation.checkOutDate,
                     )}`}
                   />
                   <SummaryRow
-                    label="Habitación"
+                    label={t('checkIn.review.room')}
                     value={
                       selectedRoom === null
-                        ? 'Sin habitación elegible'
-                        : `Hab. ${selectedRoom.number}`
+                        ? t('checkIn.review.noRoom')
+                        : t('frontOffice.rack.room', { number: selectedRoom.number })
                     }
                   />
                   <SummaryRow
-                    label="Housekeeping"
+                    label={t('checkIn.review.housekeeping')}
                     value={
                       selectedRoom === null
                         ? '—'
-                        : HOUSEKEEPING_LABELS[selectedRoom.housekeepingState]
+                        : housekeepingLabel(locale, selectedRoom.housekeepingState)
                     }
                   />
                   <SummaryRow
-                    label="Documentación de la fiesta"
-                    value={party.data?.readiness.checkIn ?? 'Sin datos'}
+                    label={t('checkIn.review.partyDocs')}
+                    value={party.data?.readiness.checkIn ?? t('checkIn.review.partyDocsNone')}
                   />
-                  <SummaryRow label="Instrucciones sin leer" value={String(unreadInstructions)} />
+                  <SummaryRow
+                    label={t('checkIn.review.unread')}
+                    value={String(unreadInstructions)}
+                  />
                 </SimpleGrid>
                 {partyBlocked && (
                   <Text fontSize="sm" color="danger.600">
-                    El check-in está bloqueado por la fiesta. Volvé al paso anterior para revisar.
+                    {t('checkIn.review.blocked')}
                   </Text>
                 )}
               </Stack>
@@ -778,7 +823,7 @@ export function CheckInWizard({
             onClick={() => void handleClose()}
             isDisabled={busy !== null}
           >
-            Cancelar
+            {t('common.cancel')}
           </Button>
           <Button
             variant="outline"
@@ -786,7 +831,7 @@ export function CheckInWizard({
             onClick={() => setStep((current) => Math.max(0, current - 1))}
             isDisabled={step === 0 || busy !== null}
           >
-            Volver
+            {t('checkIn.action.back')}
           </Button>
           {step < 3 ? (
             <Button
@@ -799,7 +844,7 @@ export function CheckInWizard({
                 (step === 1 && (selectedRoom === null || !selectedRoom.eligible))
               }
             >
-              Continuar
+              {t('checkIn.action.continue')}
             </Button>
           ) : (
             <Button
@@ -810,7 +855,7 @@ export function CheckInWizard({
                 windowBlocked || partyBlocked || selectedRoom === null || !selectedRoom.eligible
               }
             >
-              Confirmar check-in
+              {t('checkIn.action.confirm')}
             </Button>
           )}
         </ModalFooter>

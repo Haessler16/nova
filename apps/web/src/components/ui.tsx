@@ -25,6 +25,7 @@ import {
 import NextLink from 'next/link';
 import type { ReactNode } from 'react';
 import { errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 type Accent = 'brand' | 'mint' | 'warning' | 'danger' | 'sky';
 
@@ -124,15 +125,19 @@ export function RowActionLink({
   href,
   children,
   label,
+  onClick,
 }: {
   href: string;
   children: ReactNode;
   label: string;
+  /** Client-side behaviour the destination also supports via its query param. */
+  onClick?: () => void;
 }) {
   return (
     <Link
       as={NextLink}
       href={href}
+      onClick={onClick}
       display="inline-flex"
       alignItems="center"
       gap={2}
@@ -212,8 +217,7 @@ export function Field({
   helper?: string;
   error?: string | null;
 }) {
-  const hasError =
-    error !== undefined && error !== null && error !== '';
+  const hasError = error !== undefined && error !== null && error !== '';
   return (
     <FormControl isRequired={isRequired} isInvalid={hasError}>
       <FormLabel fontSize="sm" fontWeight="semibold" mb={1}>
@@ -238,6 +242,8 @@ export function StatusBadge({ color, label }: { color: string; label: string }) 
 }
 
 export function ErrorAlert({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const { t } = useI18n();
+
   return (
     <Alert
       status="error"
@@ -253,7 +259,7 @@ export function ErrorAlert({ error, onRetry }: { error: unknown; onRetry?: () =>
       </Box>
       {onRetry !== undefined && (
         <Button size="xs" variant="outline" colorScheme="danger" onClick={onRetry}>
-          Reintentar
+          {t('common.retry')}
         </Button>
       )}
     </Alert>
@@ -265,7 +271,7 @@ export function QueryFeedback({
   error,
   onRetry,
   isEmpty = false,
-  emptyText = 'No hay datos para mostrar.',
+  emptyText,
   children,
 }: {
   loading: boolean;
@@ -275,12 +281,14 @@ export function QueryFeedback({
   emptyText?: string;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
+
   if (loading) {
     return (
       <Center py={10}>
         <Spinner size="sm" mr={3} />
         <Text color="textSecondary" fontSize="sm">
-          Cargando…
+          {t('common.loading')}
         </Text>
       </Center>
     );
@@ -291,7 +299,7 @@ export function QueryFeedback({
   }
 
   if (isEmpty) {
-    return <EmptyState text={emptyText} />;
+    return <EmptyState text={emptyText ?? t('common.emptyDefault')} />;
   }
 
   return <>{children}</>;

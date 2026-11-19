@@ -40,9 +40,7 @@ import {
   formatDateTime,
   todayISO,
 } from '@/lib/format';
-import {
-  RowActionButton,
-} from '@/components/ui';
+import { RowActionButton } from '@/components/ui';
 import type { Guest, GuestDocumentType } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 import { hasErrors, validateGuest, type FieldErrors } from '@/lib/validation';
@@ -368,9 +366,7 @@ function GuestsContent() {
                         >
                           Notas
                         </RowActionButton>
-                        <RowActionButton onClick={() => openEdit(guest)}>
-                          Editar
-                        </RowActionButton>
+                        <RowActionButton onClick={() => openEdit(guest)}>Editar</RowActionButton>
                         <RowActionButton
                           onClick={() => void toggleStatus(guest)}
                           colorScheme={guest.status === 'ACTIVE' ? 'warning' : 'sky'}

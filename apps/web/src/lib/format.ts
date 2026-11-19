@@ -1,3 +1,5 @@
+import { translate, type TranslationKey } from './i18n/dictionary';
+import type { Locale } from './i18n/locale';
 import type {
   CashMovementType,
   CashSessionStatus,
@@ -27,12 +29,26 @@ import type {
   SecuritySeverity,
 } from './types';
 
-export const RECORD_STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Activo',
-  SUSPENDED: 'Suspendido',
-  INVITED: 'Invitado',
-  DISABLED: 'Deshabilitado',
+const RECORD_STATUS_LABEL_KEYS: Record<string, TranslationKey> = {
+  ACTIVE: 'status.record.active',
+  SUSPENDED: 'status.record.suspended',
+  INVITED: 'status.record.invited',
+  DISABLED: 'status.record.disabled',
 };
+
+/** Spanish labels kept for screens that are not localized yet. */
+export const RECORD_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: translate('es', 'status.record.active'),
+  SUSPENDED: translate('es', 'status.record.suspended'),
+  INVITED: translate('es', 'status.record.invited'),
+  DISABLED: translate('es', 'status.record.disabled'),
+};
+
+/** Localized record status label; unknown statuses fall back to the raw value. */
+export function recordStatusLabel(locale: Locale, status: string): string {
+  const key = RECORD_STATUS_LABEL_KEYS[status];
+  return key === undefined ? status : translate(locale, key);
+}
 
 export const RECORD_STATUS_COLORS: Record<string, string> = {
   ACTIVE: 'mint',
@@ -48,6 +64,19 @@ export const CHECK_IN_BLOCK_REASON_LABELS: Record<CheckInRoomBlockReason, string
   ROOM_NOT_AVAILABLE: 'Otra reserva ocupa esas fechas',
   HOUSEKEEPING_NOT_READY: 'Housekeeping no lista',
 };
+
+const CHECK_IN_BLOCK_REASON_LABEL_KEYS: Record<CheckInRoomBlockReason, TranslationKey> = {
+  ROOM_OUT_OF_SERVICE: 'checkIn.blockReason.outOfService',
+  ROOM_BLOCKED: 'checkIn.blockReason.blocked',
+  ROOM_OCCUPIED: 'checkIn.blockReason.occupied',
+  ROOM_NOT_AVAILABLE: 'checkIn.blockReason.notAvailable',
+  HOUSEKEEPING_NOT_READY: 'checkIn.blockReason.housekeeping',
+};
+
+/** Localized reason a room cannot take a check-in. */
+export function checkInBlockReasonLabel(locale: Locale, reason: CheckInRoomBlockReason): string {
+  return translate(locale, CHECK_IN_BLOCK_REASON_LABEL_KEYS[reason]);
+}
 
 export const FOLIO_LINE_SOURCE_LABELS: Record<FolioLineSource, string> = {
   MANUAL: 'Manual',
@@ -74,6 +103,18 @@ export const HOUSEKEEPING_LABELS: Record<HousekeepingState, string> = {
   INSPECTED: 'Inspeccionada',
 };
 
+const HOUSEKEEPING_LABEL_KEYS: Record<HousekeepingState, TranslationKey> = {
+  DIRTY: 'housekeeping.dirty',
+  CLEANING: 'housekeeping.cleaning',
+  CLEAN: 'housekeeping.clean',
+  INSPECTED: 'housekeeping.inspected',
+};
+
+/** Localized housekeeping state. */
+export function housekeepingLabel(locale: Locale, state: HousekeepingState): string {
+  return translate(locale, HOUSEKEEPING_LABEL_KEYS[state]);
+}
+
 export const HOUSEKEEPING_COLORS: Record<HousekeepingState, string> = {
   DIRTY: 'danger',
   CLEANING: 'warning',
@@ -87,6 +128,17 @@ export const OPERATIONAL_LABELS: Record<RoomOperationalState, string> = {
   OUT_OF_SERVICE: 'Fuera de servicio',
 };
 
+const OPERATIONAL_LABEL_KEYS: Record<RoomOperationalState, TranslationKey> = {
+  AVAILABLE: 'operational.available',
+  OUT_OF_ORDER: 'operational.outOfOrder',
+  OUT_OF_SERVICE: 'operational.outOfService',
+};
+
+/** Localized operational state of a room. */
+export function roomOperationalLabel(locale: Locale, state: RoomOperationalState): string {
+  return translate(locale, OPERATIONAL_LABEL_KEYS[state]);
+}
+
 export const OPERATIONAL_COLORS: Record<RoomOperationalState, string> = {
   AVAILABLE: 'mint',
   OUT_OF_ORDER: 'danger',
@@ -97,6 +149,16 @@ export const OCCUPANCY_LABELS = {
   VACANT: 'Libre',
   OCCUPIED: 'Ocupada',
 } as const;
+
+const OCCUPANCY_LABEL_KEYS: Record<'VACANT' | 'OCCUPIED', TranslationKey> = {
+  VACANT: 'room.occupancy.vacant',
+  OCCUPIED: 'room.occupancy.occupied',
+};
+
+/** Localized occupancy label (room rack, move candidates). */
+export function occupancyLabel(locale: Locale, occupancy: 'VACANT' | 'OCCUPIED'): string {
+  return translate(locale, OCCUPANCY_LABEL_KEYS[occupancy]);
+}
 
 export const OCCUPANCY_COLORS = {
   VACANT: 'mint',
@@ -114,13 +176,28 @@ export const BLOCK_STATUS_LABELS: Record<RoomBlockStatus, string> = {
   EXPIRED: 'Expirado',
 };
 
-export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
-  CONFIRMED: 'Confirmada',
-  CHECKED_IN: 'En casa',
-  CHECKED_OUT: 'Check-out',
-  CANCELLED: 'Cancelada',
-  NO_SHOW: 'No-show',
+const RESERVATION_STATUS_LABEL_KEYS: Record<ReservationStatus, TranslationKey> = {
+  CONFIRMED: 'reservation.status.confirmed',
+  CHECKED_IN: 'reservation.status.checkedIn',
+  CHECKED_OUT: 'reservation.status.checkedOut',
+  CANCELLED: 'reservation.status.cancelled',
+  NO_SHOW: 'reservation.status.noShow',
 };
+
+/** Spanish labels kept for screens that are not localized yet. */
+export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
+  CONFIRMED: translate('es', 'reservation.status.confirmed'),
+  CHECKED_IN: translate('es', 'reservation.status.checkedIn'),
+  CHECKED_OUT: translate('es', 'reservation.status.checkedOut'),
+  CANCELLED: translate('es', 'reservation.status.cancelled'),
+  NO_SHOW: translate('es', 'reservation.status.noShow'),
+};
+
+/** Localized reservation status label. */
+export function reservationStatusLabel(locale: Locale, status: ReservationStatus): string {
+  const key = RESERVATION_STATUS_LABEL_KEYS[status];
+  return key === undefined ? status : translate(locale, key);
+}
 
 export const RESERVATION_STATUS_COLORS: Record<ReservationStatus, string> = {
   CONFIRMED: 'sky',
@@ -130,14 +207,39 @@ export const RESERVATION_STATUS_COLORS: Record<ReservationStatus, string> = {
   NO_SHOW: 'warning',
 };
 
-export const DOCUMENT_TYPE_LABELS: Record<GuestDocumentType, string> = {
-  CPF: 'CPF',
-  PASSPORT: 'Pasaporte',
-  RG: 'RG',
-  NATIONAL_ID: 'Documento nacional',
-  DRIVER_LICENSE: 'Licencia de conducir',
-  OTHER: 'Otro',
+/** Document types in the order the forms list them. */
+export const DOCUMENT_TYPES: GuestDocumentType[] = [
+  'CPF',
+  'PASSPORT',
+  'RG',
+  'NATIONAL_ID',
+  'DRIVER_LICENSE',
+  'OTHER',
+];
+
+const DOCUMENT_TYPE_LABEL_KEYS: Record<GuestDocumentType, TranslationKey> = {
+  CPF: 'documentType.cpf',
+  PASSPORT: 'documentType.passport',
+  RG: 'documentType.rg',
+  NATIONAL_ID: 'documentType.nationalId',
+  DRIVER_LICENSE: 'documentType.driverLicense',
+  OTHER: 'documentType.other',
 };
+
+/** Spanish labels kept for screens that are not localized yet. */
+export const DOCUMENT_TYPE_LABELS: Record<GuestDocumentType, string> = {
+  CPF: translate('es', 'documentType.cpf'),
+  PASSPORT: translate('es', 'documentType.passport'),
+  RG: translate('es', 'documentType.rg'),
+  NATIONAL_ID: translate('es', 'documentType.nationalId'),
+  DRIVER_LICENSE: translate('es', 'documentType.driverLicense'),
+  OTHER: translate('es', 'documentType.other'),
+};
+
+/** Localized guest document-type label. */
+export function documentTypeLabel(locale: Locale, type: GuestDocumentType): string {
+  return translate(locale, DOCUMENT_TYPE_LABEL_KEYS[type]);
+}
 
 export const SEVERITY_COLORS: Record<SecuritySeverity, string> = {
   INFO: 'sky',
@@ -153,11 +255,35 @@ export const INCIDENT_TYPE_LABELS: Record<IncidentType, string> = {
   OTHER: 'Otro',
 };
 
+const INCIDENT_TYPE_LABEL_KEYS: Record<IncidentType, TranslationKey> = {
+  NOTE: 'incident.type.note',
+  MAINTENANCE: 'incident.type.maintenance',
+  COMPLAINT: 'incident.type.complaint',
+  SAFETY: 'incident.type.safety',
+  OTHER: 'incident.type.other',
+};
+
+/** Localized incident type. */
+export function incidentTypeLabel(locale: Locale, type: IncidentType): string {
+  return translate(locale, INCIDENT_TYPE_LABEL_KEYS[type]);
+}
+
 export const INCIDENT_SEVERITY_LABELS: Record<IncidentSeverity, string> = {
   LOW: 'Baja',
   MEDIUM: 'Media',
   HIGH: 'Alta',
 };
+
+const INCIDENT_SEVERITY_LABEL_KEYS: Record<IncidentSeverity, TranslationKey> = {
+  LOW: 'incident.severity.low',
+  MEDIUM: 'incident.severity.medium',
+  HIGH: 'incident.severity.high',
+};
+
+/** Localized incident severity. */
+export function incidentSeverityLabel(locale: Locale, severity: IncidentSeverity): string {
+  return translate(locale, INCIDENT_SEVERITY_LABEL_KEYS[severity]);
+}
 
 export const INCIDENT_SEVERITY_COLORS: Record<IncidentSeverity, string> = {
   LOW: 'sky',
@@ -169,6 +295,16 @@ export const INCIDENT_STATUS_LABELS: Record<IncidentStatus, string> = {
   OPEN: 'Abierta',
   RESOLVED: 'Resuelta',
 };
+
+const INCIDENT_STATUS_LABEL_KEYS: Record<IncidentStatus, TranslationKey> = {
+  OPEN: 'incident.status.open',
+  RESOLVED: 'incident.status.resolved',
+};
+
+/** Localized incident status. */
+export function incidentStatusLabel(locale: Locale, status: IncidentStatus): string {
+  return translate(locale, INCIDENT_STATUS_LABEL_KEYS[status]);
+}
 
 export const HOUSEKEEPING_TRANSITIONS: Record<HousekeepingState, HousekeepingState[]> = {
   DIRTY: ['CLEANING'],
@@ -187,11 +323,13 @@ export function formatDateTime(value: string | null | undefined): string {
   }).format(new Date(value));
 }
 
+const CALENDAR_DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function formatCalendarDate(value: string): string {
-  const [year, month, day] = value.split('-');
-  if (year === undefined || month === undefined || day === undefined) {
+  if (!CALENDAR_DATE_SHAPE.test(value)) {
     return value;
   }
+  const [year, month, day] = value.split('-');
   return `${day}/${month}/${year}`;
 }
 
@@ -352,17 +490,40 @@ export const OPERATIONAL_CLOSE_COLORS: Record<OperationalCloseStatus, string> = 
   REOPENED: 'warning',
 };
 
+const RESERVATION_DOCUMENT_LABEL_KEYS: Record<DocumentType, TranslationKey> = {
+  GUEST_REGISTRATION: 'document.type.guestRegistration',
+  LODGING_TERMS: 'document.type.lodgingTerms',
+  CHECKIN_SUMMARY: 'document.type.checkinSummary',
+};
+
+/** Spanish labels kept for screens that are not localized yet. */
 export const RESERVATION_DOCUMENT_LABELS: Record<DocumentType, string> = {
-  GUEST_REGISTRATION: 'Ficha de registro',
-  LODGING_TERMS: 'Términos de hospedaje',
-  CHECKIN_SUMMARY: 'Resumen de check-in',
+  GUEST_REGISTRATION: translate('es', 'document.type.guestRegistration'),
+  LODGING_TERMS: translate('es', 'document.type.lodgingTerms'),
+  CHECKIN_SUMMARY: translate('es', 'document.type.checkinSummary'),
+};
+
+/** Localized reservation document-type label. */
+export function reservationDocumentLabel(locale: Locale, type: DocumentType): string {
+  return translate(locale, RESERVATION_DOCUMENT_LABEL_KEYS[type]);
+}
+
+const DOCUMENT_STATUS_LABEL_KEYS: Record<DocumentStatus, TranslationKey> = {
+  GENERATED: 'document.status.generated',
+  SIGNATURE_RECEIVED: 'document.status.signatureReceived',
+  VOIDED: 'document.status.voided',
 };
 
 export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
-  GENERATED: 'Generado',
-  SIGNATURE_RECEIVED: 'Firma recibida',
-  VOIDED: 'Anulado',
+  GENERATED: translate('es', 'document.status.generated'),
+  SIGNATURE_RECEIVED: translate('es', 'document.status.signatureReceived'),
+  VOIDED: translate('es', 'document.status.voided'),
 };
+
+/** Localized generated-document status label. */
+export function documentStatusLabel(locale: Locale, status: DocumentStatus): string {
+  return translate(locale, DOCUMENT_STATUS_LABEL_KEYS[status]);
+}
 
 export const DOCUMENT_STATUS_COLORS: Record<DocumentStatus, string> = {
   GENERATED: 'sky',
@@ -370,24 +531,54 @@ export const DOCUMENT_STATUS_COLORS: Record<DocumentStatus, string> = {
   VOIDED: 'danger',
 };
 
+const INSTRUCTION_CATEGORY_LABEL_KEYS: Record<InstructionCategory, TranslationKey> = {
+  PAYMENT: 'instruction.category.payment',
+  MEAL: 'instruction.category.meal',
+  BILLING: 'instruction.category.billing',
+  ROOM: 'instruction.category.room',
+  ARRIVAL: 'instruction.category.arrival',
+  IMPORTANT: 'instruction.category.important',
+  EXTRA: 'instruction.category.extra',
+  CONFIDENTIAL: 'instruction.category.confidential',
+  GENERAL: 'instruction.category.general',
+};
+
+/** Spanish labels kept for screens that are not localized yet. */
 export const INSTRUCTION_CATEGORY_LABELS: Record<InstructionCategory, string> = {
-  PAYMENT: 'Pago',
-  MEAL: 'Alimentación',
-  BILLING: 'Facturación',
-  ROOM: 'Habitación',
-  ARRIVAL: 'Llegada',
-  IMPORTANT: 'Importante',
-  EXTRA: 'Extras',
-  CONFIDENTIAL: 'Confidencial',
-  GENERAL: 'General',
+  PAYMENT: translate('es', 'instruction.category.payment'),
+  MEAL: translate('es', 'instruction.category.meal'),
+  BILLING: translate('es', 'instruction.category.billing'),
+  ROOM: translate('es', 'instruction.category.room'),
+  ARRIVAL: translate('es', 'instruction.category.arrival'),
+  IMPORTANT: translate('es', 'instruction.category.important'),
+  EXTRA: translate('es', 'instruction.category.extra'),
+  CONFIDENTIAL: translate('es', 'instruction.category.confidential'),
+  GENERAL: translate('es', 'instruction.category.general'),
+};
+
+/** Localized instruction category label. */
+export function instructionCategoryLabel(locale: Locale, category: InstructionCategory): string {
+  return translate(locale, INSTRUCTION_CATEGORY_LABEL_KEYS[category]);
+}
+
+const INSTRUCTION_PRIORITY_LABEL_KEYS: Record<InstructionPriority, TranslationKey> = {
+  LOW: 'instruction.priority.low',
+  NORMAL: 'instruction.priority.normal',
+  HIGH: 'instruction.priority.high',
+  CRITICAL: 'instruction.priority.critical',
 };
 
 export const INSTRUCTION_PRIORITY_LABELS: Record<InstructionPriority, string> = {
-  LOW: 'Baja',
-  NORMAL: 'Normal',
-  HIGH: 'Alta',
-  CRITICAL: 'Crítica',
+  LOW: translate('es', 'instruction.priority.low'),
+  NORMAL: translate('es', 'instruction.priority.normal'),
+  HIGH: translate('es', 'instruction.priority.high'),
+  CRITICAL: translate('es', 'instruction.priority.critical'),
 };
+
+/** Localized instruction priority label. */
+export function instructionPriorityLabel(locale: Locale, priority: InstructionPriority): string {
+  return translate(locale, INSTRUCTION_PRIORITY_LABEL_KEYS[priority]);
+}
 
 export const INSTRUCTION_PRIORITY_COLORS: Record<InstructionPriority, string> = {
   LOW: 'gray',
@@ -396,14 +587,28 @@ export const INSTRUCTION_PRIORITY_COLORS: Record<InstructionPriority, string> = 
   CRITICAL: 'danger',
 };
 
-export const INSTRUCTION_STATUS_LABELS: Record<InstructionStatus, string> = {
-  NEW: 'Nueva',
-  ACKNOWLEDGED: 'Reconocida',
-  IN_PROGRESS: 'En curso',
-  COMPLETED: 'Completada',
-  DISMISSED: 'Descartada',
-  NEEDS_CLARIFICATION: 'Necesita aclaración',
+const INSTRUCTION_STATUS_LABEL_KEYS: Record<InstructionStatus, TranslationKey> = {
+  NEW: 'instruction.status.new',
+  ACKNOWLEDGED: 'instruction.status.acknowledged',
+  IN_PROGRESS: 'instruction.status.inProgress',
+  COMPLETED: 'instruction.status.completed',
+  DISMISSED: 'instruction.status.dismissed',
+  NEEDS_CLARIFICATION: 'instruction.status.needsClarification',
 };
+
+export const INSTRUCTION_STATUS_LABELS: Record<InstructionStatus, string> = {
+  NEW: translate('es', 'instruction.status.new'),
+  ACKNOWLEDGED: translate('es', 'instruction.status.acknowledged'),
+  IN_PROGRESS: translate('es', 'instruction.status.inProgress'),
+  COMPLETED: translate('es', 'instruction.status.completed'),
+  DISMISSED: translate('es', 'instruction.status.dismissed'),
+  NEEDS_CLARIFICATION: translate('es', 'instruction.status.needsClarification'),
+};
+
+/** Localized instruction status label. */
+export function instructionStatusLabel(locale: Locale, status: InstructionStatus): string {
+  return translate(locale, INSTRUCTION_STATUS_LABEL_KEYS[status]);
+}
 
 export const INSTRUCTION_STATUS_COLORS: Record<InstructionStatus, string> = {
   NEW: 'sky',
@@ -414,24 +619,64 @@ export const INSTRUCTION_STATUS_COLORS: Record<InstructionStatus, string> = {
   NEEDS_CLARIFICATION: 'danger',
 };
 
+const INSTRUCTION_ACTION_LABEL_KEYS: Record<InstructionActionType, TranslationKey> = {
+  PAYMENT_PREAUTHORIZATION: 'instruction.action.preauthorization',
+  VERIFY_PAYMENT: 'instruction.action.verifyPayment',
+  BILLING_TASK: 'instruction.action.billingTask',
+  ARRIVAL_REMINDER: 'instruction.action.arrivalReminder',
+};
+
 export const INSTRUCTION_ACTION_LABELS: Record<InstructionActionType, string> = {
-  PAYMENT_PREAUTHORIZATION: 'Preautorización en check-in',
-  VERIFY_PAYMENT: 'Verificar pago en ledger',
-  BILLING_TASK: 'Tarea de facturación',
-  ARRIVAL_REMINDER: 'Recordatorio de llegada',
+  PAYMENT_PREAUTHORIZATION: translate('es', 'instruction.action.preauthorization'),
+  VERIFY_PAYMENT: translate('es', 'instruction.action.verifyPayment'),
+  BILLING_TASK: translate('es', 'instruction.action.billingTask'),
+  ARRIVAL_REMINDER: translate('es', 'instruction.action.arrivalReminder'),
+};
+
+/** Localized instruction action label. */
+export function instructionActionLabel(locale: Locale, action: InstructionActionType): string {
+  return translate(locale, INSTRUCTION_ACTION_LABEL_KEYS[action]);
+}
+
+const INSTRUCTION_MOMENT_LABEL_KEYS: Record<InstructionExecutionMoment, TranslationKey> = {
+  PRE_ARRIVAL: 'instruction.moment.preArrival',
+  CHECK_IN: 'instruction.moment.checkIn',
+  DURING_STAY: 'instruction.moment.duringStay',
+  CHECK_OUT: 'instruction.moment.checkOut',
 };
 
 export const INSTRUCTION_MOMENT_LABELS: Record<InstructionExecutionMoment, string> = {
-  PRE_ARRIVAL: 'Antes de la llegada',
-  CHECK_IN: 'Check-in',
-  DURING_STAY: 'Durante la estadía',
-  CHECK_OUT: 'Check-out',
+  PRE_ARRIVAL: translate('es', 'instruction.moment.preArrival'),
+  CHECK_IN: translate('es', 'instruction.moment.checkIn'),
+  DURING_STAY: translate('es', 'instruction.moment.duringStay'),
+  CHECK_OUT: translate('es', 'instruction.moment.checkOut'),
+};
+
+/** Localized instruction execution moment label. */
+export function instructionMomentLabel(locale: Locale, moment: InstructionExecutionMoment): string {
+  return translate(locale, INSTRUCTION_MOMENT_LABEL_KEYS[moment]);
+}
+
+const INSTRUCTION_VISIBILITY_LABEL_KEYS: Record<InstructionVisibility, TranslationKey> = {
+  ALL_AUTHORIZED: 'instruction.visibility.allAuthorized',
+  FRONT_DESK: 'instruction.visibility.frontDesk',
+  RESERVATIONS: 'instruction.visibility.reservations',
+  FINANCE: 'instruction.visibility.finance',
+  MANAGEMENT: 'instruction.visibility.management',
 };
 
 export const INSTRUCTION_VISIBILITY_LABELS: Record<InstructionVisibility, string> = {
-  ALL_AUTHORIZED: 'Todos los autorizados',
-  FRONT_DESK: 'Recepción',
-  RESERVATIONS: 'Reservas',
-  FINANCE: 'Finanzas',
-  MANAGEMENT: 'Gerencia',
+  ALL_AUTHORIZED: translate('es', 'instruction.visibility.allAuthorized'),
+  FRONT_DESK: translate('es', 'instruction.visibility.frontDesk'),
+  RESERVATIONS: translate('es', 'instruction.visibility.reservations'),
+  FINANCE: translate('es', 'instruction.visibility.finance'),
+  MANAGEMENT: translate('es', 'instruction.visibility.management'),
 };
+
+/** Localized instruction visibility label. */
+export function instructionVisibilityLabel(
+  locale: Locale,
+  visibility: InstructionVisibility,
+): string {
+  return translate(locale, INSTRUCTION_VISIBILITY_LABEL_KEYS[visibility]);
+}

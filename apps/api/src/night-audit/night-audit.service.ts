@@ -14,6 +14,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { money, parseCalendarDate } from '../common/money/decimal';
+import { Clock } from '../common/time/clock';
 import { requirePropertyContext } from '../inventory/room-state.service';
 import { computeOperationalDay } from '../operational-day/operational-day';
 import { PrismaService } from '../prisma/prisma.service';
@@ -104,6 +105,7 @@ export class NightAuditService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly clock: Clock,
   ) {}
 
   async list(
@@ -184,7 +186,7 @@ export class NightAuditService {
     }
 
     const current = computeOperationalDay(
-      new Date(),
+      this.clock.now(),
       property.timezone,
       property.operationalDayStart,
     );
@@ -253,7 +255,7 @@ export class NightAuditService {
                 snapshot: snapshot as unknown as Prisma.InputJsonValue,
                 notes: dto.notes ?? null,
                 closedByUserId: context.actor.id,
-                closedAt: new Date(),
+                closedAt: this.clock.now(),
               },
               select: OPERATIONAL_CLOSE_SELECT,
             })
@@ -267,7 +269,7 @@ export class NightAuditService {
                 snapshot: snapshot as unknown as Prisma.InputJsonValue,
                 notes: dto.notes ?? null,
                 closedByUserId: context.actor.id,
-                closedAt: new Date(),
+                closedAt: this.clock.now(),
               },
               select: OPERATIONAL_CLOSE_SELECT,
             });
@@ -336,7 +338,7 @@ export class NightAuditService {
         data: {
           status: OperationalCloseStatus.REOPENED,
           reopenedByUserId: context.actor.id,
-          reopenedAt: new Date(),
+          reopenedAt: this.clock.now(),
           reopenReason: dto.reason,
         },
         select: OPERATIONAL_CLOSE_SELECT,
@@ -456,7 +458,7 @@ export class NightAuditService {
     }
 
     return {
-      generatedAt: new Date().toISOString(),
+      generatedAt: this.clock.now().toISOString(),
       operationalDate,
       timezone: property.timezone,
       operationalDayStart: property.operationalDayStart,

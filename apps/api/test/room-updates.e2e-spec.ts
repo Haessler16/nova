@@ -144,9 +144,8 @@ describe('Room rack updates (SSE, E2E)', () => {
       requestInit(second),
     );
     const secondReader = secondResponse.body!.getReader();
-    const secondReady = await readUntil(
-      secondReader,
-      (buffer) => buffer.includes('"type":"ready"'),
+    const secondReady = await readUntil(secondReader, (buffer) =>
+      buffer.includes('"type":"ready"'),
     );
     expect(secondReady.matched).toBe(true);
 

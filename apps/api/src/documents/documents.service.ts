@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import type { TenantContext } from '../common/http/request-context';
+import { Clock } from '../common/time/clock';
 import { calendarDateInTimezone } from '../common/time/property-day';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -79,6 +80,7 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly clock: Clock,
   ) {}
 
   async templates(
@@ -122,7 +124,7 @@ export class DocumentsService {
     document: Record<string, unknown>;
     template: Record<string, unknown>;
   }> {
-    const generatedAt = new Date();
+    const generatedAt = this.clock.now();
     const { context, template } = await this.buildContext(tenant, dto, null, generatedAt);
     const html = renderDocumentHtml(context);
 
@@ -166,7 +168,7 @@ export class DocumentsService {
   ): Promise<Record<string, unknown>> {
     const propertyId = this.requireProperty(tenant);
     const id = randomUUID();
-    const generatedAt = new Date();
+    const generatedAt = this.clock.now();
     const { context, template } = await this.buildContext(tenant, dto, null, generatedAt);
     const number = this.nextNumber(id, generatedAt, context.property.timezone);
     context.document.number = number;
@@ -351,7 +353,7 @@ export class DocumentsService {
       });
     }
 
-    const now = new Date();
+    const now = this.clock.now();
     const receivedAt = dto.receivedAt !== undefined ? new Date(dto.receivedAt) : now;
     if (Number.isNaN(receivedAt.getTime())) {
       throw new BadRequestException({

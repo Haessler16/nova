@@ -38,6 +38,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { ActionDialog } from '@/components/action-dialog';
 import { DateField } from '@/components/date-field';
 import { ReservationDocuments } from '@/components/documents-panel';
 import { ReservationInstructions } from '@/components/instructions-panel';
@@ -53,20 +54,20 @@ import {
 } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api, downloadCsv, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
+import type { TranslationKey } from '@/lib/i18n/dictionary';
 import {
-  DOCUMENT_TYPE_LABELS,
+  DOCUMENT_TYPES,
   RESERVATION_STATUS_COLORS,
-  RESERVATION_STATUS_LABELS,
   addDaysISO,
+  documentTypeLabel,
   formatCalendarDate,
   formatDateTime,
   nightsBetween,
+  reservationStatusLabel,
   todayISO,
 } from '@/lib/format';
-import {
-  RowActionButton,
-  RowActionLink,
-} from '@/components/ui';
+import { RowActionButton, RowActionLink } from '@/components/ui';
 import type {
   Availability,
   AvailabilityItem,
@@ -74,6 +75,7 @@ import type {
   GuestDocumentType,
   Reservation,
   ReservationHistoryEntry,
+  ReservationStatus,
   RoomType,
 } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
@@ -88,6 +90,7 @@ import {
   reservationCodeField,
   validateGuest,
   type FieldErrors,
+  type ValidationCopy,
 } from '@/lib/validation';
 
 interface ListData {
@@ -156,30 +159,31 @@ function GuestFields({
   idPrefix: string;
   errors?: FieldErrors;
 }) {
+  const { t, locale } = useI18n();
   return (
     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-      <Field label="Nombre completo" isRequired error={errors?.fullName}>
+      <Field label={t('reservations.guest.field.fullName')} isRequired error={errors?.fullName}>
         <Input
           id={`${idPrefix}-full-name`}
           value={value.fullName}
           onChange={(event) => onChange({ fullName: event.target.value })}
-          placeholder="Nombre y apellido"
+          placeholder={t('reservations.guest.field.fullNamePlaceholder')}
           isDisabled={disabled}
           maxLength={160}
         />
       </Field>
-      <Field label="Email" error={errors?.email}>
+      <Field label={t('reservations.guest.field.email')} error={errors?.email}>
         <Input
           id={`${idPrefix}-email`}
           type="email"
           value={value.email}
           onChange={(event) => onChange({ email: event.target.value })}
-          placeholder="huesped@ejemplo.com"
+          placeholder={t('reservations.guest.field.emailPlaceholder')}
           isDisabled={disabled}
           maxLength={254}
         />
       </Field>
-      <Field label="Teléfono" error={errors?.phone}>
+      <Field label={t('reservations.guest.field.phone')} error={errors?.phone}>
         <Input
           id={`${idPrefix}-phone`}
           value={value.phone}
@@ -189,7 +193,7 @@ function GuestFields({
           maxLength={32}
         />
       </Field>
-      <Field label="Tipo de documento">
+      <Field label={t('reservations.guest.field.documentType')}>
         <Select
           id={`${idPrefix}-document-type`}
           value={value.documentType}
@@ -198,21 +202,25 @@ function GuestFields({
           }
           isDisabled={disabled}
         >
-          <option value="">Sin documento</option>
-          {(Object.keys(DOCUMENT_TYPE_LABELS) as GuestDocumentType[]).map((type) => (
+          <option value="">{t('reservations.guest.noDocument')}</option>
+          {DOCUMENT_TYPES.map((type) => (
             <option key={type} value={type}>
-              {DOCUMENT_TYPE_LABELS[type]}
+              {documentTypeLabel(locale, type)}
             </option>
           ))}
         </Select>
       </Field>
       {value.documentType !== '' && (
-        <Field label="Número de documento" isRequired error={errors?.documentNumber}>
+        <Field
+          label={t('reservations.guest.field.documentNumber')}
+          isRequired
+          error={errors?.documentNumber}
+        >
           <Input
             id={`${idPrefix}-document-number`}
             value={value.documentNumber}
             onChange={(event) => onChange({ documentNumber: event.target.value })}
-            placeholder="Número o código"
+            placeholder={t('reservations.guest.field.documentNumberPlaceholder')}
             isDisabled={disabled}
             minLength={3}
             maxLength={64}
@@ -236,6 +244,7 @@ function RoomChoiceGrid({
   allowUnassigned?: boolean;
   disabled?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <HStack wrap="wrap" spacing={2}>
       {allowUnassigned && (
@@ -246,7 +255,7 @@ function RoomChoiceGrid({
           onClick={() => onChange('')}
           isDisabled={disabled}
         >
-          Sin asignar
+          {t('reservations.unassigned')}
         </Button>
       )}
       {items.map((item) => (
@@ -258,12 +267,44 @@ function RoomChoiceGrid({
           onClick={() => onChange(item.roomId)}
           isDisabled={disabled}
         >
-          Hab. {item.number}
-          {item.floor !== null ? ` · piso ${item.floor}` : ''}
+          {t('reservations.roomPrefix', { number: item.number })}
+          {item.floor !== null ? t('reservations.floor', { floor: item.floor }) : ''}
         </Button>
       ))}
     </HStack>
   );
+}
+
+type Translator = ReturnType<typeof useI18n>['t'];
+
+/**
+ * Validation templates for this screen. `lib/validation` keeps the historical
+ * Spanish text as its default, so passing this object is what localizes the
+ * messages instead of duplicating the rules here.
+ */
+function validationCopy(t: Translator): ValidationCopy {
+  return {
+    required: (label) => t('validation.required', { label }),
+    maxLength: (label, max) => t('validation.maxLength', { label, max }),
+    integer: (label) => t('validation.integer', { label }),
+    range: (label, min, max) => t('validation.range', { label, min, max }),
+    minLength: (label, min) => t('validation.minLength', { label, min }),
+    date: (label) => t('validation.date', { label }),
+    dateOrder: t('validation.dateOrder'),
+    nights: (max) => t('validation.nights', { max }),
+    code: t('validation.code'),
+    emailRequired: t('validation.emailRequired'),
+    emailInvalid: t('validation.emailInvalid'),
+    phoneInvalid: t('validation.phoneInvalid'),
+  };
+}
+
+function guestFieldLabels(t: Translator) {
+  return {
+    fullName: t('validation.label.guestName'),
+    documentNumber: t('validation.label.guestDocumentNumber'),
+    notes: t('validation.label.notes'),
+  };
 }
 
 function newIdempotencyKey(): string {
@@ -273,24 +314,45 @@ function newIdempotencyKey(): string {
   return `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  'reservation.created': 'Reserva creada',
-  'reservation.updated': 'Reserva actualizada',
-  'reservation.room_assigned': 'Habitación asignada',
-  'reservation.room_reassigned': 'Habitación reasignada',
-  'reservation.room_unassigned': 'Habitación liberada',
-  'reservation.cancelled': 'Reserva cancelada',
-  'reservation.status_changed': 'Estado modificado',
-  'reservation.checked_in': 'Check-in',
-  'reservation.checked_out': 'Check-out',
-  'reservation.room_moved': 'Cambio de habitación',
-  'reservation.no_show': 'No-show',
+const ACTION_LABEL_KEYS: Record<string, TranslationKey> = {
+  'reservation.created': 'reservations.action.created',
+  'reservation.updated': 'reservations.action.updated',
+  'reservation.room_assigned': 'reservations.action.roomAssigned',
+  'reservation.room_reassigned': 'reservations.action.roomReassigned',
+  'reservation.room_unassigned': 'reservations.action.roomUnassigned',
+  'reservation.cancelled': 'reservations.action.cancelled',
+  'reservation.status_changed': 'reservations.action.statusChanged',
+  'reservation.checked_in': 'reservations.action.checkedIn',
+  'reservation.checked_out': 'reservations.action.checkedOut',
+  'reservation.room_moved': 'reservations.action.roomMoved',
+  'reservation.no_show': 'reservations.action.noShow',
 };
+
+function actionLabel(t: Translator, action: string): string {
+  const key = ACTION_LABEL_KEYS[action];
+  return key === undefined ? action : t(key);
+}
+
+function adultsLabel(t: Translator, count: number): string {
+  return count === 1
+    ? t('reservations.adultsOne', { count })
+    : t('reservations.adultsOther', { count });
+}
+
+function childrenLabel(t: Translator, count: number): string {
+  return count === 1
+    ? t('reservations.childrenOne', { count })
+    : t('reservations.childrenOther', { count });
+}
 
 function ReservationsContent() {
   const { tenant, property } = useSession();
   const propertyTimezone = property?.timezone;
   const toast = useToast();
+  const { t, locale } = useI18n();
+  const copy = validationCopy(t);
+  const cancelConfirmation = useDisclosure();
+  const [cancelApiError, setCancelApiError] = useState<string | null>(null);
 
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({
@@ -315,10 +377,12 @@ function ReservationsContent() {
 
   const createModal = useDisclosure();
   const editModal = useDisclosure();
-  const cancelModal = useDisclosure();
   const drawer = useDisclosure();
   const [detailVersion, bumpDetail] = useReducer((value: number) => value + 1, 0);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [createErrors, setCreateErrors] = useState<FieldErrors>({});
   const [editErrors, setEditErrors] = useState<FieldErrors>({});
@@ -359,7 +423,6 @@ function ReservationsContent() {
     children: '0',
     notes: '',
   });
-  const [cancelReason, setCancelReason] = useState('');
   const [assignRoomId, setAssignRoomId] = useState('');
 
   const lookup = useAsyncData<{ roomTypes: RoomType[] }>(
@@ -426,7 +489,7 @@ function ReservationsContent() {
   }>(
     async () => {
       if (selectedId === null) {
-        throw new Error('Sin reserva seleccionada');
+        throw new Error(t('reservations.detail.empty'));
       }
       const reservation = await api<Reservation>(`/api/v1/reservations/${selectedId}`, { tenant });
       const [history, guest] = await Promise.all([
@@ -544,16 +607,31 @@ function ReservationsContent() {
   async function handleCreate(event: FormEvent): Promise<void> {
     event.preventDefault();
     const nextErrors = buildErrors([
-      ['checkInDate', calendarDateField(createForm.checkInDate, 'El check-in')],
-      ['checkOutDate', calendarDateField(createForm.checkOutDate, 'El check-out')],
-      ['dates', dateRangeField(createForm.checkInDate, createForm.checkOutDate)],
-      ['adults', intField(createForm.adults, 'Los adultos', { min: 1, max: 20 })],
-      ['children', intField(createForm.children, 'Los menores', { min: 0, max: 20 })],
-      ['guestId', createForm.guestId === '' ? 'Elegí o creá un huésped.' : null],
-      ['roomTypeId', createForm.roomTypeId === '' ? 'Elegí un tipo de habitación.' : null],
-      ['code', reservationCodeField(createForm.code)],
-      ['source', optionalText(createForm.source, 'El origen', { max: 32 })],
-      ['notes', optionalText(createForm.notes, 'La observación', { max: 2000 })],
+      [
+        'checkInDate',
+        calendarDateField(createForm.checkInDate, t('validation.label.checkIn'), copy),
+      ],
+      [
+        'checkOutDate',
+        calendarDateField(createForm.checkOutDate, t('validation.label.checkOut'), copy),
+      ],
+      ['dates', dateRangeField(createForm.checkInDate, createForm.checkOutDate, { copy })],
+      [
+        'adults',
+        intField(createForm.adults, t('validation.label.adults'), { min: 1, max: 20 }, copy),
+      ],
+      [
+        'children',
+        intField(createForm.children, t('validation.label.children'), { min: 0, max: 20 }, copy),
+      ],
+      ['guestId', createForm.guestId === '' ? t('validation.guestRequired') : null],
+      ['roomTypeId', createForm.roomTypeId === '' ? t('validation.roomTypeRequired') : null],
+      ['code', reservationCodeField(createForm.code, copy)],
+      ['source', optionalText(createForm.source, t('validation.label.source'), { max: 32 }, copy)],
+      [
+        'notes',
+        optionalText(createForm.notes, t('validation.label.observation'), { max: 2000 }, copy),
+      ],
     ]);
     setCreateErrors(nextErrors);
     if (hasErrors(nextErrors)) {
@@ -578,7 +656,7 @@ function ReservationsContent() {
           idempotencyKey: createForm.idempotencyKey,
         },
       });
-      toast({ title: 'Reserva creada', status: 'success' });
+      toast({ title: t('reservations.toast.created'), status: 'success' });
       createModal.onClose();
       reload();
 
@@ -593,15 +671,15 @@ function ReservationsContent() {
             body: { text: createForm.notes.trim(), sourceSystem: 'RESERVATIONS_FORM' },
           });
           toast({
-            title: 'Observación interpretada',
-            description: 'Revisá y confirmá las sugerencias en el detalle de la reserva.',
+            title: t('reservations.toast.parsed'),
+            description: t('reservations.toast.parsedBody'),
             status: 'info',
             duration: 8000,
           });
         } catch {
           toast({
-            title: 'La reserva se creó, pero no se pudo interpretar la observación',
-            description: 'Podés importarla manualmente desde el detalle.',
+            title: t('reservations.toast.parseFailed'),
+            description: t('reservations.toast.parseFailedBody'),
             status: 'warning',
             duration: 8000,
           });
@@ -610,7 +688,7 @@ function ReservationsContent() {
       openDetail(created);
     } catch (cause) {
       toast({
-        title: 'No se pudo crear la reserva',
+        title: t('reservations.toast.createError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -626,12 +704,21 @@ function ReservationsContent() {
       return;
     }
     const nextErrors = buildErrors([
-      ['checkInDate', calendarDateField(editForm.checkInDate, 'El check-in')],
-      ['checkOutDate', calendarDateField(editForm.checkOutDate, 'El check-out')],
-      ['dates', dateRangeField(editForm.checkInDate, editForm.checkOutDate)],
-      ['adults', intField(editForm.adults, 'Los adultos', { min: 1, max: 20 })],
-      ['children', intField(editForm.children, 'Los menores', { min: 0, max: 20 })],
-      ['notes', optionalText(editForm.notes, 'Las notas', { max: 2000 })],
+      ['checkInDate', calendarDateField(editForm.checkInDate, t('validation.label.checkIn'), copy)],
+      [
+        'checkOutDate',
+        calendarDateField(editForm.checkOutDate, t('validation.label.checkOut'), copy),
+      ],
+      ['dates', dateRangeField(editForm.checkInDate, editForm.checkOutDate, { copy })],
+      [
+        'adults',
+        intField(editForm.adults, t('validation.label.adults'), { min: 1, max: 20 }, copy),
+      ],
+      [
+        'children',
+        intField(editForm.children, t('validation.label.children'), { min: 0, max: 20 }, copy),
+      ],
+      ['notes', optionalText(editForm.notes, t('validation.label.notes'), { max: 2000 }, copy)],
     ]);
     setEditErrors(nextErrors);
     if (hasErrors(nextErrors)) {
@@ -650,13 +737,13 @@ function ReservationsContent() {
           notes: editForm.notes.trim(),
         },
       });
-      toast({ title: 'Reserva actualizada', status: 'success' });
+      toast({ title: t('reservations.toast.updated'), status: 'success' });
       editModal.onClose();
       reload();
       bumpDetail();
     } catch (cause) {
       toast({
-        title: 'No se pudo actualizar',
+        title: t('reservations.toast.updateError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -677,13 +764,13 @@ function ReservationsContent() {
         tenant,
         body: { roomId: assignRoomId },
       });
-      toast({ title: 'Habitación asignada', status: 'success' });
+      toast({ title: t('reservations.toast.assigned'), status: 'success' });
       setAssignRoomId('');
       reload();
       bumpDetail();
     } catch (cause) {
       toast({
-        title: 'No se pudo asignar la habitación',
+        title: t('reservations.toast.assignError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -693,33 +780,39 @@ function ReservationsContent() {
     }
   }
 
-  async function handleCancel(event: FormEvent): Promise<void> {
-    event.preventDefault();
+  async function handleCancel(): Promise<void> {
     if (selectedId === null) {
       return;
     }
     const reason = cancelReason.trim();
-    const nextErrors = buildErrors([['reason', reason === '' ? null : reasonField(reason)]]);
+    const nextErrors = buildErrors([
+      [
+        'reason',
+        reason === '' ? null : reasonField(reason, t('validation.label.cancelReason'), {}, copy),
+      ],
+    ]);
     setCancelErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
     }
     setSaving(true);
+    setCancelApiError(null);
     try {
       await api<Reservation>(`/api/v1/reservations/${selectedId}/cancel`, {
         method: 'POST',
-        tenant,
-        body: cancelReason.trim() === '' ? {} : { reason: cancelReason.trim() },
       });
-      toast({ title: 'Reserva cancelada', status: 'success' });
-      cancelModal.onClose();
+      toast({ title: t('reservations.toast.cancelled'), status: 'success' });
+      cancelConfirmation.onClose();
       setCancelReason('');
+
       reload();
       bumpDetail();
     } catch (cause) {
+      const message = errorMessage(cause);
+      setCancelApiError(message);
       toast({
-        title: 'No se pudo cancelar',
-        description: errorMessage(cause),
+        title: t('reservations.toast.cancelError'),
+        description: message,
         status: 'error',
         duration: 8000,
       });
@@ -736,7 +829,7 @@ function ReservationsContent() {
   }
 
   async function handleCreateGuest(): Promise<void> {
-    const nextErrors = validateGuest(guestForm);
+    const nextErrors = validateGuest(guestForm, { copy, labels: guestFieldLabels(t) });
     setCreateGuestErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -750,10 +843,10 @@ function ReservationsContent() {
       });
       selectGuest(guest);
       setGuestForm(EMPTY_GUEST_FORM);
-      toast({ title: 'Huésped creado y seleccionado', status: 'success' });
+      toast({ title: t('reservations.toast.guestCreated'), status: 'success' });
     } catch (cause) {
       toast({
-        title: 'No se pudo crear el huésped',
+        title: t('reservations.toast.guestCreateError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -776,7 +869,7 @@ function ReservationsContent() {
     if (guestEditTarget === null) {
       return;
     }
-    const nextErrors = validateGuest(guestEditForm);
+    const nextErrors = validateGuest(guestEditForm, { copy, labels: guestFieldLabels(t) });
     setEditGuestErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -791,7 +884,7 @@ function ReservationsContent() {
       if (guestEditSource === 'create' && selectedGuest?.id === guest.id) {
         setSelectedGuest(guest);
       }
-      toast({ title: 'Datos del huésped actualizados', status: 'success' });
+      toast({ title: t('reservations.toast.guestUpdated'), status: 'success' });
       guestEditModal.onClose();
       if (guestEditSource === 'detail') {
         bumpDetail();
@@ -799,7 +892,7 @@ function ReservationsContent() {
       reload();
     } catch (cause) {
       toast({
-        title: 'No se pudieron guardar los datos',
+        title: t('reservations.toast.guestUpdateError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -816,12 +909,12 @@ function ReservationsContent() {
         method: 'POST',
         tenant,
       });
-      toast({ title: 'Check-in realizado', status: 'success' });
+      toast({ title: t('reservations.toast.checkIn'), status: 'success' });
       reload();
       bumpDetail();
     } catch (cause) {
       toast({
-        title: 'No se pudo hacer check-in',
+        title: t('reservations.toast.checkInError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -844,10 +937,10 @@ function ReservationsContent() {
         tenant,
         `reservas-${todayISO(0, propertyTimezone)}.csv`,
       );
-      toast({ title: 'Exportación descargada', status: 'success' });
+      toast({ title: t('reservations.toast.exported'), status: 'success' });
     } catch (cause) {
       toast({
-        title: 'No se pudo exportar',
+        title: t('reservations.toast.exportError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 7000,
@@ -860,8 +953,8 @@ function ReservationsContent() {
   return (
     <>
       <PageHeader
-        title="Reservas"
-        description="Estadías por fecha calendario con estancia [check-in, check-out) y una habitación por reserva. Los solapamientos los impide PostgreSQL."
+        title={t('reservations.title')}
+        description={t('reservations.description')}
         actions={
           <HStack spacing={2}>
             <Button
@@ -871,10 +964,10 @@ function ReservationsContent() {
               onClick={() => void exportReservations()}
               isLoading={exporting}
             >
-              Exportar CSV
+              {t('reservations.export')}
             </Button>
             <Button colorScheme="brand" size="sm" onClick={openCreate}>
-              Nueva reserva
+              {t('reservations.new')}
             </Button>
           </HStack>
         }
@@ -893,39 +986,39 @@ function ReservationsContent() {
                 <Input
                   size="sm"
                   width="240px"
-                  placeholder="Código, huésped, habitación…"
+                  placeholder={t('reservations.searchPlaceholder')}
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
                 />
                 <Button size="sm" type="submit" variant="outline">
-                  Buscar
+                  {t('reservations.search')}
                 </Button>
               </HStack>
             </form>
             <Select
               size="sm"
               width="170px"
-              aria-label="Estado"
+              aria-label={t('reservations.filter.status')}
               value={filters.status}
               onChange={(event) => setFilters({ ...filters, status: event.target.value })}
             >
-              <option value="">Todos los estados</option>
-              {Object.entries(RESERVATION_STATUS_LABELS).map(([value, label]) => (
+              <option value="">{t('reservations.filter.allStatuses')}</option>
+              {(Object.keys(RESERVATION_STATUS_COLORS) as ReservationStatus[]).map((value) => (
                 <option key={value} value={value}>
-                  {label}
+                  {reservationStatusLabel(locale, value)}
                 </option>
               ))}
             </Select>
             <HStack spacing={1}>
               <Text fontSize="xs" color="textSecondary">
-                Desde
+                {t('reservations.filter.from')}
               </Text>
               <DateField
                 size="sm"
                 width="150px"
                 value={filters.fromDate}
                 placeholder="dd/mm/aaaa"
-                ariaLabel="Fecha desde"
+                ariaLabel={t('reservations.filter.fromAria')}
                 isClearable
                 onChange={(fromDate) =>
                   setFilters({
@@ -936,7 +1029,7 @@ function ReservationsContent() {
                 }
               />
               <Text fontSize="xs" color="textSecondary">
-                Hasta
+                {t('reservations.filter.to')}
               </Text>
               <DateField
                 size="sm"
@@ -944,7 +1037,7 @@ function ReservationsContent() {
                 value={filters.toDate}
                 min={filters.fromDate !== '' ? filters.fromDate : undefined}
                 placeholder="dd/mm/aaaa"
-                ariaLabel="Fecha hasta"
+                ariaLabel={t('reservations.filter.toAria')}
                 isClearable
                 onChange={(toDate) => setFilters({ ...filters, toDate })}
               />
@@ -957,12 +1050,14 @@ function ReservationsContent() {
                 setFilters({ search: '', status: '', fromDate: '', toDate: '' });
               }}
             >
-              Limpiar
+              {t('reservations.filter.clear')}
             </Button>
           </HStack>
           <Text fontSize="xs" color="textSecondary">
-            {data?.items.length ?? 0} reservas cargadas
-            {data?.nextCursor != null ? ' · hay más resultados: refiná los filtros' : ''}
+            {(data?.items.length ?? 0) === 1
+              ? t('reservations.countOne', { count: data?.items.length ?? 0 })
+              : t('reservations.countOther', { count: data?.items.length ?? 0 })}
+            {data?.nextCursor != null ? ` ${t('reservations.moreResults')}` : ''}
           </Text>
         </Stack>
 
@@ -971,17 +1066,17 @@ function ReservationsContent() {
           error={error}
           onRetry={reload}
           isEmpty={(data?.items.length ?? 0) === 0}
-          emptyText="No hay reservas para los filtros seleccionados."
+          emptyText={t('reservations.empty')}
         >
           <TableContainer>
             <Table size="sm">
               <Thead>
                 <Tr>
-                  <Th>Código</Th>
-                  <Th>Huésped</Th>
-                  <Th>Estadía</Th>
-                  <Th>Tipo / habitación</Th>
-                  <Th>Estado</Th>
+                  <Th>{t('reservations.column.code')}</Th>
+                  <Th>{t('reservations.column.guest')}</Th>
+                  <Th>{t('reservations.column.stay')}</Th>
+                  <Th>{t('reservations.column.room')}</Th>
+                  <Th>{t('reservations.column.status')}</Th>
                   <Th />
                 </Tr>
               </Thead>
@@ -993,13 +1088,15 @@ function ReservationsContent() {
                         {reservation.code}
                       </Text>
                       <Text fontSize="xs" color="textSecondary">
-                        {reservation.source ?? 'directa'}
+                        {reservation.source ?? t('reservations.row.direct')}
                       </Text>
                     </Td>
                     <Td>
                       <Text fontWeight="medium">{reservation.guest.fullName}</Text>
                       <Text fontSize="xs" color="textSecondary">
-                        {reservation.guest.email ?? reservation.guest.phone ?? 'sin contacto'}
+                        {reservation.guest.email ??
+                          reservation.guest.phone ??
+                          t('reservations.row.noContact')}
                       </Text>
                     </Td>
                     <Td>
@@ -1008,50 +1105,53 @@ function ReservationsContent() {
                         {formatCalendarDate(reservation.checkOutDate)}
                       </Text>
                       <Text fontSize="xs" color="textSecondary">
-                        {reservation.nights} {reservation.nights === 1 ? 'noche' : 'noches'} ·{' '}
-                        {reservation.adults} adultos
-                        {reservation.children > 0 ? ` · ${reservation.children} menores` : ''}
+                        {reservation.nights === 1
+                          ? t('reservations.nightsOne', { count: reservation.nights })
+                          : t('reservations.nightsOther', { count: reservation.nights })}{' '}
+                        · {adultsLabel(t, reservation.adults)}
+                        {reservation.children > 0
+                          ? ` · ${childrenLabel(t, reservation.children)}`
+                          : ''}
                       </Text>
                     </Td>
                     <Td>
                       <Text fontSize="sm">{reservation.roomType.name}</Text>
                       <Text fontSize="xs" color="textSecondary">
                         {reservation.room !== null
-                          ? `Hab. ${reservation.room.number}`
-                          : 'Sin asignar'}
+                          ? t('reservations.roomPrefix', { number: reservation.room.number })
+                          : t('reservations.unassigned')}
                       </Text>
                     </Td>
                     <Td>
                       <StatusBadge
                         color={RESERVATION_STATUS_COLORS[reservation.status]}
-                        label={RESERVATION_STATUS_LABELS[reservation.status]}
+                        label={reservationStatusLabel(locale, reservation.status)}
                       />
                     </Td>
                     <Td>
                       <HStack spacing={1} justify="flex-end" wrap="nowrap">
                         <RowActionLink
                           href={`/reservations?reservation=${reservation.id}`}
-                          label={`Abrir reserva ${reservation.code}`}
+                          label={t('reservations.row.open', { code: reservation.code })}
+                          onClick={() => openDetail(reservation)}
                         >
-                          Detalle
+                          {t('reservations.row.detail')}
                         </RowActionLink>
                         {reservation.status === 'CONFIRMED' && (
                           <>
-                            <RowActionButton
-                              onClick={() => openEdit(reservation)}
-                            >
-                              Editar
+                            <RowActionButton onClick={() => openEdit(reservation)}>
+                              {t('reservations.row.edit')}
                             </RowActionButton>
                             <RowActionButton
                               onClick={() => {
                                 setSelectedId(reservation.id);
                                 setCancelReason('');
                                 setCancelErrors({});
-                                cancelModal.onOpen();
+                                cancelConfirmation.onOpen();
                               }}
                               colorScheme="danger"
                             >
-                              Cancelar
+                              {t('reservations.row.cancel')}
                             </RowActionButton>
                           </>
                         )}
@@ -1079,13 +1179,13 @@ function ReservationsContent() {
           maxH="calc(100vh - 2rem)"
           onSubmit={(event) => void handleCreate(event)}
         >
-          <ModalHeader>Nueva reserva</ModalHeader>
+          <ModalHeader>{t('reservations.new')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody py={4}>
             <Stack spacing={4}>
               <Box>
                 <HStack justify="space-between" mb={2}>
-                  <Text fontWeight="semibold">Huésped</Text>
+                  <Text fontWeight="semibold">{t('reservations.section.guest')}</Text>
                   {selectedGuest === null && guestPanel === 'none' && (
                     <Button
                       size="xs"
@@ -1096,7 +1196,7 @@ function ReservationsContent() {
                         setGuestPanel('create');
                       }}
                     >
-                      + Nuevo huésped
+                      {t('reservations.guest.new')}
                     </Button>
                   )}
                 </HStack>
@@ -1114,12 +1214,12 @@ function ReservationsContent() {
                         <Text fontWeight="semibold">{selectedGuest.fullName}</Text>
                         <Text fontSize="xs" color="textSecondary" isTruncated>
                           {[selectedGuest.email, selectedGuest.phone].filter(Boolean).join(' · ') ||
-                            'Sin datos de contacto'}
+                            t('reservations.guest.noContact')}
                         </Text>
                         <Text fontSize="xs" color="textSecondary">
                           {selectedGuest.documentType !== null
-                            ? `${DOCUMENT_TYPE_LABELS[selectedGuest.documentType]} ${selectedGuest.documentNumber ?? ''}`
-                            : 'Sin documento'}
+                            ? `${documentTypeLabel(locale, selectedGuest.documentType)} ${selectedGuest.documentNumber ?? ''}`
+                            : t('reservations.guest.noDocument')}
                         </Text>
                       </Box>
                       <HStack spacing={2}>
@@ -1128,7 +1228,7 @@ function ReservationsContent() {
                           variant="outline"
                           onClick={() => openGuestEdit(selectedGuest, 'create')}
                         >
-                          Editar datos
+                          {t('reservations.guest.editData')}
                         </Button>
                         <Button
                           size="xs"
@@ -1139,7 +1239,7 @@ function ReservationsContent() {
                             setGuestSearch('');
                           }}
                         >
-                          Cambiar
+                          {t('reservations.guest.change')}
                         </Button>
                       </HStack>
                     </HStack>
@@ -1155,7 +1255,7 @@ function ReservationsContent() {
                     />
                     <HStack justify="flex-end" mt={3}>
                       <Button size="sm" variant="ghost" onClick={() => setGuestPanel('none')}>
-                        Cancelar
+                        {t('common.cancel')}
                       </Button>
                       <Button
                         size="sm"
@@ -1163,15 +1263,15 @@ function ReservationsContent() {
                         onClick={() => void handleCreateGuest()}
                         isLoading={guestSaving}
                       >
-                        Crear y seleccionar
+                        {t('reservations.guest.createAndSelect')}
                       </Button>
                     </HStack>
                   </Box>
                 ) : (
                   <Stack spacing={2}>
                     <Input
-                      aria-label="Buscar huésped"
-                      placeholder="Buscar por nombre, email o teléfono…"
+                      aria-label={t('reservations.guest.searchAria')}
+                      placeholder={t('reservations.guest.searchPlaceholder')}
                       value={guestSearch}
                       onChange={(event) => setGuestSearch(event.target.value)}
                     />
@@ -1184,12 +1284,15 @@ function ReservationsContent() {
                     >
                       {guestLookup.loading ? (
                         <Text px={3} py={2} fontSize="sm" color="textSecondary">
-                          Buscando huéspedes…
+                          {t('reservations.guest.searching')}
                         </Text>
                       ) : (guestLookup.data?.items.length ?? 0) === 0 ? (
                         <Text px={3} py={2} fontSize="sm" color="textSecondary">
-                          No hay huéspedes activos
-                          {debouncedGuestSearch !== '' ? ` para “${debouncedGuestSearch}”` : ''}.
+                          {debouncedGuestSearch === ''
+                            ? t('reservations.guest.noneActive')
+                            : t('reservations.guest.noneActiveFor', {
+                                term: debouncedGuestSearch,
+                              })}
                         </Text>
                       ) : (
                         <Stack spacing={0} divider={<Divider />}>
@@ -1210,7 +1313,7 @@ function ReservationsContent() {
                                 </Text>
                                 <Text fontSize="xs" color="textSecondary" isTruncated>
                                   {[guest.email, guest.phone].filter(Boolean).join(' · ') ||
-                                    'Sin datos de contacto'}
+                                    t('reservations.guest.noContact')}
                                 </Text>
                               </Box>
                             </Button>
@@ -1232,8 +1335,9 @@ function ReservationsContent() {
                         setGuestPanel('create');
                       }}
                     >
-                      Crear un huésped nuevo
-                      {guestSearch.trim() !== '' ? ` con “${guestSearch.trim()}”` : ''}
+                      {guestSearch.trim() === ''
+                        ? t('reservations.guest.createNew')
+                        : t('reservations.guest.createNewFor', { term: guestSearch.trim() })}
                     </Button>
                   </Stack>
                 )}
@@ -1241,15 +1345,19 @@ function ReservationsContent() {
 
               <Box>
                 <Text fontWeight="semibold" mb={2}>
-                  Estadía
+                  {t('reservations.section.stay')}
                 </Text>
                 <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
-                  <Field label="Check-in" isRequired error={createErrors.checkInDate}>
+                  <Field
+                    label={t('reservations.field.checkIn')}
+                    isRequired
+                    error={createErrors.checkInDate}
+                  >
                     <DateField
                       value={createForm.checkInDate}
                       min={todayISO(0, propertyTimezone)}
                       placeholder="dd/mm/aaaa"
-                      ariaLabel="Fecha de check-in"
+                      ariaLabel={t('reservations.field.checkInAria')}
                       onChange={(checkInDate) =>
                         setCreateForm({
                           ...createForm,
@@ -1263,12 +1371,16 @@ function ReservationsContent() {
                       }
                     />
                   </Field>
-                  <Field label="Check-out" isRequired error={createErrors.checkOutDate}>
+                  <Field
+                    label={t('reservations.field.checkOut')}
+                    isRequired
+                    error={createErrors.checkOutDate}
+                  >
                     <DateField
                       value={createForm.checkOutDate}
                       min={createForm.checkInDate}
                       placeholder="dd/mm/aaaa"
-                      ariaLabel="Fecha de check-out"
+                      ariaLabel={t('reservations.field.checkOutAria')}
                       onChange={(checkOutDate) =>
                         setCreateForm({
                           ...createForm,
@@ -1278,7 +1390,11 @@ function ReservationsContent() {
                       }
                     />
                   </Field>
-                  <Field label="Adultos" isRequired error={createErrors.adults}>
+                  <Field
+                    label={t('reservations.field.adults')}
+                    isRequired
+                    error={createErrors.adults}
+                  >
                     <Input
                       type="number"
                       min={1}
@@ -1290,7 +1406,7 @@ function ReservationsContent() {
                       required
                     />
                   </Field>
-                  <Field label="Menores" error={createErrors.children}>
+                  <Field label={t('reservations.field.children')} error={createErrors.children}>
                     <Input
                       type="number"
                       min={0}
@@ -1302,19 +1418,29 @@ function ReservationsContent() {
                     />
                   </Field>
                 </SimpleGrid>
-                <Text mt={2} fontSize="xs" color={createDatesValid ? 'textSecondary' : 'danger.500'}>
+                <Text
+                  mt={2}
+                  fontSize="xs"
+                  color={createDatesValid ? 'textSecondary' : 'danger.500'}
+                >
                   {createDatesValid
-                    ? `${createNights} ${createNights === 1 ? 'noche' : 'noches'} · la noche de check-out no se ocupa`
-                    : 'La estadía debe tener entre 1 y 366 noches.'}
+                    ? createNights === 1
+                      ? t('reservations.stay.summaryOne', { count: createNights })
+                      : t('reservations.stay.summaryOther', { count: createNights })
+                    : t('reservations.stay.invalidRange')}
                 </Text>
               </Box>
 
               <Box>
                 <Text fontWeight="semibold" mb={2}>
-                  Habitación
+                  {t('reservations.section.room')}
                 </Text>
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                  <Field label="Tipo de habitación" isRequired error={createErrors.roomTypeId}>
+                  <Field
+                    label={t('reservations.field.roomType')}
+                    isRequired
+                    error={createErrors.roomTypeId}
+                  >
                     <Select
                       value={createForm.roomTypeId}
                       onChange={(event) =>
@@ -1322,10 +1448,13 @@ function ReservationsContent() {
                       }
                       required
                     >
-                      <option value="">Seleccionar…</option>
+                      <option value="">{t('reservations.room.selectPlaceholder')}</option>
                       {lookup.data?.roomTypes.map((roomType) => (
                         <option key={roomType.id} value={roomType.id}>
-                          {roomType.name} · cap. {roomType.capacityAdults}
+                          {t('reservations.room.typeOption', {
+                            name: roomType.name,
+                            capacity: roomType.capacityAdults,
+                          })}
                         </option>
                       ))}
                     </Select>
@@ -1333,8 +1462,8 @@ function ReservationsContent() {
                   <Box alignSelf="end">
                     <Text fontSize="xs" color="textSecondary">
                       {createForm.roomTypeId === ''
-                        ? 'Elegí un tipo para ver las habitaciones libres.'
-                        : 'Asignar habitación ahora es opcional; podés hacerlo al llegar.'}
+                        ? t('reservations.room.chooseType')
+                        : t('reservations.room.assignLater')}
                     </Text>
                   </Box>
                 </SimpleGrid>
@@ -1343,7 +1472,7 @@ function ReservationsContent() {
                   <Box mt={3}>
                     {availability.loading ? (
                       <Text fontSize="sm" color="textSecondary">
-                        Consultando disponibilidad…
+                        {t('reservations.room.checking')}
                       </Text>
                     ) : availability.error !== null ? (
                       <Text fontSize="sm" color="danger.500">
@@ -1351,15 +1480,14 @@ function ReservationsContent() {
                       </Text>
                     ) : (availability.data?.items.length ?? 0) === 0 ? (
                       <Text fontSize="sm" color="warning.600">
-                        No hay habitaciones libres de este tipo para el rango elegido.
+                        {t('reservations.room.noneForRange')}
                       </Text>
                     ) : (
                       <Box>
                         <Text fontSize="xs" color="textSecondary" mb={2}>
-                          {availability.data?.items.length}{' '}
                           {availability.data?.items.length === 1
-                            ? 'habitación disponible'
-                            : 'habitaciones disponibles'}
+                            ? t('reservations.room.availableOne')
+                            : t('reservations.room.availableOther')}
                         </Text>
                         <RoomChoiceGrid
                           items={availability.data?.items ?? []}
@@ -1382,29 +1510,29 @@ function ReservationsContent() {
                   onClick={() => setShowDetails((current) => !current)}
                   aria-expanded={showDetails}
                 >
-                  {showDetails ? 'Ocultar datos opcionales' : '+ Código, origen o notas'}
+                  {showDetails ? t('reservations.optional.hide') : t('reservations.optional.show')}
                 </Button>
                 <Collapse in={showDetails} animateOpacity>
                   <Box pt={3}>
                     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
                       <Field
-                        label="Código"
+                        label={t('reservations.field.code')}
                         error={createErrors.code}
-                        helper="Opcional: 4–32 mayúsculas, números o guiones."
+                        helper={t('reservations.field.codeHelper')}
                       >
                         <Input
                           value={createForm.code}
-                          aria-label="Código de reserva"
+                          aria-label={t('reservations.field.codeAria')}
                           maxLength={32}
                           onChange={(event) =>
                             setCreateForm({ ...createForm, code: event.target.value })
                           }
                         />
                       </Field>
-                      <Field label="Origen" error={createErrors.source}>
+                      <Field label={t('reservations.field.source')} error={createErrors.source}>
                         <Input
                           value={createForm.source}
-                          placeholder="mostrador, web, teléfono…"
+                          placeholder={t('reservations.field.sourcePlaceholder')}
                           maxLength={32}
                           onChange={(event) =>
                             setCreateForm({ ...createForm, source: event.target.value })
@@ -1413,9 +1541,9 @@ function ReservationsContent() {
                       </Field>
                     </SimpleGrid>
                     <Field
-                      label="Observación original"
+                      label={t('reservations.field.observation')}
                       error={createErrors.notes}
-                      helper="Opcional. Se intentará interpretar al crear la reserva; las sugerencias se confirman en el detalle y nunca modifican pagos, tarifas ni habitaciones."
+                      helper={t('reservations.field.observationHelper')}
                     >
                       <Textarea
                         mt={3}
@@ -1435,10 +1563,10 @@ function ReservationsContent() {
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={createModal.onClose}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button type="submit" colorScheme="brand" isLoading={saving}>
-              Crear reserva
+              {t('reservations.create.submit')}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -1448,25 +1576,33 @@ function ReservationsContent() {
       <Modal isOpen={editModal.isOpen} onClose={editModal.onClose} size="lg">
         <ModalOverlay />
         <ModalContent as="form" onSubmit={(event) => void handleEdit(event)}>
-          <ModalHeader>Editar reserva</ModalHeader>
+          <ModalHeader>{t('reservations.edit.title')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={4}>
               <SimpleGrid columns={2} spacing={4}>
-                <Field label="Check-in" isRequired error={editErrors.checkInDate}>
+                <Field
+                  label={t('reservations.field.checkIn')}
+                  isRequired
+                  error={editErrors.checkInDate}
+                >
                   <DateField
                     value={editForm.checkInDate}
                     placeholder="dd/mm/aaaa"
-                    ariaLabel="Fecha de check-in"
+                    ariaLabel={t('reservations.field.checkInAria')}
                     onChange={(checkInDate) => setEditForm({ ...editForm, checkInDate })}
                   />
                 </Field>
-                <Field label="Check-out" isRequired error={editErrors.checkOutDate}>
+                <Field
+                  label={t('reservations.field.checkOut')}
+                  isRequired
+                  error={editErrors.checkOutDate}
+                >
                   <DateField
                     value={editForm.checkOutDate}
                     min={editForm.checkInDate !== '' ? editForm.checkInDate : undefined}
                     placeholder="dd/mm/aaaa"
-                    ariaLabel="Fecha de check-out"
+                    ariaLabel={t('reservations.field.checkOutAria')}
                     onChange={(checkOutDate) => setEditForm({ ...editForm, checkOutDate })}
                   />
                 </Field>
@@ -1477,7 +1613,7 @@ function ReservationsContent() {
                 </Text>
               )}
               <SimpleGrid columns={2} spacing={4}>
-                <Field label="Adultos" isRequired error={editErrors.adults}>
+                <Field label={t('reservations.field.adults')} isRequired error={editErrors.adults}>
                   <Input
                     type="number"
                     min={1}
@@ -1487,7 +1623,7 @@ function ReservationsContent() {
                     required
                   />
                 </Field>
-                <Field label="Menores" error={editErrors.children}>
+                <Field label={t('reservations.field.children')} error={editErrors.children}>
                   <Input
                     type="number"
                     min={0}
@@ -1498,9 +1634,9 @@ function ReservationsContent() {
                 </Field>
               </SimpleGrid>
               <Field
-                label="Notas de la reserva"
+                label={t('reservations.field.notes')}
                 error={editErrors.notes}
-                helper="Las notas e instrucciones estructuradas se gestionan en el panel del detalle; este campo conserva el texto libre heredado."
+                helper={t('reservations.field.notesHelper')}
               >
                 <Textarea
                   rows={3}
@@ -1510,70 +1646,88 @@ function ReservationsContent() {
                 />
               </Field>
               <Text fontSize="xs" color="textSecondary">
-                Cambiar fechas o tipo puede requerir reasignar habitación si la actual deja de ser
-                válida.
+                {t('reservations.edit.warning')}
               </Text>
             </Stack>
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={editModal.onClose}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button type="submit" colorScheme="brand" isLoading={saving}>
-              Guardar
+              {t('common.save')}
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
       {/* Cancel */}
-      <Modal isOpen={cancelModal.isOpen} onClose={cancelModal.onClose} size="md">
-        <ModalOverlay />
-        <ModalContent as="form" onSubmit={(event) => void handleCancel(event)}>
-          <ModalHeader>Cancelar reserva</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Stack spacing={3}>
-              <Text fontSize="sm">
-                La reserva queda cancelada y la habitación se libera. La operación es auditable y no
-                se elimina el registro.
+      <ActionDialog
+        isOpen={cancelConfirmation.isOpen}
+        onClose={() => {
+          cancelConfirmation.onClose();
+          setCancelApiError(null);
+        }}
+        tone={selectedReservation?.status === 'CHECKED_IN' ? 'critical' : 'warning'}
+        title={t('reservations.cancel.title')}
+        summary={
+          selectedReservation === null
+            ? t('reservations.cancel.summaryEmpty')
+            : (selectedReservation.checkInDate <= today && selectedReservation.checkOutDate > today
+                ? t('reservations.cancel.summaryActive', {
+                    roomType: selectedReservation.roomType.name,
+                    code: selectedReservation.code,
+                  })
+                : t('reservations.cancel.summaryFuture', {
+                    roomType: selectedReservation.roomType.name,
+                    code: selectedReservation.code,
+                  })) +
+              (selectedReservation.room !== null
+                ? ` ${t('reservations.cancel.summaryRoom', {
+                    number: selectedReservation.room.number,
+                  })}`
+                : '')
+        }
+        confirmLabel={t('reservations.cancel.title')}
+        hasUnsavedChanges={cancelReason.trim().length > 0}
+        isLoading={saving}
+        error={cancelApiError ?? undefined}
+        onConfirm={() => void handleCancel()}
+      >
+        <Stack spacing={3}>
+          <Box>
+            <Text fontSize="xs" color="textSecondary" textTransform="uppercase" mb={1}>
+              {t('reservations.cancel.reasonLabel')}
+            </Text>
+            <Textarea
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              placeholder={t('reservations.cancel.reasonPlaceholder')}
+              maxLength={500}
+              rows={3}
+            />
+            {cancelErrors.reason !== undefined && (
+              <Text fontSize="xs" color="danger.500" mt={1}>
+                {cancelErrors.reason}
               </Text>
-              <Field
-                label="Motivo"
-                helper="3–500 caracteres, opcional."
-                error={cancelErrors.reason}
-              >
-                <Textarea
-                  rows={3}
-                  maxLength={500}
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                />
-              </Field>
-            </Stack>
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={cancelModal.onClose}>
-              Volver
-            </Button>
-            <Button type="submit" colorScheme="danger" isLoading={saving}>
-              Confirmar cancelación
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+            )}
+          </Box>
+          <Text fontSize="xs" color="textSecondary">
+            {t('reservations.cancel.irreversible')}
+          </Text>
+        </Stack>
+      </ActionDialog>
 
       {/* Edit guest data from the reservation flow */}
       <Modal isOpen={guestEditModal.isOpen} onClose={guestEditModal.onClose} size="lg">
         <ModalOverlay />
         <ModalContent as="form" onSubmit={(event) => void handleGuestEdit(event)}>
-          <ModalHeader>Editar datos del huésped</ModalHeader>
+          <ModalHeader>{t('reservations.guestEdit.title')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={3}>
               <Text fontSize="sm" color="textSecondary">
-                Los cambios se guardan en el perfil del huésped y quedan disponibles para futuras
-                reservas y check-ins.
+                {t('reservations.guestEdit.body')}
               </Text>
               <GuestFields
                 value={guestEditForm}
@@ -1586,10 +1740,10 @@ function ReservationsContent() {
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={guestEditModal.onClose}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button type="submit" colorScheme="brand" isLoading={guestSaving}>
-              Guardar datos
+              {t('reservations.guestEdit.submit')}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -1601,7 +1755,7 @@ function ReservationsContent() {
         <DrawerContent>
           <DrawerCloseButton />
           <DrawerHeader>
-            Reserva {selectedReservation?.code ?? ''}
+            {t('reservations.detail.title', { code: selectedReservation?.code ?? '' })}
             {selectedReservation !== null && (
               <Text fontSize="sm" fontWeight="normal" color="textSecondary">
                 {selectedReservation.guest.fullName}
@@ -1614,7 +1768,7 @@ function ReservationsContent() {
               error={detail.error}
               onRetry={detail.reload}
               isEmpty={selectedReservation === null}
-              emptyText="Seleccioná una reserva."
+              emptyText={t('reservations.detail.empty')}
             >
               {selectedReservation !== null && (
                 <Stack spacing={5}>
@@ -1622,7 +1776,7 @@ function ReservationsContent() {
                     <HStack wrap="wrap">
                       <StatusBadge
                         color={RESERVATION_STATUS_COLORS[selectedReservation.status]}
-                        label={RESERVATION_STATUS_LABELS[selectedReservation.status]}
+                        label={reservationStatusLabel(locale, selectedReservation.status)}
                       />
                       {selectedReservation.source !== null && (
                         <Badge colorScheme="gray">{selectedReservation.source}</Badge>
@@ -1636,40 +1790,54 @@ function ReservationsContent() {
 
                   <SimpleGrid columns={2} spacing={3}>
                     <KeyValue
-                      label="Check-in"
+                      label={t('reservations.field.checkIn')}
                       value={formatCalendarDate(selectedReservation.checkInDate)}
                     />
                     <KeyValue
-                      label="Check-out"
+                      label={t('reservations.field.checkOut')}
                       value={formatCalendarDate(selectedReservation.checkOutDate)}
                     />
-                    <KeyValue label="Noches" value={selectedReservation.nights} />
                     <KeyValue
-                      label="Ocupación"
-                      value={`${selectedReservation.adults} adultos · ${selectedReservation.children} menores`}
+                      label={t('reservations.detail.nights')}
+                      value={selectedReservation.nights}
                     />
-                    <KeyValue label="Tipo" value={selectedReservation.roomType.name} />
                     <KeyValue
-                      label="Habitación"
+                      label={t('reservations.detail.occupancy')}
+                      value={t('reservations.detail.occupancyValue', {
+                        adults: adultsLabel(t, selectedReservation.adults),
+                        children: childrenLabel(t, selectedReservation.children),
+                      })}
+                    />
+                    <KeyValue
+                      label={t('reservations.detail.type')}
+                      value={selectedReservation.roomType.name}
+                    />
+                    <KeyValue
+                      label={t('reservations.detail.room')}
                       value={
                         selectedReservation.room !== null
-                          ? `Hab. ${selectedReservation.room.number}`
-                          : 'Sin asignar'
+                          ? t('reservations.roomPrefix', {
+                              number: selectedReservation.room.number,
+                            })
+                          : t('reservations.unassigned')
                       }
                     />
-                    <KeyValue label="Huésped" value={selectedReservation.guest.fullName} />
                     <KeyValue
-                      label="Contacto"
+                      label={t('reservations.detail.guest')}
+                      value={selectedReservation.guest.fullName}
+                    />
+                    <KeyValue
+                      label={t('reservations.detail.contact')}
                       value={
                         selectedReservation.guest.email ?? selectedReservation.guest.phone ?? '—'
                       }
                     />
                     <KeyValue
-                      label="Documento"
+                      label={t('reservations.detail.document')}
                       value={
                         detailGuest?.documentType != null
-                          ? `${DOCUMENT_TYPE_LABELS[detailGuest.documentType]} ${detailGuest.documentNumber ?? ''}`
-                          : 'Sin documento'
+                          ? `${documentTypeLabel(locale, detailGuest.documentType)} ${detailGuest.documentNumber ?? ''}`
+                          : t('reservations.guest.noDocument')
                       }
                     />
                   </SimpleGrid>
@@ -1680,7 +1848,7 @@ function ReservationsContent() {
                       alignSelf="flex-start"
                       onClick={() => openGuestEdit(detailGuest, 'detail')}
                     >
-                      Editar datos del huésped
+                      {t('reservations.guestEdit.title')}
                     </Button>
                   )}
 
@@ -1703,7 +1871,7 @@ function ReservationsContent() {
                   {selectedReservation.notes !== null && (
                     <Box>
                       <Text fontSize="xs" color="textSecondary" textTransform="uppercase">
-                        Notas
+                        {t('reservations.detail.notes')}
                       </Text>
                       <Text fontSize="sm" whiteSpace="pre-wrap">
                         {selectedReservation.notes}
@@ -1716,11 +1884,11 @@ function ReservationsContent() {
                       <Divider />
                       <Box>
                         <Text fontWeight="semibold" mb={2}>
-                          Habitación
+                          {t('reservations.section.room')}
                         </Text>
                         {detailAvailability.loading ? (
                           <Text fontSize="sm" color="textSecondary">
-                            Consultando disponibilidad…
+                            {t('reservations.room.checking')}
                           </Text>
                         ) : detailAvailability.error !== null ? (
                           <Text fontSize="sm" color="danger.500">
@@ -1728,7 +1896,7 @@ function ReservationsContent() {
                           </Text>
                         ) : (detailAvailability.data?.items.length ?? 0) === 0 ? (
                           <Text fontSize="sm" color="warning.600">
-                            No hay habitaciones libres de este tipo para estas fechas.
+                            {t('reservations.room.noneForDates')}
                           </Text>
                         ) : (
                           <RoomChoiceGrid
@@ -1746,7 +1914,7 @@ function ReservationsContent() {
                             isLoading={saving}
                             isDisabled={assignRoomId === ''}
                           >
-                            Asignar seleccionada
+                            {t('reservations.room.assign')}
                           </Button>
                           <Button
                             size="sm"
@@ -1760,17 +1928,17 @@ function ReservationsContent() {
                               detailAvailability.loading
                             }
                           >
-                            Hacer check-in
+                            {t('reservations.room.checkIn')}
                           </Button>
                         </HStack>
                         {selectedReservation.room === null && (
                           <Text fontSize="xs" color="textSecondary" mt={2}>
-                            Asigná una habitación para habilitar el check-in.
+                            {t('reservations.room.assignToEnable')}
                           </Text>
                         )}
                         {selectedReservation.room !== null && !checkInEligible && (
                           <Text fontSize="xs" color="textSecondary" mt={2}>
-                            El check-in se habilita desde el día de llegada.
+                            {t('reservations.room.checkInFromArrival')}
                           </Text>
                         )}
                       </Box>
@@ -1780,7 +1948,7 @@ function ReservationsContent() {
                   {selectedReservation.cancellationReason !== null && (
                     <Box>
                       <Text fontSize="xs" color="textSecondary" textTransform="uppercase">
-                        Motivo de cancelación
+                        {t('reservations.detail.cancelReason')}
                       </Text>
                       <Text fontSize="sm">{selectedReservation.cancellationReason}</Text>
                       <Text fontSize="xs" color="textSecondary">
@@ -1792,24 +1960,24 @@ function ReservationsContent() {
                   <Divider />
                   <Box>
                     <Text fontWeight="semibold" mb={2}>
-                      Historial
+                      {t('reservations.detail.history')}
                     </Text>
                     <QueryFeedback
                       loading={false}
                       error={null}
                       isEmpty={detail.data?.history.length === 0}
-                      emptyText="Sin eventos."
+                      emptyText={t('reservations.detail.historyEmpty')}
                     >
                       <Stack spacing={2} maxH="320px" overflowY="auto">
                         {detail.data?.history.map((entry) => (
                           <Box key={entry.id} borderLeftWidth="3px" borderColor="brand.200" pl={3}>
                             <Text fontSize="sm" fontWeight="medium">
-                              {ACTION_LABELS[entry.action] ?? entry.action}
+                              {actionLabel(t, entry.action)}
                             </Text>
                             <Text fontSize="xs" color="textSecondary">
                               {formatDateTime(entry.occurredAt)}
                               {entry.toStatus !== null
-                                ? ` · ${RESERVATION_STATUS_LABELS[entry.toStatus]}`
+                                ? ` · ${reservationStatusLabel(locale, entry.toStatus)}`
                                 : ''}
                             </Text>
                             {entry.reason !== null && (

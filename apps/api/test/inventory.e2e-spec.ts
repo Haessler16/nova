@@ -325,9 +325,7 @@ describe('Property settings and inventory (E2E)', () => {
       expect(assignmentConflict.body.code).toBe('room_lease_held');
 
       const renewed = await request(app.getHttpServer())
-        .post(
-          `/api/v1/inventory/rooms/${roomId}/assignment-leases/${acquired.body.leaseId}/renew`,
-        )
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases/${acquired.body.leaseId}/renew`)
         .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
         .expect(200);
       expect(new Date(renewed.body.expiresAt).getTime()).toBeGreaterThan(
@@ -352,9 +350,7 @@ describe('Property settings and inventory (E2E)', () => {
       expect(expiredRoom.lease).toBeNull();
 
       await request(app.getHttpServer())
-        .post(
-          `/api/v1/inventory/rooms/${roomId}/assignment-leases/${acquired.body.leaseId}/renew`,
-        )
+        .post(`/api/v1/inventory/rooms/${roomId}/assignment-leases/${acquired.body.leaseId}/renew`)
         .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
         .expect(404);
 
@@ -365,9 +361,7 @@ describe('Property settings and inventory (E2E)', () => {
         .expect(201);
 
       await request(app.getHttpServer())
-        .delete(
-          `/api/v1/inventory/rooms/${roomId}/assignment-leases/${reacquired.body.leaseId}`,
-        )
+        .delete(`/api/v1/inventory/rooms/${roomId}/assignment-leases/${reacquired.body.leaseId}`)
         .set(headers(RECEPTION, ORG_A, PROPERTY_CENTRO))
         .expect(204);
 
@@ -376,7 +370,9 @@ describe('Property settings and inventory (E2E)', () => {
         .query({ search: `E${suffix.slice(-8)}`, limit: 10 })
         .set(headers(ADMIN, ORG_A, PROPERTY_CENTRO))
         .expect(200);
-      const releasedRoom = releasedList.body.items.find((item: { id: string }) => item.id === roomId);
+      const releasedRoom = releasedList.body.items.find(
+        (item: { id: string }) => item.id === roomId,
+      );
       expect(releasedRoom.lease).toBeNull();
 
       await request(app.getHttpServer())

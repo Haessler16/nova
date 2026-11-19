@@ -26,14 +26,22 @@ import {
 } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
+import { ActionDialog } from '@/components/action-dialog';
 import { Field, PageHeader, QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
 import { RowActionButton } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
-import { RECORD_STATUS_COLORS, RECORD_STATUS_LABELS } from '@/lib/format';
+import { RECORD_STATUS_COLORS, recordStatusLabel } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { RoomType } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
-import { hasErrors, validateRoomType, type FieldErrors } from '@/lib/validation';
+import {
+  hasErrors,
+  validateRoomType,
+  type FieldErrors,
+  type RoomTypeFieldLabels,
+  type ValidationCopy,
+} from '@/lib/validation';
 
 interface RoomTypeForm {
   name: string;
@@ -57,13 +65,16 @@ const EMPTY_FORM: RoomTypeForm = {
 
 function RoomTypesContent() {
   const { tenant } = useSession();
+  const { t, locale } = useI18n();
   const toast = useToast();
   const modal = useDisclosure();
+  const statusChangeModal = useDisclosure();
   const [statusFilter, setStatusFilter] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<RoomTypeForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [enableError, setEnableError] = useState<string | null>(null);
 
   const { data, loading, error, reload } = useAsyncData<{ items: RoomType[] }>(
     () =>
@@ -96,12 +107,80 @@ function RoomTypesContent() {
     modal.onOpen();
   }
 
+  async function handleDisableCore(): Promise<void> {
+    if (editingId === null) {
+      return;
+    }
+    setSaving(true);
+    setEnableError(null);
+    try {
+      await api<RoomType>(`/api/v1/inventory/room-types/${editingId}`, {
+        method: 'PATCH',
+        tenant,
+        body: { status: 'DISABLED' },
+      });
+      toast({ title: t('roomTypes.toast.disabled'), status: 'success' });
+      statusChangeModal.onClose();
+      setForm((current) => ({ ...current, status: 'DISABLED' }));
+      reload();
+    } catch (cause) {
+      const message = errorMessage(cause);
+      setEnableError(message);
+      toast({
+        title: t('roomTypes.toast.disableError'),
+        description: message,
+        status: 'error',
+        duration: 7000,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openDisable(roomType: RoomType): void {
+    setEditingId(roomType.id);
+    setForm({
+      name: roomType.name,
+      code: roomType.code,
+      description: roomType.description ?? '',
+      capacityAdults: String(roomType.capacityAdults),
+      capacityChildren: String(roomType.capacityChildren),
+      bedType: roomType.bedType ?? '',
+      status: 'ACTIVE',
+    });
+    setErrors({});
+    setEnableError(null);
+    statusChangeModal.onOpen();
+  }
+
+  /** Dictionary-backed messages/labels for the shared room-type validator. */
+  function validationCopy(): ValidationCopy {
+    return {
+      required: (label) => t('validation.required', { label }),
+      maxLength: (label, max) => t('validation.maxLength', { label, max }),
+      integer: (label) => t('validation.integer', { label }),
+      range: (label, min, max) => t('validation.range', { label, min, max }),
+    };
+  }
+
+  function validationLabels(): RoomTypeFieldLabels {
+    return {
+      name: t('validation.roomType.name'),
+      codeRequired: t('validation.roomType.codeRequired'),
+      codeInvalid: t('validation.roomType.codeInvalid'),
+      description: t('validation.roomType.description'),
+      capacityAdults: t('validation.roomType.capacityAdults'),
+      capacityChildren: t('validation.roomType.capacityChildren'),
+      bedType: t('validation.roomType.bedType'),
+    };
+  }
+
   async function handleSubmit(event: FormEvent): Promise<void> {
     event.preventDefault();
-    const nextErrors = validateRoomType({
-      ...form,
-      codeLocked: editingId !== null,
-    });
+    const nextErrors = validateRoomType(
+      { ...form, codeLocked: editingId !== null },
+      { copy: validationCopy(), labels: validationLabels() },
+    );
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -122,20 +201,20 @@ function RoomTypesContent() {
           tenant,
           body: { ...base, code: form.code.trim() },
         });
-        toast({ title: 'Tipo de habitación creado', status: 'success' });
+        toast({ title: t('roomTypes.toast.created'), status: 'success' });
       } else {
         await api<RoomType>(`/api/v1/inventory/room-types/${editingId}`, {
           method: 'PATCH',
           tenant,
           body: { ...base, status: form.status },
         });
-        toast({ title: 'Tipo de habitación actualizado', status: 'success' });
+        toast({ title: t('roomTypes.toast.updated'), status: 'success' });
       }
       modal.onClose();
       reload();
     } catch (cause) {
       toast({
-        title: 'No se pudo guardar',
+        title: t('roomTypes.toast.saveError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 7000,
@@ -148,11 +227,11 @@ function RoomTypesContent() {
   return (
     <>
       <PageHeader
-        title="Tipos de habitación"
-        description="Tipologías de la propiedad con capacidad y estado. Se usan al crear habitaciones y reservas."
+        title={t('roomTypes.title')}
+        description={t('roomTypes.description')}
         actions={
           <Button colorScheme="brand" size="sm" onClick={openCreate}>
-            Nuevo tipo
+            {t('roomTypes.new')}
           </Button>
         }
       />
@@ -161,7 +240,7 @@ function RoomTypesContent() {
         <HStack mb={4} justify="space-between" wrap="wrap" spacing={3}>
           <HStack>
             <Text fontSize="sm" color="textSecondary">
-              Filtrar por estado
+              {t('roomTypes.filterLabel')}
             </Text>
             <Select
               size="sm"
@@ -169,13 +248,15 @@ function RoomTypesContent() {
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
             >
-              <option value="">Todos</option>
-              <option value="ACTIVE">Activos</option>
-              <option value="DISABLED">Deshabilitados</option>
+              <option value="">{t('roomTypes.filter.all')}</option>
+              <option value="ACTIVE">{t('roomTypes.filter.active')}</option>
+              <option value="DISABLED">{t('roomTypes.filter.disabled')}</option>
             </Select>
           </HStack>
           <Text fontSize="xs" color="textSecondary">
-            {data?.items.length ?? 0} tipos cargados
+            {(data?.items.length ?? 0) === 1
+              ? t('roomTypes.countOne')
+              : t('roomTypes.countOther', { count: data?.items.length ?? 0 })}
           </Text>
         </HStack>
 
@@ -184,19 +265,19 @@ function RoomTypesContent() {
           error={error}
           onRetry={reload}
           isEmpty={(data?.items.length ?? 0) === 0}
-          emptyText="Todavía no hay tipos de habitación en esta propiedad."
+          emptyText={t('roomTypes.empty')}
         >
           <TableContainer>
             <Table size="sm">
               <Thead>
                 <Tr>
-                  <Th>Nombre</Th>
-                  <Th>Código</Th>
-                  <Th isNumeric>Adultos</Th>
-                  <Th isNumeric>Menores</Th>
-                  <Th>Cama</Th>
-                  <Th isNumeric>Habitaciones</Th>
-                  <Th>Estado</Th>
+                  <Th>{t('roomTypes.column.name')}</Th>
+                  <Th>{t('roomTypes.column.code')}</Th>
+                  <Th isNumeric>{t('roomTypes.column.adults')}</Th>
+                  <Th isNumeric>{t('roomTypes.column.children')}</Th>
+                  <Th>{t('roomTypes.column.bed')}</Th>
+                  <Th isNumeric>{t('roomTypes.column.rooms')}</Th>
+                  <Th>{t('roomTypes.column.status')}</Th>
                   <Th />
                 </Tr>
               </Thead>
@@ -223,15 +304,13 @@ function RoomTypesContent() {
                     <Td>
                       <StatusBadge
                         color={RECORD_STATUS_COLORS[roomType.status] ?? 'gray'}
-                        label={RECORD_STATUS_LABELS[roomType.status] ?? roomType.status}
+                        label={recordStatusLabel(locale, roomType.status)}
                       />
                     </Td>
                     <Td>
-                                              <RowActionButton
-                          onClick={() => openEdit(roomType)}
-                        >
-                          Editar
-                        </RowActionButton>
+                      <RowActionButton onClick={() => openEdit(roomType)}>
+                        {t('roomTypes.edit')}
+                      </RowActionButton>
                     </Td>
                   </Tr>
                 ))}
@@ -245,12 +324,12 @@ function RoomTypesContent() {
         <ModalOverlay />
         <ModalContent as="form" onSubmit={(event) => void handleSubmit(event)}>
           <ModalHeader>
-            {editingId === null ? 'Nuevo tipo de habitación' : 'Editar tipo'}
+            {editingId === null ? t('roomTypes.createTitle') : t('roomTypes.editTitle')}
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={4}>
-              <Field label="Nombre" isRequired error={errors.name}>
+              <Field label={t('roomTypes.field.name')} isRequired error={errors.name}>
                 <Input
                   value={form.name}
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
@@ -259,10 +338,10 @@ function RoomTypesContent() {
                 />
               </Field>
               <Field
-                label="Código"
+                label={t('roomTypes.field.code')}
                 isRequired
                 error={errors.code}
-                helper="1–24 letras, números, guiones o guiones bajos"
+                helper={t('roomTypes.field.codeHelper')}
               >
                 <Input
                   value={form.code}
@@ -272,7 +351,7 @@ function RoomTypesContent() {
                   maxLength={24}
                 />
               </Field>
-              <Field label="Descripción" error={errors.description}>
+              <Field label={t('roomTypes.field.description')} error={errors.description}>
                 <Input
                   value={form.description}
                   onChange={(event) => setForm({ ...form, description: event.target.value })}
@@ -280,7 +359,11 @@ function RoomTypesContent() {
                 />
               </Field>
               <HStack spacing={4} align="flex-start">
-                <Field label="Capacidad adultos" isRequired error={errors.capacityAdults}>
+                <Field
+                  label={t('roomTypes.field.capacityAdults')}
+                  isRequired
+                  error={errors.capacityAdults}
+                >
                   <Input
                     type="number"
                     min={1}
@@ -290,7 +373,11 @@ function RoomTypesContent() {
                     required
                   />
                 </Field>
-                <Field label="Capacidad menores" isRequired error={errors.capacityChildren}>
+                <Field
+                  label={t('roomTypes.field.capacityChildren')}
+                  isRequired
+                  error={errors.capacityChildren}
+                >
                   <Input
                     type="number"
                     min={0}
@@ -301,7 +388,7 @@ function RoomTypesContent() {
                   />
                 </Field>
               </HStack>
-              <Field label="Tipo de cama" error={errors.bedType}>
+              <Field label={t('roomTypes.field.bedType')} error={errors.bedType}>
                 <Input
                   value={form.bedType}
                   onChange={(event) => setForm({ ...form, bedType: event.target.value })}
@@ -309,15 +396,15 @@ function RoomTypesContent() {
                 />
               </Field>
               {editingId !== null && (
-                <Field label="Estado">
+                <Field label={t('roomTypes.field.status')}>
                   <Select
                     value={form.status}
                     onChange={(event) =>
                       setForm({ ...form, status: event.target.value as 'ACTIVE' | 'DISABLED' })
                     }
                   >
-                    <option value="ACTIVE">Activo</option>
-                    <option value="DISABLED">Deshabilitado</option>
+                    <option value="ACTIVE">{t('roomTypes.status.active')}</option>
+                    <option value="DISABLED">{t('roomTypes.status.disabled')}</option>
                   </Select>
                 </Field>
               )}
@@ -325,14 +412,38 @@ function RoomTypesContent() {
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={modal.onClose}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button type="submit" colorScheme="brand" isLoading={saving}>
-              Guardar
+              {t('common.save')}
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <ActionDialog
+        isOpen={statusChangeModal.isOpen}
+        onClose={() => {
+          statusChangeModal.onClose();
+          setEnableError(null);
+        }}
+        tone="critical"
+        title={t('roomTypes.disable.title')}
+        summary={
+          editingId === null
+            ? t('roomTypes.disable.empty')
+            : t('roomTypes.disable.summary', { name: form.name, code: form.code })
+        }
+        confirmLabel={t('roomTypes.disable.confirm')}
+        hasUnsavedChanges={false}
+        isLoading={saving}
+        error={enableError ?? undefined}
+        onConfirm={() => void handleDisableCore()}
+      >
+        <Text fontSize="sm" color="textSecondary">
+          {t('roomTypes.disable.body')}
+        </Text>
+      </ActionDialog>
     </>
   );
 }

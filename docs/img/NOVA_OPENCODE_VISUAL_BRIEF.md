@@ -1,4 +1,5 @@
 # NOVA PMS — OpenCode Visual Implementation Brief
+
 Version: 1.0  
 Priority: Dashboard visual foundation, then Reception.
 
@@ -17,6 +18,7 @@ Use the supplied image references and `NOVA_DESIGN_SYSTEM.md` to improve the cur
 The references are visual direction, not permission to fabricate functionality. Sample guest names, counts, dates, weather, room numbers, and payment states are illustrative only. Connect to existing data/API or use clearly labeled development fixtures.
 
 The generated concept shows both a sidebar and a bottom navigation. Do not render both as duplicate primary navigation on desktop:
+
 - Desktop: sidebar.
 - Mobile: bottom navigation.
 - Tablet: collapsed sidebar or responsive drawer.
@@ -24,6 +26,7 @@ The generated concept shows both a sidebar and a bottom navigation. Do not rende
 ## Implementation sequence
 
 ### Phase 0 — Inspect before coding
+
 1. Inspect repository structure, framework, routes, current design system, existing components, and API integration.
 2. Identify the current Dashboard and Reception routes.
 3. Identify existing modal/dialog/drawer implementations and their pain points.
@@ -31,7 +34,9 @@ The generated concept shows both a sidebar and a bottom navigation. Do not rende
 5. Do not replace dependencies or restructure the app without a reason.
 
 ### Phase 1 — Design foundations
+
 Implement or normalize:
+
 - Color and semantic tokens.
 - Typography scale.
 - Spacing, radius, border, shadow tokens.
@@ -41,7 +46,9 @@ Implement or normalize:
 - Shared loading, empty, error, and offline states.
 
 ### Phase 2 — Dashboard
+
 Build the Dashboard with this hierarchy:
+
 1. App shell: brand/property, sidebar on desktop, global search, notifications, user menu, connection state.
 2. Welcome header with greeting and hotel operational date.
 3. KPI cards: occupancy, arrivals, departures, available rooms.
@@ -59,6 +66,7 @@ Build the Dashboard with this hierarchy:
 KPI cards should have prominent values and concise labels. Avoid meaningless decorative graphs. Show trend indicators only when backed by actual data.
 
 Quick-action cards:
+
 - Use a large icon (approximately 28–36 px depending on component scale).
 - Include title and one-line description.
 - Entire card is interactive.
@@ -67,9 +75,11 @@ Quick-action cards:
 - Keep color pastel and restrained.
 
 ### Phase 3 — Hybrid modal foundation
+
 Create a consistent shared modal/drawer API and styles. Do not create unrelated one-off modal designs.
 
 Implement:
+
 - Small confirmation dialog.
 - Medium form dialog.
 - Large workflow dialog / stepper.
@@ -77,6 +87,7 @@ Implement:
 - Responsive full-screen presentation on mobile for complex flows.
 
 All dialogs must have:
+
 - Consistent title/header/content/footer.
 - Predictable close and cancel actions.
 - Sticky footer for long forms.
@@ -86,7 +97,9 @@ All dialogs must have:
 - Accessible focus handling and keyboard support.
 
 ### Phase 4 — Reception
+
 Prioritize practical front-desk workflows:
+
 - Arrivals list and pending check-ins.
 - Search reservation / guest.
 - Guest identity and reservation summary.
@@ -99,7 +112,9 @@ Use a stepper or dedicated page for a long check-in process. Use a wide drawer o
 Room assignment must not rely only on client-side state. Preserve the backend/database conflict-prevention guarantees: revalidate availability atomically at commit and communicate conflicts clearly.
 
 ### Phase 5 — Other modules (after Dashboard and Reception approval)
+
 Extend the same design language to:
+
 - Room Rack / Rooms.
 - Reservation Calendar.
 - Guest profiles.
@@ -112,6 +127,7 @@ Do not start these modules until Dashboard and Reception have been reviewed.
 ## Acceptance criteria
 
 ### Dashboard
+
 - [ ] Matches the approved Light SaaS direction.
 - [ ] Large, readable KPI cards.
 - [ ] Large pastel quick-action cards with clear labels and icons.
@@ -122,6 +138,7 @@ Do not start these modules until Dashboard and Reception have been reviewed.
 - [ ] Loading, empty, error, and offline states are designed.
 
 ### Modals and drawers
+
 - [ ] One consistent visual system across all dialogs.
 - [ ] Presentation type matches task complexity.
 - [ ] Form validation appears next to the relevant field.
@@ -131,6 +148,7 @@ Do not start these modules until Dashboard and Reception have been reviewed.
 - [ ] Mobile dialogs adapt to full-screen where needed.
 
 ### Reception
+
 - [ ] The main front-desk tasks are easy to find.
 - [ ] Check-in flow is understandable and not cramped.
 - [ ] Room assignment exposes room status and availability.
@@ -138,6 +156,7 @@ Do not start these modules until Dashboard and Reception have been reviewed.
 - [ ] Actions show pending/success/failure feedback.
 
 ### Quality
+
 - [ ] Existing business logic and API contracts remain intact unless changes are justified.
 - [ ] No duplicate primary navigation on desktop.
 - [ ] Responsive screenshots captured for desktop and mobile.
@@ -147,6 +166,7 @@ Do not start these modules until Dashboard and Reception have been reviewed.
 ## First task for OpenCode
 
 Start with Phase 0. Inspect the project and report:
+
 1. Existing Dashboard and Reception routes/components.
 2. Existing modal/dialog/drawer components.
 3. Design tokens and UI library in use.

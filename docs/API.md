@@ -163,27 +163,27 @@ Filtros: `action`, `entityType`, `entityId`, `actorUserId`, `fromDate`, `toDate`
 
 ### Inventory
 
-| Método | Ruta                                                   | Guard         | Permiso               | Status |
-| ------ | ------------------------------------------------------ | ------------- | --------------------- | ------ |
-| GET    | `/api/v1/inventory/room-types`                         | auth + tenant | `inventory.read`      | 200    |
-| POST   | `/api/v1/inventory/room-types`                         | auth + tenant | `inventory.manage`    | 201    |
-| GET    | `/api/v1/inventory/room-types/:id`                     | auth + tenant | `inventory.read`      | 200    |
-| PATCH  | `/api/v1/inventory/room-types/:id`                     | auth + tenant | `inventory.manage`    | 200    |
-| GET    | `/api/v1/inventory/rooms`                              | auth + tenant | `inventory.read`      | 200    |
-| POST   | `/api/v1/inventory/rooms`                              | auth + tenant | `inventory.manage`    | 201    |
-| GET    | `/api/v1/inventory/rooms/:id`                          | auth + tenant | `inventory.read`      | 200    |
-| PATCH  | `/api/v1/inventory/rooms/:id`                          | auth + tenant | `inventory.manage`    | 200    |
-| POST   | `/api/v1/inventory/rooms/:id/housekeeping-transitions` | auth + tenant | `housekeeping.manage` | 201    |
-| GET    | `/api/v1/inventory/rooms/:id/blocks`                   | auth + tenant | `inventory.read`      | 200    |
-| POST   | `/api/v1/inventory/rooms/:id/blocks`                   | auth + tenant | `inventory.manage`    | 201    |
-| POST   | `/api/v1/inventory/rooms/:id/blocks/:blockId/release`  | auth + tenant | `inventory.manage`    | 200    |
-| GET    | `/api/v1/inventory/rooms/:id/history`                  | auth + tenant | `inventory.read`      | 200    |
-| POST   | `/api/v1/inventory/rooms/:id/assignment-leases`        | auth + tenant | `front_office.manage` | 201    |
-| POST   | `/api/v1/inventory/rooms/:id/assignment-leases/:leaseId/renew` | auth + tenant | `front_office.manage` | 200 |
-| DELETE | `/api/v1/inventory/rooms/:id/assignment-leases/:leaseId` | auth + tenant | `front_office.manage` | 204   |
-| POST   | `/api/v1/inventory/rooms/:id/assignment-leases/transfer` | auth + tenant | `front_office.manage` | 200   |
-| POST   | `/api/v1/inventory/rooms/:id/lease-release`            | auth + tenant | `front_office.manage` | 200    |
-| GET    | `/api/v1/inventory/rooms/updates`                      | auth + tenant | `inventory.read`      | 200 (SSE) |
+| Método | Ruta                                                           | Guard         | Permiso               | Status    |
+| ------ | -------------------------------------------------------------- | ------------- | --------------------- | --------- |
+| GET    | `/api/v1/inventory/room-types`                                 | auth + tenant | `inventory.read`      | 200       |
+| POST   | `/api/v1/inventory/room-types`                                 | auth + tenant | `inventory.manage`    | 201       |
+| GET    | `/api/v1/inventory/room-types/:id`                             | auth + tenant | `inventory.read`      | 200       |
+| PATCH  | `/api/v1/inventory/room-types/:id`                             | auth + tenant | `inventory.manage`    | 200       |
+| GET    | `/api/v1/inventory/rooms`                                      | auth + tenant | `inventory.read`      | 200       |
+| POST   | `/api/v1/inventory/rooms`                                      | auth + tenant | `inventory.manage`    | 201       |
+| GET    | `/api/v1/inventory/rooms/:id`                                  | auth + tenant | `inventory.read`      | 200       |
+| PATCH  | `/api/v1/inventory/rooms/:id`                                  | auth + tenant | `inventory.manage`    | 200       |
+| POST   | `/api/v1/inventory/rooms/:id/housekeeping-transitions`         | auth + tenant | `housekeeping.manage` | 201       |
+| GET    | `/api/v1/inventory/rooms/:id/blocks`                           | auth + tenant | `inventory.read`      | 200       |
+| POST   | `/api/v1/inventory/rooms/:id/blocks`                           | auth + tenant | `inventory.manage`    | 201       |
+| POST   | `/api/v1/inventory/rooms/:id/blocks/:blockId/release`          | auth + tenant | `inventory.manage`    | 200       |
+| GET    | `/api/v1/inventory/rooms/:id/history`                          | auth + tenant | `inventory.read`      | 200       |
+| POST   | `/api/v1/inventory/rooms/:id/assignment-leases`                | auth + tenant | `front_office.manage` | 201       |
+| POST   | `/api/v1/inventory/rooms/:id/assignment-leases/:leaseId/renew` | auth + tenant | `front_office.manage` | 200       |
+| DELETE | `/api/v1/inventory/rooms/:id/assignment-leases/:leaseId`       | auth + tenant | `front_office.manage` | 204       |
+| POST   | `/api/v1/inventory/rooms/:id/assignment-leases/transfer`       | auth + tenant | `front_office.manage` | 200       |
+| POST   | `/api/v1/inventory/rooms/:id/lease-release`                    | auth + tenant | `front_office.manage` | 200       |
+| GET    | `/api/v1/inventory/rooms/updates`                              | auth + tenant | `inventory.read`      | 200 (SSE) |
 
 Notas:
 
@@ -305,19 +305,19 @@ Errores específicos: `reservation_not_found`, `reservation_party_not_editable`,
 
 ### Front Office
 
-| Método | Ruta                                             | Guard         | Permiso               | Status |
-| ------ | ------------------------------------------------ | ------------- | --------------------- | ------ |
-| GET    | `/api/v1/front-office/overview`                             | auth + tenant | `front_office.read`   | 200    |
-| GET    | `/api/v1/front-office/reservations/:id/check-in-readiness`  | auth + tenant | `front_office.read`   | 200    |
-| POST   | `/api/v1/front-office/reservations/:id/check-in`            | auth + tenant | `front_office.manage` | 201    |
-| POST   | `/api/v1/front-office/reservations/:id/no-show`  | auth + tenant | `front_office.manage` | 201    |
-| GET    | `/api/v1/front-office/stays/:id/checkout-readiness` | auth + tenant | `front_office.read` + `folio.read` | 200 |
-| POST   | `/api/v1/front-office/stays/:id/check-out`       | auth + tenant | `front_office.manage` | 201    |
-| GET    | `/api/v1/front-office/stays/:id/room-move-candidates` | auth + tenant | `front_office.read` | 200 |
-| POST   | `/api/v1/front-office/stays/:id/room-move`       | auth + tenant | `front_office.manage` | 201    |
-| GET    | `/api/v1/front-office/incidents`                 | auth + tenant | `incidents.read`      | 200    |
-| POST   | `/api/v1/front-office/incidents`                 | auth + tenant | `incidents.manage`    | 201    |
-| POST   | `/api/v1/front-office/incidents/:id/resolve`     | auth + tenant | `incidents.manage`    | 201    |
+| Método | Ruta                                                       | Guard         | Permiso                            | Status |
+| ------ | ---------------------------------------------------------- | ------------- | ---------------------------------- | ------ |
+| GET    | `/api/v1/front-office/overview`                            | auth + tenant | `front_office.read`                | 200    |
+| GET    | `/api/v1/front-office/reservations/:id/check-in-readiness` | auth + tenant | `front_office.read`                | 200    |
+| POST   | `/api/v1/front-office/reservations/:id/check-in`           | auth + tenant | `front_office.manage`              | 201    |
+| POST   | `/api/v1/front-office/reservations/:id/no-show`            | auth + tenant | `front_office.manage`              | 201    |
+| GET    | `/api/v1/front-office/stays/:id/checkout-readiness`        | auth + tenant | `front_office.read` + `folio.read` | 200    |
+| POST   | `/api/v1/front-office/stays/:id/check-out`                 | auth + tenant | `front_office.manage`              | 201    |
+| GET    | `/api/v1/front-office/stays/:id/room-move-candidates`      | auth + tenant | `front_office.read`                | 200    |
+| POST   | `/api/v1/front-office/stays/:id/room-move`                 | auth + tenant | `front_office.manage`              | 201    |
+| GET    | `/api/v1/front-office/incidents`                           | auth + tenant | `incidents.read`                   | 200    |
+| POST   | `/api/v1/front-office/incidents`                           | auth + tenant | `incidents.manage`                 | 201    |
+| POST   | `/api/v1/front-office/incidents/:id/resolve`               | auth + tenant | `incidents.manage`                 | 201    |
 
 - `GET /overview?date=YYYY-MM-DD` usa el día operativo de la propiedad (timezone + `operationalDayStart`) por default y devuelve `operationalDate`, `selectedDate`, `isHistorical`, `localDate`, `localTime`, conteos, llegadas, salidas, in-house, no-shows y `roomRack`. La ocupación del room rack se deriva de estancias `IN_HOUSE`; housekeeping y estado operativo son campos independientes.
 - Para el día operativo actual, las listas mantienen semántica de trabajo pendiente: llegadas `CONFIRMED`, estancias `IN_HOUSE` y salidas cuya fecha de check-out ya llegó.

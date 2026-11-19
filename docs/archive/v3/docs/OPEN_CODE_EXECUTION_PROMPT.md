@@ -1,4 +1,5 @@
 # Prompt para OpenCode
+
 Lee todo el paquete. **Paso 0:** inspecciona repo, schema, entidades Reservation/Guest/Payment/Folio/RatePlan/RoomType, RBAC, auditoría, departamentos, canales y UI. Identifica campo actual de observaciones y todos sus usos. Presenta plan de archivos/migración/riesgos antes de editar.
 
 **Paso 1:** implementa notas de reserva, notas de huésped separadas, texto fuente inmutable e historial append-only. Reutiliza tenant context, permisos y audit log.

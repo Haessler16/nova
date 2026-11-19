@@ -92,9 +92,7 @@ export class RedisService implements OnModuleDestroy {
   /** Atomic SET NX with a millisecond TTL, used for ephemeral leases. */
   async setIfAbsent(key: string, value: string, ttlMs: number): Promise<boolean> {
     await this.ensureConnected();
-    const result = await this.withTimeout(
-      this.client.set(key, value, 'PX', ttlMs, 'NX'),
-    );
+    const result = await this.withTimeout(this.client.set(key, value, 'PX', ttlMs, 'NX'));
     return result === 'OK';
   }
 

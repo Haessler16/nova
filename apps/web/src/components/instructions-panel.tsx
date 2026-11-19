@@ -29,16 +29,18 @@ import { useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
 import {
-  INSTRUCTION_ACTION_LABELS,
-  INSTRUCTION_CATEGORY_LABELS,
-  INSTRUCTION_MOMENT_LABELS,
   INSTRUCTION_PRIORITY_COLORS,
-  INSTRUCTION_PRIORITY_LABELS,
   INSTRUCTION_STATUS_COLORS,
-  INSTRUCTION_STATUS_LABELS,
-  INSTRUCTION_VISIBILITY_LABELS,
   formatDateTime,
+  instructionActionLabel,
+  instructionCategoryLabel,
+  instructionMomentLabel,
+  instructionPriorityLabel,
+  instructionStatusLabel,
+  instructionVisibilityLabel,
 } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
+import type { TranslationKey } from '@/lib/i18n/dictionary';
 import type {
   InstructionActionType,
   InstructionCategory,
@@ -96,26 +98,48 @@ const MOMENT_OPTIONS: InstructionExecutionMoment[] = [
 
 const STATUS_ACTIONS: Array<{
   status: InstructionStatus;
-  label: string;
+  labelKey: TranslationKey;
   path: string;
   variant?: 'solid' | 'outline' | 'ghost';
 }> = [
-  { status: 'ACKNOWLEDGED', label: 'Reconocer', path: 'acknowledge', variant: 'outline' },
-  { status: 'IN_PROGRESS', label: 'Iniciar', path: 'start', variant: 'outline' },
-  { status: 'COMPLETED', label: 'Completar', path: 'complete' },
-  { status: 'DISMISSED', label: 'Descartar', path: 'dismiss', variant: 'ghost' },
+  {
+    status: 'ACKNOWLEDGED',
+    labelKey: 'instructions.action.acknowledge',
+    path: 'acknowledge',
+    variant: 'outline',
+  },
+  {
+    status: 'IN_PROGRESS',
+    labelKey: 'instructions.action.start',
+    path: 'start',
+    variant: 'outline',
+  },
+  { status: 'COMPLETED', labelKey: 'instructions.action.complete', path: 'complete' },
+  {
+    status: 'DISMISSED',
+    labelKey: 'instructions.action.dismiss',
+    path: 'dismiss',
+    variant: 'ghost',
+  },
 ];
 
-const EVENT_LABELS: Record<InstructionEvent['eventType'], string> = {
-  CREATED: 'Creada',
-  UPDATED: 'Editada',
-  ACKNOWLEDGED: 'Reconocida',
-  IN_PROGRESS: 'Iniciada',
-  COMPLETED: 'Completada',
-  DISMISSED: 'Descartada',
-  NEEDS_CLARIFICATION: 'Necesita aclaración',
-  CONFIRMED_FROM_SOURCE: 'Confirmada desde texto original',
+const EVENT_LABEL_KEYS: Record<InstructionEvent['eventType'], TranslationKey> = {
+  CREATED: 'instructions.event.created',
+  UPDATED: 'instructions.event.updated',
+  ACKNOWLEDGED: 'instructions.event.acknowledged',
+  IN_PROGRESS: 'instructions.event.inProgress',
+  COMPLETED: 'instructions.event.completed',
+  DISMISSED: 'instructions.event.dismissed',
+  NEEDS_CLARIFICATION: 'instructions.event.needsClarification',
+  CONFIRMED_FROM_SOURCE: 'instructions.event.confirmedFromSource',
 };
+
+function eventLabel(
+  t: ReturnType<typeof useI18n>['t'],
+  eventType: InstructionEvent['eventType'],
+): string {
+  return t(EVENT_LABEL_KEYS[eventType]);
+}
 
 function toDateTimeLocal(value: string | null): string {
   if (value === null) {
@@ -180,6 +204,7 @@ function InstructionCard({
   onToggleEvents,
   onEdit,
 }: InstructionCardProps) {
+  const { t, locale } = useI18n();
   return (
     <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
       <HStack justify="space-between" align="start" wrap="wrap">
@@ -187,9 +212,11 @@ function InstructionCard({
           <HStack spacing={2} wrap="wrap">
             <StatusBadge
               color={INSTRUCTION_PRIORITY_COLORS[instruction.priority]}
-              label={INSTRUCTION_PRIORITY_LABELS[instruction.priority]}
+              label={instructionPriorityLabel(locale, instruction.priority)}
             />
-            <Badge colorScheme="gray">{INSTRUCTION_CATEGORY_LABELS[instruction.category]}</Badge>
+            <Badge colorScheme="gray">
+              {instructionCategoryLabel(locale, instruction.category)}
+            </Badge>
             {instruction.tags.map((tag) => (
               <Badge key={tag} colorScheme="purple" variant="subtle" textTransform="none">
                 {tag}
@@ -197,22 +224,22 @@ function InstructionCard({
             ))}
             {instruction.category === 'CONFIDENTIAL' && (
               <Badge colorScheme="danger" textTransform="none">
-                Confidencial
+                {t('instructions.confidential')}
               </Badge>
             )}
             {instruction.actionType !== null && (
               <Badge colorScheme="brand" textTransform="none">
-                {INSTRUCTION_ACTION_LABELS[instruction.actionType]}
+                {instructionActionLabel(locale, instruction.actionType)}
               </Badge>
             )}
             {instruction.executionMoment !== null && (
               <Badge colorScheme="gray" textTransform="none">
-                {INSTRUCTION_MOMENT_LABELS[instruction.executionMoment]}
+                {instructionMomentLabel(locale, instruction.executionMoment)}
               </Badge>
             )}
             {instruction.visibility !== 'ALL_AUTHORIZED' && (
               <Badge colorScheme="gray" textTransform="none">
-                {INSTRUCTION_VISIBILITY_LABELS[instruction.visibility]}
+                {instructionVisibilityLabel(locale, instruction.visibility)}
               </Badge>
             )}
           </HStack>
@@ -222,7 +249,7 @@ function InstructionCard({
         </Box>
         <StatusBadge
           color={INSTRUCTION_STATUS_COLORS[instruction.status]}
-          label={INSTRUCTION_STATUS_LABELS[instruction.status]}
+          label={instructionStatusLabel(locale, instruction.status)}
         />
       </HStack>
       <Text fontSize="sm" mt={2} whiteSpace="pre-wrap">
@@ -231,20 +258,20 @@ function InstructionCard({
       {instruction.actionType === 'PAYMENT_PREAUTHORIZATION' && (
         <Alert status="warning" mt={2} borderRadius="md" py={1}>
           <AlertIcon />
-          <Text fontSize="xs">
-            Pendiente de preautorización. No es un pago realizado ni una autorización aprobada;
-            iniciarla exige el módulo de pagos con importe confirmado y token del proveedor.
-          </Text>
+          <Text fontSize="xs">{t('instructions.preauthorization')}</Text>
         </Alert>
       )}
       <Text fontSize="xs" color="gray.500" mt={1}>
         {instruction.assignedDepartment !== null ? `${instruction.assignedDepartment} · ` : ''}
-        {INSTRUCTION_STATUS_LABELS[instruction.status]} · {formatDateTime(instruction.createdAt)}
+        {instructionStatusLabel(locale, instruction.status)} ·
+        {formatDateTime(instruction.createdAt)}
       </Text>
       {(instruction.validFrom !== null || instruction.validUntil !== null) && (
         <Text fontSize="xs" color="gray.500">
-          Vigencia: {instruction.validFrom !== null ? formatDateTime(instruction.validFrom) : '—'} →{' '}
-          {instruction.validUntil !== null ? formatDateTime(instruction.validUntil) : '—'}
+          {t('instructions.validity', {
+            from: instruction.validFrom !== null ? formatDateTime(instruction.validFrom) : '—',
+            to: instruction.validUntil !== null ? formatDateTime(instruction.validUntil) : '—',
+          })}
         </Text>
       )}
 
@@ -262,11 +289,11 @@ function InstructionCard({
                 isLoading={busyAction === `${instruction.id}:${action.status}`}
                 onClick={() => onTransition(instruction, action.path, action.status)}
               >
-                {action.label}
+                {t(action.labelKey)}
               </Button>
             ))}
             <Button size="xs" variant="ghost" onClick={() => onEdit(instruction)}>
-              Editar
+              {t('reservations.row.edit')}
             </Button>
           </>
         )}
@@ -276,7 +303,7 @@ function InstructionCard({
           isLoading={eventsLoading}
           onClick={() => onToggleEvents(instruction)}
         >
-          {events === undefined ? 'Historial' : 'Ocultar historial'}
+          {events === undefined ? t('instructions.history.show') : t('instructions.history.hide')}
         </Button>
       </HStack>
 
@@ -284,17 +311,18 @@ function InstructionCard({
         <Box mt={3} borderLeftWidth="3px" borderColor="gray.200" pl={3}>
           {events.length === 0 ? (
             <Text fontSize="xs" color="gray.500">
-              Sin eventos.
+              {t('reservations.detail.historyEmpty')}
             </Text>
           ) : (
             <Stack spacing={1}>
               {events.map((event) => (
                 <Text key={event.id} fontSize="xs" color="gray.600">
-                  {formatDateTime(event.occurredAt)} · {EVENT_LABELS[event.eventType]}
+                  {formatDateTime(event.occurredAt)} · {eventLabel(t, event.eventType)}
                   {event.fromStatus !== null && event.toStatus !== null
-                    ? ` (${INSTRUCTION_STATUS_LABELS[event.fromStatus]} → ${
-                        INSTRUCTION_STATUS_LABELS[event.toStatus]
-                      })`
+                    ? ` (${instructionStatusLabel(locale, event.fromStatus)} → ${instructionStatusLabel(
+                        locale,
+                        event.toStatus,
+                      )})`
                     : ''}
                   {event.reason !== null ? ` · ${event.reason}` : ''}
                 </Text>
@@ -314,6 +342,7 @@ export function ReservationInstructions({
 }: InstructionsPanelProps) {
   const { tenant } = useSession();
   const toast = useToast();
+  const { t, locale } = useI18n();
 
   const [showCompleted, setShowCompleted] = useState(false);
   const [showSourceText, setShowSourceText] = useState(false);
@@ -413,7 +442,7 @@ export function ReservationInstructions({
       sourceNotes.reload();
     } catch (cause) {
       toast({
-        title: 'No se pudo interpretar la observación',
+        title: t('instructions.toast.parseError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -442,11 +471,11 @@ export function ReservationInstructions({
         },
       );
       toast({
-        title: `Instrucciones confirmadas: ${result.created.length}`,
+        title: t('instructions.toast.confirmed', { count: result.created.length }),
         description:
           result.skipped > 0
-            ? `${result.skipped} ya existían y no se duplicaron.`
-            : 'Ningún pago, cargo o tarifa fue modificado.',
+            ? t('instructions.toast.skipped', { count: result.skipped })
+            : t('instructions.toast.noCharges'),
         status: 'success',
       });
       setParsed(null);
@@ -454,7 +483,7 @@ export function ReservationInstructions({
       notifyChanged();
     } catch (cause) {
       toast({
-        title: 'No se pudieron confirmar las sugerencias',
+        title: t('instructions.toast.confirmError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -479,7 +508,7 @@ export function ReservationInstructions({
       notifyChanged();
     } catch (cause) {
       toast({
-        title: 'No se pudo actualizar la instrucción',
+        title: t('instructions.toast.transitionError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -535,7 +564,7 @@ export function ReservationInstructions({
       notifyChanged();
     } catch (cause) {
       toast({
-        title: 'No se pudo crear la instrucción',
+        title: t('instructions.toast.createError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -590,7 +619,7 @@ export function ReservationInstructions({
       notifyChanged();
     } catch (cause) {
       toast({
-        title: 'No se pudo editar la instrucción',
+        title: t('instructions.toast.editError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -618,7 +647,7 @@ export function ReservationInstructions({
       setEvents((current) => ({ ...current, [instruction.id]: result.items }));
     } catch (cause) {
       toast({
-        title: 'No se pudo cargar el historial',
+        title: t('instructions.toast.eventsError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -642,11 +671,13 @@ export function ReservationInstructions({
     <SectionCard>
       <HStack justify="space-between" align="center" mb={3} wrap="wrap">
         <Box>
-          <Text fontWeight="semibold">Notas e instrucciones</Text>
+          <Text fontWeight="semibold">{t('instructions.title')}</Text>
           <Text fontSize="xs" color="gray.500">
             {pendingCount === 0
-              ? 'Sin pendientes.'
-              : `${pendingCount} pendiente${pendingCount === 1 ? '' : 's'}.`}
+              ? t('instructions.pendingNone')
+              : pendingCount === 1
+                ? t('instructions.pendingOne', { count: pendingCount })
+                : t('instructions.pendingOther', { count: pendingCount })}
           </Text>
         </Box>
         <HStack spacing={2}>
@@ -655,11 +686,11 @@ export function ReservationInstructions({
             isChecked={showCompleted}
             onChange={(event) => setShowCompleted(event.target.checked)}
           >
-            Ver cerradas
+            {t('instructions.showClosed')}
           </Checkbox>
           {canManage && (
             <Button size="xs" variant="outline" onClick={createModal.onOpen}>
-              Nueva
+              {t('instructions.new')}
             </Button>
           )}
         </HStack>
@@ -669,8 +700,9 @@ export function ReservationInstructions({
         <Alert status="warning" borderRadius="md" mb={3}>
           <AlertIcon />
           <Text fontSize="sm">
-            {highlighted.length} instrucción{highlighted.length === 1 ? '' : 'es'} de prioridad alta
-            o crítica requiere revisión operativa.
+            {highlighted.length === 1
+              ? t('instructions.highlightOne', { count: highlighted.length })
+              : t('instructions.highlightOther', { count: highlighted.length })}
           </Text>
         </Alert>
       )}
@@ -680,16 +712,16 @@ export function ReservationInstructions({
         error={list.error}
         onRetry={list.reload}
         isEmpty={items.length === 0}
-        emptyText="Sin notas ni instrucciones registradas."
+        emptyText={t('instructions.empty')}
       >
         <Stack spacing={4}>
           <Box>
             <Text fontWeight="semibold" fontSize="sm" mb={2}>
-              Acciones pendientes
+              {t('instructions.section.actions')}
             </Text>
             {actions.length === 0 ? (
               <Text fontSize="sm" color="gray.500">
-                Sin acciones por ejecutar.
+                {t('instructions.noActions')}
               </Text>
             ) : (
               <Stack spacing={3}>
@@ -712,11 +744,11 @@ export function ReservationInstructions({
 
           <Box>
             <Text fontWeight="semibold" fontSize="sm" mb={2}>
-              Información
+              {t('instructions.section.info')}
             </Text>
             {information.length === 0 ? (
               <Text fontSize="sm" color="gray.500">
-                Sin notas informativas.
+                {t('instructions.noInfo')}
               </Text>
             ) : (
               <Stack spacing={3}>
@@ -742,10 +774,9 @@ export function ReservationInstructions({
       <Divider my={4} />
 
       <Box>
-        <Text fontWeight="semibold">Importar observación original</Text>
+        <Text fontWeight="semibold">{t('instructions.source.title')}</Text>
         <Text fontSize="xs" color="gray.500" mb={2}>
-          El parser solo sugiere. Requiere confirmación humana y nunca crea pagos, cargos, tarifas
-          ni asignaciones. Los datos de tarjeta se redactan antes de guardar.
+          {t('instructions.source.body')}
         </Text>
         {canManage ? (
           <Box as="form" onSubmit={(event) => void handleParse(event)}>
@@ -763,12 +794,12 @@ export function ReservationInstructions({
               isLoading={parsing}
               isDisabled={sourceText.trim().length === 0}
             >
-              Interpretar
+              {t('instructions.source.parse')}
             </Button>
           </Box>
         ) : (
           <Text fontSize="sm" color="gray.500">
-            Tu rol no puede importar observaciones.
+            {t('instructions.source.noPermission')}
           </Text>
         )}
       </Box>
@@ -776,12 +807,12 @@ export function ReservationInstructions({
       {parsed !== null && (
         <Box borderWidth="1px" borderColor="brand.200" borderRadius="md" p={3} mt={3}>
           <HStack justify="space-between">
-            <Text fontWeight="semibold">Sugerencias del parser</Text>
+            <Text fontWeight="semibold">{t('instructions.parsed.title')}</Text>
             <Badge colorScheme="brand">{parsed.suggestions.length}</Badge>
           </HStack>
           {parsed.redacted && (
             <Text fontSize="xs" color="warning.600" mt={1}>
-              Se redactaron datos de tarjeta del texto original.
+              {t('instructions.parsed.redacted')}
             </Text>
           )}
           {parsed.warnings.map((warning) => (
@@ -812,7 +843,10 @@ export function ReservationInstructions({
                   {suggestion.body}
                 </Text>
                 <Text fontSize="xs" color="gray.400">
-                  «{suggestion.sourcePhrase}» · confianza {Math.round(suggestion.confidence * 100)}%
+                  {t('instructions.parsed.confidence', {
+                    phrase: suggestion.sourcePhrase,
+                    percent: Math.round(suggestion.confidence * 100),
+                  })}
                 </Text>
               </Box>
             ))}
@@ -825,10 +859,10 @@ export function ReservationInstructions({
               isDisabled={selected.size === 0}
               onClick={() => void handleConfirm()}
             >
-              Confirmar seleccionadas
+              {t('instructions.parsed.confirm')}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setParsed(null)}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
           </HStack>
         </Box>
@@ -842,7 +876,7 @@ export function ReservationInstructions({
             onClick={() => setShowSourceText((current) => !current)}
             aria-expanded={showSourceText}
           >
-            {showSourceText ? 'Ocultar texto original' : 'Ver texto original'}
+            {showSourceText ? t('instructions.sourceText.hide') : t('instructions.sourceText.show')}
           </Button>
           <Collapse in={showSourceText} animateOpacity>
             <Stack spacing={2} mt={2} maxH="220px" overflowY="auto">
@@ -853,7 +887,7 @@ export function ReservationInstructions({
                   </Text>
                   <Text fontSize="xs" color="gray.500">
                     {note.parserVersion} · {formatDateTime(note.importedAt)}
-                    {note.redacted ? ' · datos de tarjeta redactados' : ''}
+                    {note.redacted ? ` ${t('instructions.sourceText.redacted')}` : ''}
                   </Text>
                 </Box>
               ))}
@@ -865,11 +899,11 @@ export function ReservationInstructions({
       <Modal isOpen={createModal.isOpen} onClose={createModal.onClose} size="lg">
         <ModalOverlay />
         <ModalContent as="form" onSubmit={(event) => void handleCreate(event)}>
-          <ModalHeader>Nueva instrucción</ModalHeader>
+          <ModalHeader>{t('instructions.create.title')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={3}>
-              <Field label="Título" isRequired>
+              <Field label={t('instructions.form.title')} isRequired>
                 <Textarea
                   rows={1}
                   value={newInstruction.title}
@@ -878,7 +912,7 @@ export function ReservationInstructions({
                   }
                 />
               </Field>
-              <Field label="Detalle" isRequired>
+              <Field label={t('instructions.form.body')} isRequired>
                 <Textarea
                   rows={3}
                   value={newInstruction.body}
@@ -887,7 +921,7 @@ export function ReservationInstructions({
                   }
                 />
               </Field>
-              <Field label="Tags" helper="Separados por coma. Máximo 10, 32 caracteres cada uno.">
+              <Field label={t('instructions.form.tags')} helper={t('instructions.form.tagsHelper')}>
                 <Input
                   value={newInstruction.tags}
                   onChange={(event) =>
@@ -897,7 +931,7 @@ export function ReservationInstructions({
                 />
               </Field>
               <HStack spacing={3} align="start">
-                <Field label="Categoría">
+                <Field label={t('instructions.form.category')}>
                   <Select
                     value={newInstruction.category}
                     onChange={(event) =>
@@ -909,12 +943,12 @@ export function ReservationInstructions({
                   >
                     {CATEGORY_OPTIONS.map((category) => (
                       <option key={category} value={category}>
-                        {INSTRUCTION_CATEGORY_LABELS[category]}
+                        {instructionCategoryLabel(locale, category)}
                       </option>
                     ))}
                   </Select>
                 </Field>
-                <Field label="Prioridad">
+                <Field label={t('instructions.form.priority')}>
                   <Select
                     value={newInstruction.priority}
                     onChange={(event) =>
@@ -926,14 +960,14 @@ export function ReservationInstructions({
                   >
                     {PRIORITY_OPTIONS.map((priority) => (
                       <option key={priority} value={priority}>
-                        {INSTRUCTION_PRIORITY_LABELS[priority]}
+                        {instructionPriorityLabel(locale, priority)}
                       </option>
                     ))}
                   </Select>
                 </Field>
               </HStack>
               <HStack spacing={3} align="start">
-                <Field label="Visibilidad">
+                <Field label={t('instructions.form.visibility')}>
                   <Select
                     value={newInstruction.visibility}
                     onChange={(event) =>
@@ -945,12 +979,12 @@ export function ReservationInstructions({
                   >
                     {VISIBILITY_OPTIONS.map((visibility) => (
                       <option key={visibility} value={visibility}>
-                        {INSTRUCTION_VISIBILITY_LABELS[visibility]}
+                        {instructionVisibilityLabel(locale, visibility)}
                       </option>
                     ))}
                   </Select>
                 </Field>
-                <Field label="Departamento">
+                <Field label={t('instructions.form.department')}>
                   <Textarea
                     rows={1}
                     value={newInstruction.assignedDepartment}
@@ -965,7 +999,7 @@ export function ReservationInstructions({
                 </Field>
               </HStack>
               <HStack spacing={3} align="start">
-                <Field label="Acción">
+                <Field label={t('instructions.form.action')}>
                   <Select
                     value={newInstruction.actionType}
                     onChange={(event) =>
@@ -975,15 +1009,15 @@ export function ReservationInstructions({
                       })
                     }
                   >
-                    <option value="">Solo información</option>
+                    <option value="">{t('instructions.form.infoOnly')}</option>
                     {ACTION_OPTIONS.map((action) => (
                       <option key={action} value={action}>
-                        {INSTRUCTION_ACTION_LABELS[action]}
+                        {instructionActionLabel(locale, action)}
                       </option>
                     ))}
                   </Select>
                 </Field>
-                <Field label="Momento">
+                <Field label={t('instructions.form.moment')}>
                   <Select
                     value={newInstruction.executionMoment}
                     onChange={(event) =>
@@ -993,17 +1027,17 @@ export function ReservationInstructions({
                       })
                     }
                   >
-                    <option value="">Sin momento</option>
+                    <option value="">{t('instructions.form.noMoment')}</option>
                     {MOMENT_OPTIONS.map((moment) => (
                       <option key={moment} value={moment}>
-                        {INSTRUCTION_MOMENT_LABELS[moment]}
+                        {instructionMomentLabel(locale, moment)}
                       </option>
                     ))}
                   </Select>
                 </Field>
               </HStack>
               <HStack spacing={3} align="start">
-                <Field label="Válida desde">
+                <Field label={t('instructions.form.validFrom')}>
                   <Input
                     type="datetime-local"
                     value={newInstruction.validFrom}
@@ -1012,7 +1046,7 @@ export function ReservationInstructions({
                     }
                   />
                 </Field>
-                <Field label="Válida hasta">
+                <Field label={t('instructions.form.validUntil')}>
                   <Input
                     type="datetime-local"
                     value={newInstruction.validUntil}
@@ -1026,7 +1060,7 @@ export function ReservationInstructions({
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={createModal.onClose}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button
               type="submit"
@@ -1036,7 +1070,7 @@ export function ReservationInstructions({
                 newInstruction.title.trim().length < 2 || newInstruction.body.trim().length < 2
               }
             >
-              Crear
+              {t('instructions.create.submit')}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -1045,32 +1079,32 @@ export function ReservationInstructions({
       <Modal isOpen={editModal.isOpen} onClose={editModal.onClose} size="lg">
         <ModalOverlay />
         <ModalContent as="form" onSubmit={(event) => void handleEdit(event)}>
-          <ModalHeader>Editar instrucción</ModalHeader>
+          <ModalHeader>{t('instructions.edit.title')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={3}>
-              <Field label="Título" isRequired>
+              <Field label={t('instructions.form.title')} isRequired>
                 <Textarea
                   rows={1}
                   value={editForm.title}
                   onChange={(event) => setEditForm({ ...editForm, title: event.target.value })}
                 />
               </Field>
-              <Field label="Detalle" isRequired>
+              <Field label={t('instructions.form.body')} isRequired>
                 <Textarea
                   rows={3}
                   value={editForm.body}
                   onChange={(event) => setEditForm({ ...editForm, body: event.target.value })}
                 />
               </Field>
-              <Field label="Tags" helper="Separados por coma. Máximo 10, 32 caracteres cada uno.">
+              <Field label={t('instructions.form.tags')} helper={t('instructions.form.tagsHelper')}>
                 <Input
                   value={editForm.tags}
                   onChange={(event) => setEditForm({ ...editForm, tags: event.target.value })}
                 />
               </Field>
               <HStack spacing={3} align="start">
-                <Field label="Prioridad">
+                <Field label={t('instructions.form.priority')}>
                   <Select
                     value={editForm.priority}
                     onChange={(event) =>
@@ -1082,12 +1116,12 @@ export function ReservationInstructions({
                   >
                     {PRIORITY_OPTIONS.map((priority) => (
                       <option key={priority} value={priority}>
-                        {INSTRUCTION_PRIORITY_LABELS[priority]}
+                        {instructionPriorityLabel(locale, priority)}
                       </option>
                     ))}
                   </Select>
                 </Field>
-                <Field label="Visibilidad">
+                <Field label={t('instructions.form.visibility')}>
                   <Select
                     value={editForm.visibility}
                     onChange={(event) =>
@@ -1099,7 +1133,7 @@ export function ReservationInstructions({
                   >
                     {VISIBILITY_OPTIONS.map((visibility) => (
                       <option key={visibility} value={visibility}>
-                        {INSTRUCTION_VISIBILITY_LABELS[visibility]}
+                        {instructionVisibilityLabel(locale, visibility)}
                       </option>
                     ))}
                   </Select>
@@ -1115,7 +1149,7 @@ export function ReservationInstructions({
                 />
               </Field>
               <HStack spacing={3} align="start">
-                <Field label="Válida desde">
+                <Field label={t('instructions.form.validFrom')}>
                   <Input
                     type="datetime-local"
                     value={editForm.validFrom}
@@ -1124,7 +1158,7 @@ export function ReservationInstructions({
                     }
                   />
                 </Field>
-                <Field label="Válida hasta">
+                <Field label={t('instructions.form.validUntil')}>
                   <Input
                     type="datetime-local"
                     value={editForm.validUntil}
@@ -1138,7 +1172,7 @@ export function ReservationInstructions({
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={editModal.onClose}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button
               type="submit"
@@ -1146,7 +1180,7 @@ export function ReservationInstructions({
               isLoading={saving}
               isDisabled={editForm.title.trim().length < 2 || editForm.body.trim().length < 2}
             >
-              Guardar
+              {t('common.save')}
             </Button>
           </ModalFooter>
         </ModalContent>

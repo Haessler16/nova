@@ -53,18 +53,23 @@ export function requiredText(
   value: string,
   label: string,
   limits: { min?: number; max?: number } = {},
+  copy?: ValidationCopy,
 ): string | null {
   const trimmed = value.trim();
   const min = limits.min ?? 1;
   const max = limits.max;
   if (trimmed === '') {
-    return `${label} es obligatorio.`;
+    return copy === undefined ? `${label} es obligatorio.` : copy.required(label);
   }
   if (trimmed.length < min) {
-    return `${label} debe tener al menos ${min} caracteres.`;
+    return copy?.minLength === undefined
+      ? `${label} debe tener al menos ${min} caracteres.`
+      : copy.minLength(label, min);
   }
   if (max !== undefined && trimmed.length > max) {
-    return `${label} no puede superar ${max} caracteres.`;
+    return copy === undefined
+      ? `${label} no puede superar ${max} caracteres.`
+      : copy.maxLength(label, max);
   }
   return null;
 }
@@ -73,35 +78,47 @@ export function optionalText(
   value: string,
   label: string,
   limits: { max?: number } = {},
+  copy?: ValidationCopy,
 ): string | null {
   const trimmed = value.trim();
   if (trimmed === '') {
     return null;
   }
   if (limits.max !== undefined && trimmed.length > limits.max) {
-    return `${label} no puede superar ${limits.max} caracteres.`;
+    return copy === undefined
+      ? `${label} no puede superar ${limits.max} caracteres.`
+      : copy.maxLength(label, limits.max);
   }
   return null;
 }
 
-export function emailField(value: string, options: { required?: boolean } = {}): string | null {
+export function emailField(
+  value: string,
+  options: { required?: boolean; copy?: ValidationCopy } = {},
+): string | null {
   const trimmed = value.trim();
   if (trimmed === '') {
-    return options.required === true ? 'El email es obligatorio.' : null;
+    if (options.required !== true) {
+      return null;
+    }
+    return options.copy?.emailRequired ?? 'El email es obligatorio.';
   }
   if (trimmed.length > LIMITS.guestEmail || !EMAIL_PATTERN.test(trimmed)) {
-    return 'Ingresá un email válido (ej. nombre@dominio.com).';
+    return options.copy?.emailInvalid ?? 'Ingresá un email válido (ej. nombre@dominio.com).';
   }
   return null;
 }
 
-export function phoneField(value: string): string | null {
+export function phoneField(value: string, copy?: ValidationCopy): string | null {
   const trimmed = value.trim();
   if (trimmed === '') {
     return null;
   }
   if (!PHONE_PATTERN.test(trimmed)) {
-    return 'Usá sólo dígitos, espacios, paréntesis, guiones y un + inicial (6 a 32 caracteres).';
+    return (
+      copy?.phoneInvalid ??
+      'Usá sólo dígitos, espacios, paréntesis, guiones y un + inicial (6 a 32 caracteres).'
+    );
   }
   return null;
 }
@@ -128,13 +145,36 @@ export function moneyField(
   return null;
 }
 
-export function calendarDateField(value: string, label: string): string | null {
+/**
+ * `Date.parse` normalizes impossible dates (2026-02-31 becomes 2026-03-03), so
+ * the only reliable check is a round-trip against the UTC calendar.
+ */
+function isRealCalendarDate(value: string): boolean {
+  if (!CALENDAR_DATE_PATTERN.test(value)) {
+    return false;
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+}
+
+export function calendarDateField(
+  value: string,
+  label: string,
+  copy?: ValidationCopy,
+): string | null {
   const trimmed = value.trim();
   if (trimmed === '') {
-    return `${label} es obligatorio.`;
+    return copy === undefined ? `${label} es obligatorio.` : copy.required(label);
   }
-  if (!CALENDAR_DATE_PATTERN.test(trimmed) || Number.isNaN(Date.parse(`${trimmed}T00:00:00Z`))) {
-    return `${label} debe ser una fecha válida (AAAA-MM-DD).`;
+  if (!isRealCalendarDate(trimmed)) {
+    return copy?.date === undefined
+      ? `${label} debe ser una fecha válida (AAAA-MM-DD).`
+      : copy.date(label);
   }
   return null;
 }
@@ -143,14 +183,17 @@ export function intField(
   value: string,
   label: string,
   limits: { min: number; max: number },
+  copy?: ValidationCopy,
 ): string | null {
   const trimmed = value.trim();
   if (trimmed === '' || !/^\d+$/.test(trimmed)) {
-    return `${label} debe ser un número entero.`;
+    return copy === undefined ? `${label} debe ser un número entero.` : copy.integer(label);
   }
   const parsed = Number(trimmed);
   if (parsed < limits.min || parsed > limits.max) {
-    return `${label} debe estar entre ${limits.min} y ${limits.max}.`;
+    return copy === undefined
+      ? `${label} debe estar entre ${limits.min} y ${limits.max}.`
+      : copy.range(label, limits.min, limits.max);
   }
   return null;
 }
@@ -159,8 +202,9 @@ export function reasonField(
   value: string,
   label = 'El motivo',
   limits: { min?: number; max?: number } = {},
+  copy?: ValidationCopy,
 ): string | null {
-  return requiredText(value, label, { min: limits.min ?? 3, max: limits.max ?? 500 });
+  return requiredText(value, label, { min: limits.min ?? 3, max: limits.max ?? 500 }, copy);
 }
 
 export interface GuestFieldInput {
@@ -172,15 +216,48 @@ export interface GuestFieldInput {
   notes?: string;
 }
 
-/** Mirrors CreateGuestDto / UpdateGuestDto. */
-export function validateGuest(input: GuestFieldInput): FieldErrors {
+/** Field labels for the guest form, localizable as a block. */
+export interface GuestFieldLabels {
+  fullName: string;
+  documentNumber: string;
+  notes: string;
+}
+
+const ES_GUEST_FIELD_LABELS: GuestFieldLabels = {
+  fullName: 'El nombre',
+  documentNumber: 'El número de documento',
+  notes: 'Las notas',
+};
+
+/**
+ * Mirrors CreateGuestDto / UpdateGuestDto. Pass `copy`/`labels` from the active
+ * dictionary to keep the messages in the screen's language.
+ */
+export function validateGuest(
+  input: GuestFieldInput,
+  options: { copy?: ValidationCopy; labels?: GuestFieldLabels } = {},
+): FieldErrors {
+  const copy = options.copy;
+  const labels = options.labels ?? ES_GUEST_FIELD_LABELS;
   const errors: FieldErrors = {};
-  collect(errors, 'fullName', requiredText(input.fullName, 'El nombre', LIMITS.guestName));
-  collect(errors, 'email', emailField(input.email));
-  collect(errors, 'phone', phoneField(input.phone));
-  collect(errors, 'documentNumber', validateDocument(input.documentType, input.documentNumber));
+  collect(
+    errors,
+    'fullName',
+    requiredText(input.fullName, labels.fullName, LIMITS.guestName, copy),
+  );
+  collect(errors, 'email', emailField(input.email, { copy }));
+  collect(errors, 'phone', phoneField(input.phone, copy));
+  collect(
+    errors,
+    'documentNumber',
+    validateDocument(input.documentType, input.documentNumber, copy, labels.documentNumber),
+  );
   if (input.notes !== undefined) {
-    collect(errors, 'notes', optionalText(input.notes, 'Las notas', { max: LIMITS.guestNotes }));
+    collect(
+      errors,
+      'notes',
+      optionalText(input.notes, labels.notes, { max: LIMITS.guestNotes }, copy),
+    );
   }
   return errors;
 }
@@ -189,7 +266,7 @@ export function validateGuest(input: GuestFieldInput): FieldErrors {
 export function dateRangeField(
   checkIn: string,
   checkOut: string,
-  options: { maxNights?: number } = {},
+  options: { maxNights?: number; copy?: ValidationCopy } = {},
 ): string | null {
   if (
     checkIn === '' ||
@@ -200,27 +277,29 @@ export function dateRangeField(
     return null;
   }
   if (checkOut <= checkIn) {
-    return 'El check-out debe ser posterior al check-in.';
+    return options.copy?.dateOrder ?? 'El check-out debe ser posterior al check-in.';
   }
   const nights = Math.round(
     (Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000,
   );
   const maxNights = options.maxNights ?? 366;
   if (!Number.isFinite(nights) || nights < 1 || nights > maxNights) {
-    return `La estadía debe tener entre 1 y ${maxNights} noches.`;
+    return options.copy?.nights === undefined
+      ? `La estadía debe tener entre 1 y ${maxNights} noches.`
+      : options.copy.nights(maxNights);
   }
   return null;
 }
 
 /** Optional uppercase reservation code (4-32 letters, digits or hyphens). */
-export function reservationCodeField(value: string): string | null {
+export function reservationCodeField(value: string, copy?: ValidationCopy): string | null {
   const code = value.trim().toUpperCase();
   if (code === '') {
     return null;
   }
   return RESERVATION_CODE_PATTERN.test(code)
     ? null
-    : 'El código debe tener 4–32 mayúsculas, números o guiones.';
+    : (copy?.code ?? 'El código debe tener 4–32 mayúsculas, números o guiones.');
 }
 
 /** Comma-separated room attributes: at most 20 items of 64 characters. */
@@ -261,42 +340,155 @@ export function blockRangeField(startsAt: string, endsAt: string): string | null
   return endsAt > startsAt ? null : 'El fin del bloqueo debe ser posterior al inicio.';
 }
 
-/** Mirrors CreateRoomTypeDto / UpdateRoomTypeDto. */
-export function validateRoomType(input: {
+/**
+ * Message templates for validators that a localized screen can substitute.
+ * The Spanish templates below are the historical output and stay the default,
+ * so unmigrated screens keep their exact copy.
+ */
+export interface ValidationCopy {
+  required: (label: string) => string;
+  maxLength: (label: string, max: number) => string;
+  integer: (label: string) => string;
+  range: (label: string, min: number, max: number) => string;
+  /**
+   * Extra templates used by the reservation/guest validators. They are optional:
+   * omitting them keeps the historical Spanish message for that rule.
+   */
+  minLength?: (label: string, min: number) => string;
+  date?: (label: string) => string;
+  dateOrder?: string;
+  nights?: (max: number) => string;
+  code?: string;
+  emailRequired?: string;
+  emailInvalid?: string;
+  phoneInvalid?: string;
+}
+
+const ES_VALIDATION_COPY: ValidationCopy = {
+  required: (label) => `${label} es obligatorio.`,
+  maxLength: (label, max) => `${label} no puede superar ${max} caracteres.`,
+  integer: (label) => `${label} debe ser un número entero.`,
+  range: (label, min, max) => `${label} debe estar entre ${min} y ${max}.`,
+};
+
+/** Field labels and fixed codes for the room-type form, localizable as a block. */
+export interface RoomTypeFieldLabels {
   name: string;
-  code: string;
+  codeRequired: string;
+  codeInvalid: string;
   description: string;
   capacityAdults: string;
   capacityChildren: string;
   bedType: string;
-  codeLocked?: boolean;
-}): FieldErrors {
+}
+
+const ES_ROOM_TYPE_LABELS: RoomTypeFieldLabels = {
+  name: 'El nombre',
+  codeRequired: 'El código es obligatorio.',
+  codeInvalid: 'El código debe tener 1–24 letras, números, guiones o guiones bajos.',
+  description: 'La descripción',
+  capacityAdults: 'La capacidad de adultos',
+  capacityChildren: 'La capacidad de menores',
+  bedType: 'El tipo de cama',
+};
+
+function textWithCopy(
+  value: string,
+  label: string,
+  limits: { max?: number },
+  copy: ValidationCopy,
+): string | null {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return copy.required(label);
+  }
+  if (limits.max !== undefined && trimmed.length > limits.max) {
+    return copy.maxLength(label, limits.max);
+  }
+  return null;
+}
+
+function optionalTextWithCopy(
+  value: string,
+  label: string,
+  limits: { max?: number },
+  copy: ValidationCopy,
+): string | null {
+  return value.trim() === '' ? null : textWithCopy(value, label, limits, copy);
+}
+
+function intWithCopy(
+  value: string,
+  label: string,
+  limits: { min: number; max: number },
+  copy: ValidationCopy,
+): string | null {
+  const trimmed = value.trim();
+  if (trimmed === '' || !/^\d+$/.test(trimmed)) {
+    return copy.integer(label);
+  }
+  const parsed = Number(trimmed);
+  if (parsed < limits.min || parsed > limits.max) {
+    return copy.range(label, limits.min, limits.max);
+  }
+  return null;
+}
+
+/**
+ * Mirrors CreateRoomTypeDto / UpdateRoomTypeDto.
+ * Pass `copy` + `labels` from the active dictionary to keep the messages in the
+ * screen's language; omitting them yields the historical Spanish messages.
+ */
+export function validateRoomType(
+  input: {
+    name: string;
+    code: string;
+    description: string;
+    capacityAdults: string;
+    capacityChildren: string;
+    bedType: string;
+    codeLocked?: boolean;
+  },
+  options: { codeLocked?: boolean; copy?: ValidationCopy; labels?: RoomTypeFieldLabels } = {},
+): FieldErrors {
+  const copy = options.copy ?? ES_VALIDATION_COPY;
+  const labels = options.labels ?? ES_ROOM_TYPE_LABELS;
+  const codeLocked = options.codeLocked ?? input.codeLocked;
   const errors: FieldErrors = {};
-  collect(errors, 'name', requiredText(input.name, 'El nombre', { min: 1, max: 120 }));
-  if (input.codeLocked !== true) {
+
+  collect(errors, 'name', textWithCopy(input.name, labels.name, { max: 120 }, copy));
+  if (codeLocked !== true) {
     const code = input.code.trim();
     collect(
       errors,
       'code',
       code === ''
-        ? 'El código es obligatorio.'
+        ? labels.codeRequired
         : ROOM_TYPE_CODE_PATTERN.test(code)
           ? null
-          : 'El código debe tener 1–24 letras, números, guiones o guiones bajos.',
+          : labels.codeInvalid,
     );
   }
-  collect(errors, 'description', optionalText(input.description, 'La descripción', { max: 500 }));
+  collect(
+    errors,
+    'description',
+    optionalTextWithCopy(input.description, labels.description, { max: 500 }, copy),
+  );
   collect(
     errors,
     'capacityAdults',
-    intField(input.capacityAdults, 'La capacidad de adultos', { min: 1, max: 50 }),
+    intWithCopy(input.capacityAdults, labels.capacityAdults, { min: 1, max: 50 }, copy),
   );
   collect(
     errors,
     'capacityChildren',
-    intField(input.capacityChildren, 'La capacidad de menores', { min: 0, max: 50 }),
+    intWithCopy(input.capacityChildren, labels.capacityChildren, { min: 0, max: 50 }, copy),
   );
-  collect(errors, 'bedType', optionalText(input.bedType, 'El tipo de cama', { max: 64 }));
+  collect(
+    errors,
+    'bedType',
+    optionalTextWithCopy(input.bedType, labels.bedType, { max: 64 }, copy),
+  );
   return errors;
 }
 
@@ -328,9 +520,14 @@ export function validateRoom(input: {
   return errors;
 }
 
-function validateDocument(documentType: string, documentNumber: string): string | null {
+function validateDocument(
+  documentType: string,
+  documentNumber: string,
+  copy?: ValidationCopy,
+  label = 'El número de documento',
+): string | null {
   if (documentType === '') {
     return null;
   }
-  return requiredText(documentNumber, 'El número de documento', LIMITS.guestDocument);
+  return requiredText(documentNumber, label, LIMITS.guestDocument, copy);
 }

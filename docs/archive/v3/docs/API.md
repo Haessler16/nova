@@ -1,4 +1,5 @@
 # API propuesta (ajustar a convenciones existentes)
+
 - GET/POST `/properties/:propertyId/reservations/:reservationId/instructions`
 - PATCH `/properties/:propertyId/reservations/:reservationId/instructions/:id`
 - POST `.../:id/acknowledge`, `.../:id/complete`, `.../:id/dismiss`

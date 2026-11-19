@@ -16,6 +16,7 @@ import { AuditService } from '../audit/audit.service';
 import { computeFolioTotals } from './folio-totals';
 import { TenantContext } from '../common/http/request-context';
 import { money, parseMoney } from '../common/money/decimal';
+import { Clock } from '../common/time/clock';
 import {
   addCalendarDays,
   calendarDateInTimezone,
@@ -214,6 +215,7 @@ export class FolioService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly clock: Clock,
   ) {}
 
   async list(
@@ -551,7 +553,7 @@ export class FolioService {
         where: { id: line.id },
         data: {
           status: FolioLineStatus.VOID,
-          voidedAt: new Date(),
+          voidedAt: this.clock.now(),
           voidReason: dto.reason,
         },
       });
@@ -663,7 +665,7 @@ export class FolioService {
       if (balance.isZero()) {
         await transaction.folio.update({
           where: { id: folioId },
-          data: { status: FolioStatus.SETTLED, closedAt: new Date() },
+          data: { status: FolioStatus.SETTLED, closedAt: this.clock.now() },
         });
       }
 
@@ -719,7 +721,7 @@ export class FolioService {
 
       await transaction.folio.update({
         where: { id: folioId },
-        data: { status: FolioStatus.CANCELLED, closedAt: new Date() },
+        data: { status: FolioStatus.CANCELLED, closedAt: this.clock.now() },
       });
 
       await this.audit.append(
@@ -994,7 +996,7 @@ export class FolioService {
   }
 
   private generateNumber(timezone: string): string {
-    const day = calendarDateInTimezone(new Date(), timezone).replaceAll('-', '');
+    const day = calendarDateInTimezone(this.clock.now(), timezone).replaceAll('-', '');
     return `F-${day}-${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
   }
 

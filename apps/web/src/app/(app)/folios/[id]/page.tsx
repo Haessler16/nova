@@ -159,7 +159,10 @@ function FolioDetailContent() {
         'consumption.productId',
         consumption.productId === '' ? 'Elegí un producto del catálogo.' : null,
       ],
-      ['consumption.quantity', moneyField(consumption.quantity, 'La cantidad', { allowZero: false })],
+      [
+        'consumption.quantity',
+        moneyField(consumption.quantity, 'La cantidad', { allowZero: false }),
+      ],
     ]);
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) {

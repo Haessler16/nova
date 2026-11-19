@@ -1494,9 +1494,7 @@ async function seed(): Promise<void> {
       id: IDS.instructionPaymentPreauth,
       reservationId: IDS.reservationArrivalToday,
       sourceNoteId: demoSourceNote.id as string | null,
-      dedupeKey: createHash('sha256')
-        .update('PAYMENT|preauth|checkin')
-        .digest('hex'),
+      dedupeKey: createHash('sha256').update('PAYMENT|preauth|checkin').digest('hex'),
       category: InstructionCategory.PAYMENT,
       title: 'Realizar preautorización de cartão no check-in',
       body: 'Pendente de preautorização com cartão de crédito no check-in. Confirmar o valor no módulo de pagamentos. Não é pagamento realizado nem autorização obtida.',

@@ -49,10 +49,7 @@ export class FrontOfficeController {
 
   @Get('reservations/:id/check-in-readiness')
   @RequirePermissions(PERMISSIONS.FRONT_OFFICE_READ)
-  checkInReadiness(
-    @Tenant() tenant: TenantContext,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ) {
+  checkInReadiness(@Tenant() tenant: TenantContext, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.frontOffice.checkInReadiness(tenant, id);
   }
 
@@ -74,10 +71,7 @@ export class FrontOfficeController {
 
   @Get('stays/:id/checkout-readiness')
   @RequirePermissions(PERMISSIONS.FRONT_OFFICE_READ, PERMISSIONS.FOLIO_READ)
-  checkoutReadiness(
-    @Tenant() tenant: TenantContext,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ) {
+  checkoutReadiness(@Tenant() tenant: TenantContext, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.frontOffice.checkoutReadiness(tenant, id);
   }
 

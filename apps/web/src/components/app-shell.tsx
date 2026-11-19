@@ -34,6 +34,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useSession } from '@/context/session';
 import { errorMessage } from '@/lib/api';
+import { useI18n, type TranslationKey } from '@/lib/i18n';
 import { ConnectionStatus } from './connection-status';
 import {
   AccountIcon,
@@ -58,47 +59,61 @@ import {
 } from './icons';
 import { SectionCard } from './ui';
 
-const NAV_SECTIONS = [
+interface NavEntry {
+  href: string;
+  labelKey: TranslationKey;
+  icon: ReactNode;
+}
+
+const NAV_SECTIONS: Array<{ titleKey: TranslationKey; items: NavEntry[] }> = [
   {
-    title: 'Operación',
+    titleKey: 'shell.nav.operation',
     items: [
-      { href: '/dashboard', label: 'Panel', icon: <DashboardIcon boxSize={4} /> },
-      { href: '/front-office', label: 'Front Office', icon: <FrontDeskIcon boxSize={4} /> },
-      { href: '/folios', label: 'Folios', icon: <FolioIcon boxSize={4} /> },
-      { href: '/catalog', label: 'Catálogo', icon: <FolioIcon boxSize={4} /> },
-      { href: '/reports', label: 'Reportes', icon: <ReportsIcon boxSize={4} /> },
-      { href: '/cashier', label: 'Caja y cierre', icon: <CashIcon boxSize={4} /> },
-      { href: '/pilot', label: 'Piloto', icon: <PilotIcon boxSize={4} /> },
-      { href: '/calendar', label: 'Calendario', icon: <CalendarIcon boxSize={4} /> },
-      { href: '/reservations', label: 'Reservas', icon: <ReservationIcon boxSize={4} /> },
-      { href: '/guests', label: 'Huéspedes', icon: <GuestsIcon boxSize={4} /> },
-      { href: '/imports', label: 'Importaciones', icon: <ImportIcon boxSize={4} /> },
+      { href: '/dashboard', labelKey: 'shell.nav.dashboard', icon: <DashboardIcon boxSize={4} /> },
+      {
+        href: '/front-office',
+        labelKey: 'shell.nav.frontOffice',
+        icon: <FrontDeskIcon boxSize={4} />,
+      },
+      { href: '/folios', labelKey: 'shell.nav.folios', icon: <FolioIcon boxSize={4} /> },
+      { href: '/catalog', labelKey: 'shell.nav.catalog', icon: <FolioIcon boxSize={4} /> },
+      { href: '/reports', labelKey: 'shell.nav.reports', icon: <ReportsIcon boxSize={4} /> },
+      { href: '/cashier', labelKey: 'shell.nav.cashier', icon: <CashIcon boxSize={4} /> },
+      { href: '/pilot', labelKey: 'shell.nav.pilot', icon: <PilotIcon boxSize={4} /> },
+      { href: '/calendar', labelKey: 'shell.nav.calendar', icon: <CalendarIcon boxSize={4} /> },
+      {
+        href: '/reservations',
+        labelKey: 'shell.nav.reservations',
+        icon: <ReservationIcon boxSize={4} />,
+      },
+      { href: '/guests', labelKey: 'shell.nav.guests', icon: <GuestsIcon boxSize={4} /> },
+      { href: '/imports', labelKey: 'shell.nav.imports', icon: <ImportIcon boxSize={4} /> },
     ],
   },
   {
-    title: 'Configuración',
+    titleKey: 'shell.nav.configuration',
     items: [
-      { href: '/inventory/rooms', label: 'Habitaciones', icon: <RoomsIcon boxSize={4} /> },
+      { href: '/inventory/rooms', labelKey: 'shell.nav.rooms', icon: <RoomsIcon boxSize={4} /> },
       {
         href: '/inventory/room-types',
-        label: 'Tipos de habitación',
+        labelKey: 'shell.nav.roomTypes',
         icon: <RoomTypesIcon boxSize={4} />,
       },
-      { href: '/settings', label: 'Propiedad', icon: <PropertyIcon boxSize={4} /> },
+      { href: '/settings', labelKey: 'shell.nav.property', icon: <PropertyIcon boxSize={4} /> },
     ],
   },
   {
-    title: 'Seguridad',
+    titleKey: 'shell.nav.security',
     items: [
-      { href: '/audit', label: 'Auditoría', icon: <AuditIcon boxSize={4} /> },
-      { href: '/admin', label: 'Administración', icon: <AdminIcon boxSize={4} /> },
-      { href: '/account', label: 'Mi cuenta', icon: <AccountIcon boxSize={4} /> },
+      { href: '/audit', labelKey: 'shell.nav.audit', icon: <AuditIcon boxSize={4} /> },
+      { href: '/admin', labelKey: 'shell.nav.admin', icon: <AdminIcon boxSize={4} /> },
+      { href: '/account', labelKey: 'shell.nav.account', icon: <AccountIcon boxSize={4} /> },
     ],
   },
-] as const;
+];
 
 const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap((section) =>
-  section.items.map((item) => ({ ...item, section: section.title })),
+  section.items.map((item) => ({ ...item, titleKey: section.titleKey })),
 );
 
 function NavItem({
@@ -155,10 +170,12 @@ function NavItem({
 }
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useI18n();
+
   return (
-    <Stack spacing={5} aria-label="Navegación principal">
+    <Stack spacing={5} aria-label={t('shell.nav.label')}>
       {NAV_SECTIONS.map((section) => (
-        <Box key={section.title}>
+        <Box key={section.titleKey}>
           <Text
             fontSize="10px"
             fontWeight="bold"
@@ -168,14 +185,14 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
             px={3}
             mb={2}
           >
-            {section.title}
+            {t(section.titleKey)}
           </Text>
           <Stack spacing={0.5}>
             {section.items.map((item) => (
               <NavItem
                 key={item.href}
                 href={item.href}
-                label={item.label}
+                label={t(item.labelKey)}
                 icon={item.icon}
                 {...(onNavigate !== undefined ? { onClick: onNavigate } : {})}
               />
@@ -188,6 +205,8 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function Brand() {
+  const { t } = useI18n();
+
   return (
     <HStack spacing={3}>
       <Flex
@@ -215,7 +234,7 @@ function Brand() {
           textTransform="uppercase"
           mt={1}
         >
-          Hotel management
+          {t('shell.brand.subtitle')}
         </Text>
       </Box>
     </HStack>
@@ -234,6 +253,7 @@ function TenantSelector() {
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const toast = useToast();
+  const { t } = useI18n();
 
   async function handleOrganization(value: string): Promise<void> {
     setSwitching(true);
@@ -243,7 +263,7 @@ function TenantSelector() {
     } catch (cause) {
       setError(cause);
       toast({
-        title: 'No se pudo cambiar de organización',
+        title: t('shell.tenant.switchError'),
         description: errorMessage(cause),
         status: 'error',
       });
@@ -277,16 +297,18 @@ function TenantSelector() {
           letterSpacing="0.14em"
           mb={1.5}
         >
-          Organización
+          {t('shell.tenant.organization')}
         </Text>
         <Select
           {...fieldProps}
-          aria-label="Organización"
+          aria-label={t('shell.tenant.organization')}
           value={organizationId ?? ''}
           onChange={(event) => void handleOrganization(event.target.value)}
           isDisabled={switching || organizations.length === 0}
         >
-          {organizations.length === 0 && <option value="">Sin organizaciones</option>}
+          {organizations.length === 0 && (
+            <option value="">{t('shell.tenant.noOrganizations')}</option>
+          )}
           {organizations.map((organization) => (
             <option key={organization.id} value={organization.id}>
               {organization.name}
@@ -303,16 +325,16 @@ function TenantSelector() {
           letterSpacing="0.14em"
           mb={1.5}
         >
-          Propiedad activa
+          {t('shell.tenant.property')}
         </Text>
         <Select
           {...fieldProps}
-          aria-label="Propiedad"
+          aria-label={t('shell.tenant.property')}
           value={propertyId ?? ''}
           onChange={(event) => selectProperty(event.target.value)}
           isDisabled={switching || properties.length === 0}
         >
-          {properties.length === 0 && <option value="">Sin propiedades</option>}
+          {properties.length === 0 && <option value="">{t('shell.tenant.noProperties')}</option>}
           {properties.map((property) => (
             <option key={property.id} value={property.id}>
               {property.name} · {property.code}
@@ -323,7 +345,7 @@ function TenantSelector() {
       {switching && (
         <HStack spacing={2} color="whiteAlpha.700">
           <Spinner size="xs" color="brand.300" />
-          <Text fontSize="xs">Cambiando contexto…</Text>
+          <Text fontSize="xs">{t('shell.tenant.switching')}</Text>
         </HStack>
       )}
       {error !== null && (
@@ -338,6 +360,7 @@ function TenantSelector() {
 
 function UserCard({ onLogout, loggingOut }: { onLogout: () => void; loggingOut: boolean }) {
   const { actor, organization, property } = useSession();
+  const { t } = useI18n();
 
   return (
     <HStack spacing={3} align="center">
@@ -347,11 +370,11 @@ function UserCard({ onLogout, loggingOut }: { onLogout: () => void; loggingOut: 
           {actor?.name}
         </Text>
         <Text fontSize="xs" color="whiteAlpha.600" noOfLines={1}>
-          {organization?.role?.name ?? 'Staff'} · {property?.code ?? 'sin propiedad'}
+          {organization?.role?.name ?? 'Staff'} · {property?.code ?? t('shell.user.noProperty')}
         </Text>
       </Box>
       <IconButton
-        aria-label="Cerrar sesión"
+        aria-label={t('shell.user.logout')}
         icon={<LogoutIcon boxSize={4} />}
         size="sm"
         variant="ghost"
@@ -400,6 +423,7 @@ function Topbar({
   loggingOut: boolean;
 }) {
   const { actor, organization } = useSession();
+  const { t } = useI18n();
   const pathname = usePathname();
   const current =
     ALL_NAV_ITEMS.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ??
@@ -422,7 +446,7 @@ function Topbar({
     >
       <HStack spacing={3} minW={0}>
         <IconButton
-          aria-label="Abrir navegación"
+          aria-label={t('shell.menu.openNavigation')}
           icon={<MenuIcon boxSize={5} />}
           onClick={onOpenNavigation}
           variant="outline"
@@ -434,10 +458,10 @@ function Topbar({
         />
         <Box minW={0}>
           <Text fontSize="xs" color="textSecondary" noOfLines={1}>
-            {current?.section ?? 'NOVA PMS'}
+            {current === null ? 'NOVA PMS' : t(current.titleKey)}
           </Text>
           <Text fontSize="sm" fontWeight="semibold" noOfLines={1} color="textPrimary">
-            {current?.label ?? 'Panel'}
+            {current === null ? t('shell.nav.dashboard') : t(current.labelKey)}
           </Text>
         </Box>
       </HStack>
@@ -477,10 +501,16 @@ function Topbar({
           </MenuButton>
           <MenuList fontSize="sm" minW="200px">
             <MenuItem as={NextLink} href="/account" icon={<AccountIcon boxSize={4} />}>
-              Mi cuenta
+              {t('shell.nav.account')}
             </MenuItem>
-            <MenuItem icon={<LogoutIcon boxSize={4} />} onClick={onLogout} isDisabled={loggingOut} color="textPrimary" _hover={{ bg: 'canvasAlt' }}>
-              Cerrar sesión
+            <MenuItem
+              icon={<LogoutIcon boxSize={4} />}
+              onClick={onLogout}
+              isDisabled={loggingOut}
+              color="textPrimary"
+              _hover={{ bg: 'canvasAlt' }}
+            >
+              {t('shell.user.logout')}
             </MenuItem>
           </MenuList>
         </Menu>
@@ -491,6 +521,7 @@ function Topbar({
 
 function AppShell({ children }: { children: ReactNode }) {
   const { logout } = useSession();
+  const { t } = useI18n();
   const router = useRouter();
   const drawer = useDisclosure();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -523,7 +554,7 @@ function AppShell({ children }: { children: ReactNode }) {
         boxShadow="card"
         _focusVisible={{ left: 2, outline: 'none', boxShadow: 'focus' }}
       >
-        Saltar al contenido principal
+        {t('shell.skipToContent')}
       </Link>
       <Flex minH="100vh" bg="canvas">
         <Box
@@ -587,6 +618,7 @@ function AppShell({ children }: { children: ReactNode }) {
 
 export function AuthenticatedLayout({ children }: { children: ReactNode }) {
   const { status, organizationId, organizations } = useSession();
+  const { t } = useI18n();
   const router = useRouter();
 
   useEffect(() => {
@@ -608,11 +640,10 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
       <Center minH="100vh" px={4} bg="canvas">
         <SectionCard maxW="lg" textAlign="center">
           <Text fontWeight="semibold" mb={2}>
-            Tu usuario no tiene una organización activa
+            {t('shell.gate.noOrganization.title')}
           </Text>
           <Text fontSize="sm" color="textSecondary">
-            Pedile a un administrador que cree o reactive tu membresía. Organizaciones detectadas:{' '}
-            {organizations.length}.
+            {t('shell.gate.noOrganization.body', { count: organizations.length })}
           </Text>
         </SectionCard>
       </Center>
@@ -624,17 +655,18 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
 
 export function PropertyGate({ children }: { children: ReactNode }) {
   const { propertyId, properties } = useSession();
+  const { t } = useI18n();
 
   if (propertyId === null) {
     return (
       <SectionCard>
         <Text fontWeight="semibold" mb={1}>
-          No hay una propiedad seleccionada
+          {t('shell.gate.noProperty.title')}
         </Text>
         <Text fontSize="sm" color="textSecondary">
           {properties.length === 0
-            ? 'Tu rol no tiene acceso a ninguna propiedad activa en esta organización.'
-            : 'Elegí una propiedad en el selector de la barra lateral para continuar.'}
+            ? t('shell.gate.noProperty.noAccess')
+            : t('shell.gate.noProperty.select')}
         </Text>
       </SectionCard>
     );

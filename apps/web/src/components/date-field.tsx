@@ -232,9 +232,9 @@ export function DateField({
                     disabled
                       ? undefined
                       : {
-                        bg: selected ? 'brand.700' : 'brand.50',
-                        color: selected ? 'white' : 'brand.700',
-                      }
+                          bg: selected ? 'brand.700' : 'brand.50',
+                          color: selected ? 'white' : 'brand.700',
+                        }
                   }
                   _disabled={{ opacity: 0.6, cursor: 'not-allowed' }}
                   onClick={() => selectDate(cell.iso)}

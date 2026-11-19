@@ -12,6 +12,7 @@ import { RecordStatus } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MetricsService } from '../observability/metrics.service';
+import { Clock } from '../common/time/clock';
 import { SecurityEventService } from '../security-events/security-event.service';
 import { AuthTokenService, IssuedAuthToken } from './auth-token.service';
 import { assertPasswordPolicy } from './password-policy';
@@ -86,6 +87,7 @@ export class AuthService {
     private readonly mfa: MfaService,
     private readonly securityEvents: SecurityEventService,
     private readonly metrics: MetricsService,
+    private readonly clock: Clock,
     config: ConfigService,
   ) {
     this.lockoutThreshold = config.get<number>('ACCOUNT_LOCKOUT_THRESHOLD', 5);
@@ -119,7 +121,7 @@ export class AuthService {
       throw invalidCredentials();
     }
 
-    if (user.lockedUntil !== null && user.lockedUntil.getTime() > Date.now()) {
+    if (user.lockedUntil !== null && user.lockedUntil.getTime() > this.clock.now().getTime()) {
       await this.securityEvents.safeRecord({
         type: 'auth.login_locked',
         severity: 'WARNING',
@@ -128,7 +130,7 @@ export class AuthService {
         userAgent: userAgent(metadata),
         correlationId: metadata.correlationId,
       });
-      throw accountLocked(user.lockedUntil);
+      throw accountLocked(user.lockedUntil, this.clock.now());
     }
 
     if (user.status !== RecordStatus.ACTIVE || !passwordMatches) {
@@ -219,7 +221,7 @@ export class AuthService {
     }
 
     const passwordHash = await this.passwords.hash(newPassword);
-    const now = new Date();
+    const now = this.clock.now();
 
     await this.prisma.$transaction(async (transaction) => {
       await transaction.user.update({
@@ -266,7 +268,7 @@ export class AuthService {
 
     if (user === null || user.status === RecordStatus.DISABLED) {
       // Always return the same shape to reduce account enumeration.
-      return { expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() };
+      return { expiresAt: new Date(this.clock.now().getTime() + 30 * 60 * 1000).toISOString() };
     }
 
     const issued = await this.tokens.issuePasswordReset(user.id, hashIp(metadata.ip));
@@ -286,7 +288,7 @@ export class AuthService {
     newPassword: string,
     metadata: AuthRequestMetadata,
   ): Promise<void> {
-    const now = new Date();
+    const now = this.clock.now();
     const result = await this.prisma.$transaction(async (transaction) => {
       const userId = await this.tokens.consumePasswordReset(transaction, token, now);
       if (userId === null) {
@@ -363,7 +365,7 @@ export class AuthService {
   }
 
   async verifyEmail(token: string, metadata: AuthRequestMetadata): Promise<void> {
-    const now = new Date();
+    const now = this.clock.now();
     const userId = await this.prisma.$transaction(async (transaction) => {
       const subjectId = await this.tokens.consumeEmailVerification(transaction, token, now);
       if (subjectId === null) {
@@ -473,7 +475,7 @@ export class AuthService {
       where: { id: user.id },
       data: {
         mfaEnabled: true,
-        mfaEnrolledAt: new Date(),
+        mfaEnrolledAt: this.clock.now(),
         mfaLastUsedStep: verification.step,
       },
       select: { id: true },
@@ -686,7 +688,7 @@ export class AuthService {
 
     let lockedUntil = updated.lockedUntil;
     if (updated.failedLoginAttempts >= this.lockoutThreshold && lockedUntil === null) {
-      lockedUntil = new Date(Date.now() + this.lockoutMs);
+      lockedUntil = new Date(this.clock.now().getTime() + this.lockoutMs);
       await this.prisma.user.update({
         where: { id: userId },
         data: { lockedUntil },
@@ -774,13 +776,13 @@ function invalidToken(): BadRequestException {
   });
 }
 
-function accountLocked(lockedUntil: Date): HttpException {
+function accountLocked(lockedUntil: Date, now: Date): HttpException {
   throw new HttpException(
     {
       code: 'account_locked',
       message: 'The account is temporarily locked after repeated failed sign-in attempts.',
       details: {
-        retryAfterSeconds: Math.max(1, Math.ceil((lockedUntil.getTime() - Date.now()) / 1000)),
+        retryAfterSeconds: Math.max(1, Math.ceil((lockedUntil.getTime() - now.getTime()) / 1000)),
       },
     },
     423,

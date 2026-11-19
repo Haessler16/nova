@@ -1,4 +1,6 @@
+import { Injectable } from '@nestjs/common';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { Clock } from '../common/time/clock';
 
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const DEFAULT_DIGITS = 6;
@@ -15,6 +17,7 @@ export interface TotpVerification {
  * authenticator apps accept SHA1/6 digits/30 seconds, so no dependency is
  * needed for this narrow scope.
  */
+@Injectable()
 export class TotpService {
   generateSecret(): string {
     return base32Encode(randomBytes(SECRET_BYTES));
@@ -36,8 +39,11 @@ export class TotpService {
     return (binary % 10 ** digits).toString().padStart(digits, '0');
   }
 
-  stepForDate(at: Date = new Date(), periodSeconds = DEFAULT_PERIOD_SECONDS): number {
-    return Math.floor(at.getTime() / 1000 / periodSeconds);
+  constructor(private readonly clock: Clock) {}
+
+  stepForDate(at: Date | undefined = undefined, periodSeconds = DEFAULT_PERIOD_SECONDS): number {
+    const instant = at ?? this.clock.now();
+    return Math.floor(instant.getTime() / 1000 / periodSeconds);
   }
 
   verify(
@@ -50,7 +56,7 @@ export class TotpService {
       return null;
     }
 
-    const currentStep = this.stepForDate(options.at ?? new Date());
+    const currentStep = this.stepForDate(options.at);
     const window = options.window ?? DEFAULT_WINDOW;
     const expected = Buffer.from(code, 'utf8');
 

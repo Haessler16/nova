@@ -131,7 +131,7 @@ export class InventoryController {
   @RequirePermissions(PERMISSIONS.HOUSEKEEPING_MANAGE)
   transitionHousekeeping(
     @Tenant() tenant: TenantContext,
-    @Param('id', new ParseUUIDPipe) id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: HousekeepingTransitionDto,
   ) {
     return this.rooms.transitionHousekeeping(tenant, id, dto);

@@ -15,9 +15,7 @@ export interface RoomRackEvent {
   at: string;
 }
 
-export type RoomRackStreamEvent =
-  | { type: 'ready'; cursor: number; at: string }
-  | RoomRackEvent;
+export type RoomRackStreamEvent = { type: 'ready'; cursor: number; at: string } | RoomRackEvent;
 
 interface Envelope {
   roomId: string;

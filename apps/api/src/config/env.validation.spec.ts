@@ -22,6 +22,12 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...baseline })).not.toThrow();
   });
 
+  it('refuses to boot production with AUTH_MODE=dev-header', () => {
+    expect(() => validateEnv({ ...production, AUTH_MODE: 'dev-header' })).toThrow(
+      /dev-header is forbidden/i,
+    );
+  });
+
   it('rejects a wildcard CORS origin', () => {
     expect(() => validateEnv({ ...baseline, CORS_ORIGINS: '*,http://localhost:3000' })).toThrow(
       /wildcard/i,

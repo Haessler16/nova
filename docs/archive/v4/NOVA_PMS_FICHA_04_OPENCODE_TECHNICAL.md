@@ -1,4 +1,5 @@
 # NOVA PMS — FICHA 04
+
 ## Especificación técnica de brechas operativas, UX y plan de ejecución para OpenCode
 
 **Documento:** `NOVA_PMS_FICHA_04_OPENCODE_TECHNICAL.md`  
@@ -32,6 +33,7 @@ Actúa como ingeniero senior responsable de continuar NOVA PMS. Esta ficha se de
 ## 0.2 Proceso obligatorio por fase
 
 Antes de cada fase:
+
 - inspeccionar los módulos afectados;
 - identificar componentes y servicios reutilizables;
 - actualizar una matriz `existente / falta / se modifica`;
@@ -39,6 +41,7 @@ Antes de cada fase:
 - señalar riesgos de compatibilidad y seguridad.
 
 Después:
+
 - implementar;
 - añadir/actualizar pruebas;
 - ejecutar typecheck, lint y pruebas focalizadas;
@@ -55,13 +58,14 @@ Después:
 NOVA PMS es un PMS hotelero modular. La implementación existente incluye API y aplicación web conectadas a backend real. La auditoría `AUDIT_2026-11-15.md` revisó 52 requisitos:
 
 | Estado de auditoría | Cantidad |
-|---|---:|
-| `PROBADO` | 28 |
-| `IMPLEMENTADO` | 6 |
-| `PARCIAL` | 12 |
-| `NO INICIADO` | 6 |
+| ------------------- | -------: |
+| `PROBADO`           |       28 |
+| `IMPLEMENTADO`      |        6 |
+| `PARCIAL`           |       12 |
+| `NO INICIADO`       |        6 |
 
 Pruebas ejecutadas en esa auditoría:
+
 - API: 17 suites / 89 tests OK.
 - `pnpm typecheck`: OK en API y web.
 - `pnpm lint`: OK en API y web.
@@ -73,6 +77,7 @@ Pruebas ejecutadas en esa auditoría:
 ## 1.1 Base existente que se debe preservar
 
 Según la auditoría:
+
 - Multi-tenancy y contexto de organización/propiedad.
 - Autenticación, RBAC y permisos backend.
 - Auditoría append-only.
@@ -89,21 +94,21 @@ Según la auditoría:
 
 ## 1.2 Hallazgos de auditoría relevantes
 
-| ID | Hallazgo | Estado auditado | Trabajo requerido |
-|---|---|---|---|
-| B-03 | Búsquedas separadas de huésped y reserva; no hay búsqueda global unificada | `PROBADO` para las búsquedas existentes | Añadir búsqueda operativa integrada en Front Desk y criterios requeridos |
-| R-01 | Room rack sin filtros por piso/tipo/estado | `PARCIAL` | Añadir filtros y búsqueda |
-| R-02 | Ocupación, housekeeping y estado operativo separados | `PROBADO` | Preservar separación |
-| R-03 | No hay drawer contextual de habitación | `NO INICIADO` | Implementar |
-| R-04 | No existe lease temporal de asignación para UX | `NO INICIADO` | Implementar lease TTL; constraint sigue siendo autoridad |
-| R-05/R-06 | Transacción/constraint y prueba de concurrencia de confirmación | `PROBADO` | Preservar y extender tests |
-| H-04 | Perfil de huésped sin historial ni reservas vinculadas | `PARCIAL` / hallazgo | Implementar detalle e historial |
-| P-01 | Folios/caja internos probados | `PROBADO` | Ampliar UI y catálogo de consumos |
-| P-02/P-04 | Sin proveedor de pagos ni preautorización real | `PARCIAL` | Mantener como integración separada y no simular autorización |
-| T-01/T-02 | Offline de shell; sin outbox/Edge | `PARCIAL` / `NO INICIADO` | Discovery y diseño separado; no prometer offline |
-| T-04 | Importación CSV con preview | `PARCIAL` | OCR/PDF/imagen fuera del primer incremento |
-| H-02/N-07 | NSU/authcode no se redactan explícitamente | Riesgo P1 | Corregir antes de procesar más notas |
-| H-01 | Expectativa E2E desactualizada | Deuda de test P1 | Corregir test sin cambiar lógica funcional |
+| ID        | Hallazgo                                                                   | Estado auditado                         | Trabajo requerido                                                        |
+| --------- | -------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------ |
+| B-03      | Búsquedas separadas de huésped y reserva; no hay búsqueda global unificada | `PROBADO` para las búsquedas existentes | Añadir búsqueda operativa integrada en Front Desk y criterios requeridos |
+| R-01      | Room rack sin filtros por piso/tipo/estado                                 | `PARCIAL`                               | Añadir filtros y búsqueda                                                |
+| R-02      | Ocupación, housekeeping y estado operativo separados                       | `PROBADO`                               | Preservar separación                                                     |
+| R-03      | No hay drawer contextual de habitación                                     | `NO INICIADO`                           | Implementar                                                              |
+| R-04      | No existe lease temporal de asignación para UX                             | `NO INICIADO`                           | Implementar lease TTL; constraint sigue siendo autoridad                 |
+| R-05/R-06 | Transacción/constraint y prueba de concurrencia de confirmación            | `PROBADO`                               | Preservar y extender tests                                               |
+| H-04      | Perfil de huésped sin historial ni reservas vinculadas                     | `PARCIAL` / hallazgo                    | Implementar detalle e historial                                          |
+| P-01      | Folios/caja internos probados                                              | `PROBADO`                               | Ampliar UI y catálogo de consumos                                        |
+| P-02/P-04 | Sin proveedor de pagos ni preautorización real                             | `PARCIAL`                               | Mantener como integración separada y no simular autorización             |
+| T-01/T-02 | Offline de shell; sin outbox/Edge                                          | `PARCIAL` / `NO INICIADO`               | Discovery y diseño separado; no prometer offline                         |
+| T-04      | Importación CSV con preview                                                | `PARCIAL`                               | OCR/PDF/imagen fuera del primer incremento                               |
+| H-02/N-07 | NSU/authcode no se redactan explícitamente                                 | Riesgo P1                               | Corregir antes de procesar más notas                                     |
+| H-01      | Expectativa E2E desactualizada                                             | Deuda de test P1                        | Corregir test sin cambiar lógica funcional                               |
 
 **Importante:** los requisitos CPF/CEP, perfil internacional, catálogo de minibar/consumos, detalle visual de Caixa y flujo UX de checkout descritos abajo son requisitos nuevos del usuario; no deben presentarse como funcionalidades existentes.
 
@@ -133,6 +138,7 @@ Esta ficha persigue seis resultados operativos:
 **Estado:** ejecutada el 2026-11-16 — evidencia en `docs/v4/FASE_0_REPORT.md`.
 
 Tareas:
+
 - [x] Hacer una inspección actual del repositorio y confirmar la línea base.
 - [x] Corregir H-01: actualizar `guests-reservations.e2e-spec.ts` para afirmar que la habitación bloqueada `ROOM_DLX_201` no aparece y que `ROOM_DLX_202` sí puede aparecer si cumple las reglas. No modificar lógica de disponibilidad salvo decisión de producto documentada. _(Ya estaba corregido en `1a836bd`; se verificó con la suite aislada sin cambiar el test ni la lógica.)_
 - [x] Corregir H-02/N-07: ampliar `redactSensitiveCardData` para detectar/redactar NSU y authorization code etiquetados y formatos conocidos.
@@ -142,6 +148,7 @@ Tareas:
 - [x] Añadir prueba de regresión que confirme que el parser no crea pagos, cargos ni preautorizaciones reales. _(Conteos de `Payment`, `Folio` y `FolioLine` sin cambios.)_
 
 **Aceptación:**
+
 - E2E aislado vuelve a 14/14 suites verdes, o cualquier suite ajena al alcance se reporta separadamente con evidencia.
 - No se persiste NSU/authcode detectado en texto fuente.
 - No se alteran reglas de disponibilidad para hacer pasar el test.
@@ -160,6 +167,7 @@ Tareas:
 Implementar un buscador principal en la parte superior de Front Desk.
 
 **Criterios de búsqueda principales:**
+
 - Nombre y apellido del huésped.
 - Número/código de reserva.
 - Número de habitación/UH.
@@ -168,6 +176,7 @@ Implementar un buscador principal en la parte superior de Front Desk.
 - Estado de reserva.
 
 **Estados mínimos a representar**, mapeados a los enums reales del dominio:
+
 - Confirmada.
 - Check-in / huésped alojado.
 - Checkout / finalizada.
@@ -178,6 +187,7 @@ Implementar un buscador principal en la parte superior de Front Desk.
 No inventar enums paralelos si ya existen estados canónicos. Mostrar etiquetas pt-BR en UI y conservar valores de dominio.
 
 **Comportamiento:**
+
 - La búsqueda por texto debe aceptar nombre, apellido, código de reserva y UH cuando sea razonable.
 - Debe poder combinar texto + rango de fechas + estado.
 - Debe permitir limpiar filtros.
@@ -188,6 +198,7 @@ No inventar enums paralelos si ya existen estados canónicos. Mostrar etiquetas 
 - No mostrar PII ni saldos a roles sin permiso.
 
 **Columnas/atributos recomendados de resultados:**
+
 - Huésped principal.
 - Código de reserva.
 - UH o “sin habitación”.
@@ -197,6 +208,7 @@ No inventar enums paralelos si ya existen estados canónicos. Mostrar etiquetas 
 - Indicador de cuenta pendiente, solo con permiso y si la API lo soporta.
 
 **Acciones contextuales:**
+
 - Abrir reserva.
 - Abrir perfil de huésped.
 - Iniciar/continuar check-in si el estado lo permite.
@@ -212,6 +224,7 @@ Inspeccionar primero `GET /api/v1/reservations` y `GET /api/v1/guests`. Reutiliz
 Si hace falta búsqueda por UH o una búsqueda combinada, extender el contrato actual de forma compatible o crear un endpoint específico de Front Desk. No crear un endpoint duplicado sin justificación.
 
 Propuesta conceptual si el backend necesita endpoint transversal:
+
 - `GET /api/v1/front-office/search`
 - Query params propuestos: `q`, `fromDate`, `toDate`, `status`, `roomNumber`, `reservationCode`, `page`, `pageSize`.
 - Respuesta paginada con tipo de resultado (`reservation`/`guest`), datos mínimos necesarios y enlaces/IDs autorizados.
@@ -222,6 +235,7 @@ Esta ruta es una propuesta, no un endpoint existente confirmado.
 ### 1.3 Flujo guiado de check-in
 
 Secuencia UX:
+
 1. Buscar huésped/reserva.
 2. Abrir detalle de reserva.
 3. Revisar fechas, ocupantes, tarifa, alimentación, instrucciones, pagos/folio y solicitudes.
@@ -233,6 +247,7 @@ Secuencia UX:
 9. Mostrar confirmación solo después de respuesta exitosa del backend.
 
 Reglas:
+
 - No asignar habitaciones ocupadas, sucias, bloqueadas, fuera de servicio o en mantenimiento para check-in normal.
 - Inspección pendiente debe seguir la política de la propiedad.
 - Revalidar en backend al confirmar.
@@ -241,6 +256,7 @@ Reglas:
 - Mostrar instrucciones pendientes y no marcarlas completadas automáticamente.
 
 **Aceptación Fase 1:**
+
 - [x] Recepción encuentra una reserva por cualquiera de los criterios principales. _(texto, UH, fechas y estado sobre `GET /reservations`; acentos resueltos con `unaccent`)_
 - [x] Puede combinar fecha y estado. _(filtros combinables y conservados en query string)_
 - [x] Puede abrir la reserva correcta y continuar el check-in. _(acciones Abrir/Huésped/Check-in; wizard de 4 pasos)_
@@ -272,12 +288,14 @@ No introducir un único enum que mezcle estas dimensiones.
 Crear o ampliar una sección navegable “Habitaciones / Governança”.
 
 **Vista inicial:**
+
 - Resumen por contadores: libres, ocupadas, limpias, sucias, en limpieza, inspección y fuera de servicio.
 - Tabla densa y legible como vista operativa principal.
 - Evaluar vista por piso como segunda presentación si el patrón existente lo permite.
 - Leyenda persistente y accesible.
 
 **Filtros:**
+
 - UH/número de habitación.
 - Piso.
 - Ala.
@@ -292,6 +310,7 @@ Crear o ampliar una sección navegable “Habitaciones / Governança”.
 Los filtros deben poder combinarse y limpiarse. Preferir filtros server-side para inventarios grandes; si el backend devuelve un inventario acotado y estable, client-side puede ser aceptable. Justificar la decisión.
 
 **Columnas mínimas:**
+
 - UH.
 - Tipo de habitación.
 - Capacidad.
@@ -308,6 +327,7 @@ Los filtros deben poder combinarse y limpiarse. Preferir filtros server-side par
 Implementar un drawer contextual al seleccionar una habitación.
 
 Debe mostrar:
+
 - UH y tipo.
 - Ocupación y estancia actual.
 - Reserva asociada.
@@ -320,6 +340,7 @@ Debe mostrar:
 - Observaciones.
 
 Acciones según permisos:
+
 - Actualizar estado de housekeeping.
 - Registrar observación/incidencia.
 - Solicitar inspección o marcar inspección.
@@ -334,6 +355,7 @@ Todas las mutaciones deben usar API real, validar permisos y generar auditoría.
 El backend actual ya protege la asignación final mediante transacción/locks y constraints. No reemplazarlo.
 
 Añadir un lease temporal para mejorar coordinación de UX:
+
 - Al comenzar la selección/asignación, el cliente solicita lease para `roomId` y contexto de reserva.
 - Lease tiene propietario (usuario/sesión), `createdAt`, `expiresAt`, estado.
 - TTL configurable y renovable mientras el usuario mantenga la operación activa.
@@ -345,13 +367,15 @@ Añadir un lease temporal para mejorar coordinación de UX:
 - Evitar que un lease huérfano bloquee habitación indefinidamente.
 
 Contrato API conceptual (adaptar al estilo actual):
+
 - `POST /api/v1/inventory/rooms/:roomId/assignment-leases`
 - `POST /api/v1/inventory/rooms/:roomId/assignment-leases/:leaseId/renew`
 - `DELETE /api/v1/inventory/rooms/:roomId/assignment-leases/:leaseId`
 - Respuesta: leaseId, ownerDisplayName, expiresAt, status.
-Estos endpoints son propuestas, no contratos existentes.
+  Estos endpoints son propuestas, no contratos existentes.
 
 **Aceptación Fase 2:**
+
 - Filtrar habitaciones por UH, piso, tipo, ocupación y housekeeping.
 - Drawer muestra contexto correcto y acciones autorizadas.
 - Cambios de housekeeping quedan auditados.
@@ -372,6 +396,7 @@ Estos endpoints son propuestas, no contratos existentes.
 Crear ruta de detalle según convenciones actuales, por ejemplo `/guests/[id]`.
 
 Secciones:
+
 1. Identificación.
 2. Contacto.
 3. Dirección.
@@ -381,6 +406,7 @@ Secciones:
 7. Documentos y estado de documentación, según permisos.
 
 Datos de contacto:
+
 - Email.
 - Teléfono con código de país.
 - Nacionalidad.
@@ -395,6 +421,7 @@ Mostrar historial con fecha, propiedad, reserva, habitación si corresponde y es
 Formulario dinámico según tipo de documento.
 
 **CPF (Brasil):**
+
 - Tipo de documento `CPF`.
 - Entrada con o sin puntuación; normalizar para persistencia.
 - Validación de formato y dígitos verificadores.
@@ -402,6 +429,7 @@ Formulario dinámico según tipo de documento.
 - No exponer CPF completo en tablas o listados si no es necesario; aplicar máscara según permisos.
 
 **Pasaporte:**
+
 - Número de pasaporte.
 - País emisor.
 - Fecha de vencimiento solo si la política/flujo la requiere.
@@ -413,6 +441,7 @@ No asumir que el país emisor es el país de residencia.
 ## 5.3 CEP y dirección internacional
 
 **Cuando el tipo de dirección sea Brasil:**
+
 - Campo CEP.
 - Al completar CEP, consultar un proveedor de CEP configurado.
 - Sugerir logradouro, bairro, cidade y UF/estado.
@@ -421,6 +450,7 @@ No asumir que el país emisor es el país de residencia.
 - No borrar valores escritos por el usuario sin confirmación si una nueva consulta cambia el resultado.
 
 **Cuando la dirección sea internacional:**
+
 - País.
 - Ciudad.
 - Región/estado/provincia cuando aplique.
@@ -435,6 +465,7 @@ La consulta CEP debe pasar por un adapter de backend o servicio configurado; no 
 Inspeccionar el modelo Guest actual antes de añadir campos. Reutilizar columnas existentes cuando sean semánticamente correctas. Evitar guardar CPF/pasaporte duplicados en Guest y ReservationParty sin regla clara.
 
 Si se requiere:
+
 - migración aditiva;
 - DTOs con validación;
 - normalización;
@@ -442,6 +473,7 @@ Si se requiere:
 - permisos `guests.read` / `guests.update` existentes o equivalentes.
 
 **Aceptación Fase 3:**
+
 - El perfil muestra contacto, documento, dirección, reservas e historial.
 - Cambiar CPF/pasaporte adapta campos y validaciones.
 - CEP sugiere dirección brasileña y los campos son editables.
@@ -465,6 +497,7 @@ Caixa debe ser un módulo operacional completo, no solo un botón de checkout. D
 Crear dominio de catálogo solo después de revisar el modelo actual y definir el alcance mínimo del piloto.
 
 Campos mínimos propuestos:
+
 - Código/SKU interno.
 - Nombre y descripción.
 - Categoría: minibar, alimento/bebida, estacionamiento, lavandería, servicio, otros.
@@ -480,12 +513,14 @@ No almacenar stock si no existe un requisito de inventario confirmado. Si el hot
 ## 6.3 Registro de consumo/cargo
 
 Permitir registrar:
+
 - Consumo de habitación (agua, chocolate y otros productos).
 - Estacionamiento.
 - Servicios adicionales.
 - Cargos manuales autorizados.
 
 Cada cargo debe tener:
+
 - Folio/cuenta destino.
 - Producto/servicio o descripción manual permitida.
 - Cantidad.
@@ -496,6 +531,7 @@ Cada cargo debe tener:
 - Estado y referencia de reverso cuando aplique.
 
 Reglas:
+
 - No inferir ni crear cargos a partir de notas libres.
 - Capturar precio aplicado al momento del cargo como snapshot.
 - No permitir edición destructiva de movimientos contabilizados; usar void/reversal con motivo y auditoría según reglas actuales.
@@ -505,6 +541,7 @@ Reglas:
 ## 6.4 UX de Caixa
 
 Vista de cuenta con:
+
 - Huésped y reserva.
 - Habitación/UH.
 - Estado de la cuenta.
@@ -514,6 +551,7 @@ Vista de cuenta con:
 - Acciones permitidas por rol.
 
 Acciones:
+
 - Adicionar consumo.
 - Adicionar cargo/servicio.
 - Registrar pago manual cuando esté permitido.
@@ -553,6 +591,7 @@ No bloquear checkout por saldo automáticamente sin política explícita. El sis
 - No simular autorización real con un estado local.
 
 **Aceptación Fase 4:**
+
 - Crear/administrar catálogo inicial.
 - Registrar consumos y verlos en el folio.
 - Registrar pagos manuales con idempotencia y permisos.
@@ -571,6 +610,7 @@ No bloquear checkout por saldo automáticamente sin política explícita. El sis
 ## 7.1 Interfaz
 
 Crear flujo guiado:
+
 1. Mostrar reserva/estancia y habitación actual.
 2. Listar habitaciones destino candidatas.
 3. Filtros por tipo, capacidad, piso/ala y estado.
@@ -581,6 +621,7 @@ Crear flujo guiado:
 8. Mostrar resultado y habitación nueva.
 
 Mostrar claramente:
+
 - UH actual.
 - UH destino.
 - Tipo/capacidad.
@@ -611,6 +652,7 @@ Mostrar claramente:
 ## 8.1 Sistema de patrones
 
 Crear/normalizar componentes reutilizables para:
+
 - `InfoDialog` / información.
 - `WarningDialog` / advertencia.
 - `ConfirmDialog` / confirmación.
@@ -623,6 +665,7 @@ Usar nombres reales que sigan la convención del repositorio.
 ## 8.2 Jerarquía visual
 
 Cada mensaje debe incluir:
+
 - Título corto y específico.
 - Icono semántico.
 - Color semántico con contraste suficiente; el color nunca será el único indicador.
@@ -633,6 +676,7 @@ Cada mensaje debe incluir:
 - En operaciones críticas, explicar consecuencia y objeto afectado.
 
 Ejemplos de texto en `pt-BR`:
+
 - Informação: “O hóspede possui café da manhã incluído.”
 - Atenção: “Este quarto ainda não está marcado como limpo.”
 - Confirmação: “Deseja encerrar a conta e concluir o checkout?”
@@ -674,9 +718,11 @@ Ejemplos de texto en `pt-BR`:
 No ejecutar automáticamente junto con las fases anteriores:
 
 ## 10.1 NOVA Edge / offline multi-terminal
+
 La auditoría confirma que solo hay cache del shell y escrituras bloqueadas offline. No hay outbox ni Edge.
 
 Antes de implementar:
+
 - discovery de operaciones realmente necesarias durante caída WAN;
 - matriz de operaciones permitidas/prohibidas offline;
 - outbox idempotente;
@@ -689,13 +735,17 @@ Antes de implementar:
 No afirmar que PWA permite operar multi-terminal offline. No marcar un movimiento financiero/reserva como confirmado hasta sincronización y validación del servidor.
 
 ## 10.2 OCR/PDF/imágenes
+
 La importación CSV actual debe preservarse. OCR y extracción de imágenes/PDF se implementarán en fase separada, con revisión humana, detección de duplicados y trazabilidad del archivo.
 
 ## 10.3 NOVA Academy
+
 El demo actual no equivale a Academy. Diseñar un sandbox aislado con datos ficticios y ejercicios, sin conexión a propiedades reales.
 
 ## 10.4 LGPD operativa
+
 Fase separada para:
+
 - retención por categoría de datos;
 - anonimización/eliminación;
 - exportación de datos del titular;
@@ -704,6 +754,7 @@ Fase separada para:
 - permisos y aprobación.
 
 ## 10.5 Integraciones
+
 FNRH Digital, PIX, NFS-e, OTA y proveedores de pago requieren discovery contractual/legal/técnico, credenciales y sandbox oficial. No inventar endpoints.
 
 ---
@@ -711,6 +762,7 @@ FNRH Digital, PIX, NFS-e, OTA y proveedores de pago requieren discovery contract
 # 11. Plan de pruebas y criterios de calidad
 
 ## 11.1 Obligatorio por backend
+
 - Unit tests de reglas.
 - E2E de endpoints.
 - Aislamiento multi-tenant.
@@ -723,6 +775,7 @@ FNRH Digital, PIX, NFS-e, OTA y proveedores de pago requieren discovery contract
 - No regresión de módulos existentes.
 
 ## 11.2 Obligatorio por frontend
+
 - Pruebas de loading/error/empty/success.
 - Navegación y deep links.
 - Formularios y validaciones.
@@ -756,7 +809,9 @@ FNRH Digital, PIX, NFS-e, OTA y proveedores de pago requieren discovery contract
 20. Usuario de otra organización intenta acceder al recurso.
 
 ## 11.4 Evidencia visual
+
 La auditoría anterior no incluyó screenshots. Para cada fase con UI:
+
 - capturas de desktop de recepción;
 - capturas de tablet/responsive;
 - estados empty/loading/error;
@@ -795,6 +850,7 @@ La ficha no se considera completada hasta que:
 # 13. Entregables que OpenCode debe producir
 
 ## Entregable A — Plan técnico de fase
+
 - resumen de arquitectura existente;
 - archivos y módulos a modificar;
 - cambios de modelo/migraciones;
@@ -804,6 +860,7 @@ La ficha no se considera completada hasta que:
 - plan de pruebas.
 
 ## Entregable B — Implementación por fase
+
 - código funcional;
 - migraciones;
 - pruebas;
@@ -812,19 +869,23 @@ La ficha no se considera completada hasta que:
 - changelog.
 
 ## Entregable C — Informe de aceptación
+
 Para cada requisito, usar:
+
 - `NO INICIADO`
 - `PARCIAL`
 - `IMPLEMENTADO`
 - `PROBADO`
 
 Cada estado debe incluir:
+
 - evidencia (archivo/ruta/endpoint/migración/test);
 - qué es real vs demo;
 - limitación restante;
 - cómo reproducir la prueba.
 
 ## Entregable D — Informe de cierre
+
 - comandos ejecutados y resultados;
 - suites y número de tests;
 - screenshots y resoluciones;

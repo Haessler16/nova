@@ -48,6 +48,35 @@ describe('computeOperationalDay', () => {
     expect(result.operationalDate).toBe('2026-11-08');
   });
 
+  it('follows the property DST transition instead of a fixed UTC offset', () => {
+    // America/New_York springs forward on 2026-03-08 (05:00Z becomes 06:00Z
+    // at 02:00 local). 09:30Z is 05:30 local after the change (EDT) and
+    // therefore already the new operational date with a 05:00 start.
+    const beforeChange = computeOperationalDay(
+      new Date('2026-03-08T04:30:00.000Z'),
+      'America/New_York',
+      '05:00',
+    );
+    const afterChange = computeOperationalDay(
+      new Date('2026-03-08T09:30:00.000Z'),
+      'America/New_York',
+      '05:00',
+    );
+
+    expect(beforeChange.localTime).toBe('23:30');
+    expect(beforeChange.operationalDate).toBe('2026-03-07');
+    expect(afterChange.localTime).toBe('05:30');
+    expect(afterChange.operationalDate).toBe('2026-03-08');
+
+    const fallBack = computeOperationalDay(
+      new Date('2026-11-01T06:30:00.000Z'),
+      'America/New_York',
+      '05:00',
+    );
+    expect(fallBack.localTime).toBe('01:30');
+    expect(fallBack.operationalDate).toBe('2026-10-31');
+  });
+
   it('rejects invalid configuration', () => {
     expect(() => computeOperationalDay(new Date(), 'Not/AZone', '06:00')).toThrow();
     expect(() => computeOperationalDay(new Date(), 'America/Sao_Paulo', '25:00')).toThrow();

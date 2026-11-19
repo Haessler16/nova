@@ -1,4 +1,5 @@
 # NOVA PMS — Visual Design System
+
 Version: 1.0  
 Status: Approved visual direction  
 Product: Hotel Property Management System (PMS)
@@ -31,25 +32,25 @@ Treat these images as visual references, not as exact product specifications. Do
 
 Use these as initial design tokens. Check contrast before shipping.
 
-| Token | Suggested value | Use |
-|---|---|---|
-| `color.brand.navy` | `#142B43` | Primary navigation / dark brand surfaces |
-| `color.brand.blue` | `#2584E8` | Primary actions, links, focus |
-| `color.brand.mint` | `#079B70` | Positive actions and selected highlights |
-| `color.accent.lime` | `#B7EF83` | Small brand accents only |
-| `color.surface.canvas` | `#F4F7FB` | App background |
-| `color.surface.card` | `#FFFFFF` | Cards, dialogs, panels |
-| `color.text.primary` | `#172B45` | Main text |
-| `color.text.secondary` | `#647A96` | Supporting text |
-| `color.border.subtle` | `#E5ECF4` | Dividers and card borders |
-| `color.action.checkin.bg` | `#E5F0FF` | Check-in quick action |
-| `color.action.checkin.fg` | `#2584E8` | Check-in icon / title |
-| `color.action.room.bg` | `#DFF6EC` | Room assignment quick action |
-| `color.action.room.fg` | `#079B70` | Room assignment icon / title |
-| `color.action.reservation.bg` | `#F0E9FF` | New reservation quick action |
-| `color.action.reservation.fg` | `#8758DF` | Reservation icon / title |
-| `color.action.payment.bg` | `#FFF0DC` | Register payment quick action |
-| `color.action.payment.fg` | `#B87318` | Payment icon / title |
+| Token                         | Suggested value | Use                                      |
+| ----------------------------- | --------------- | ---------------------------------------- |
+| `color.brand.navy`            | `#142B43`       | Primary navigation / dark brand surfaces |
+| `color.brand.blue`            | `#2584E8`       | Primary actions, links, focus            |
+| `color.brand.mint`            | `#079B70`       | Positive actions and selected highlights |
+| `color.accent.lime`           | `#B7EF83`       | Small brand accents only                 |
+| `color.surface.canvas`        | `#F4F7FB`       | App background                           |
+| `color.surface.card`          | `#FFFFFF`       | Cards, dialogs, panels                   |
+| `color.text.primary`          | `#172B45`       | Main text                                |
+| `color.text.secondary`        | `#647A96`       | Supporting text                          |
+| `color.border.subtle`         | `#E5ECF4`       | Dividers and card borders                |
+| `color.action.checkin.bg`     | `#E5F0FF`       | Check-in quick action                    |
+| `color.action.checkin.fg`     | `#2584E8`       | Check-in icon / title                    |
+| `color.action.room.bg`        | `#DFF6EC`       | Room assignment quick action             |
+| `color.action.room.fg`        | `#079B70`       | Room assignment icon / title             |
+| `color.action.reservation.bg` | `#F0E9FF`       | New reservation quick action             |
+| `color.action.reservation.fg` | `#8758DF`       | Reservation icon / title                 |
+| `color.action.payment.bg`     | `#FFF0DC`       | Register payment quick action            |
+| `color.action.payment.fg`     | `#B87318`       | Payment icon / title                     |
 
 Pastel colors are action-category styling only. Define a separate semantic status palette for room status, housekeeping, payments, and reservation states. Never rely on color alone; always include text or an icon/label.
 
@@ -113,6 +114,7 @@ Do not hardcode demo figures or fake operational data. Use seeded mock data only
 ## 7. Quick-action card component
 
 Create a reusable component, for example `QuickActionCard`, with:
+
 - icon
 - title
 - description
@@ -125,6 +127,7 @@ Create a reusable component, for example `QuickActionCard`, with:
 - accessible name and focus-visible outline
 
 Behavior:
+
 - Entire card is a clickable target.
 - Use pointer cursor only when enabled.
 - Hover should be subtle (slight elevation or border emphasis), not a large movement.
@@ -144,18 +147,19 @@ Behavior:
 
 Choose presentation based on task size and context:
 
-| Task | Preferred presentation |
-|---|---|
-| Confirm a destructive action | Small confirmation dialog |
-| Edit a few guest fields | Medium dialog |
-| Register a payment | Medium / large dialog |
-| Assign a room while viewing room availability | Wide drawer or large dialog that preserves context |
-| View reservation details | Right-side drawer |
-| Multi-step check-in | Large stepper dialog or dedicated page if the flow is long |
-| Create a complex reservation | Dedicated page |
-| Complex guest profile / history | Drawer or dedicated page |
+| Task                                          | Preferred presentation                                     |
+| --------------------------------------------- | ---------------------------------------------------------- |
+| Confirm a destructive action                  | Small confirmation dialog                                  |
+| Edit a few guest fields                       | Medium dialog                                              |
+| Register a payment                            | Medium / large dialog                                      |
+| Assign a room while viewing room availability | Wide drawer or large dialog that preserves context         |
+| View reservation details                      | Right-side drawer                                          |
+| Multi-step check-in                           | Large stepper dialog or dedicated page if the flow is long |
+| Create a complex reservation                  | Dedicated page                                             |
+| Complex guest profile / history               | Drawer or dedicated page                                   |
 
 Modal requirements:
+
 - Clear title and optional short description.
 - Close control with accessible label.
 - Consistent header, content, and footer regions.
