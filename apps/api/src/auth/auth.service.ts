@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -9,72 +8,48 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RecordStatus } from '@prisma/client';
-import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MetricsService } from '../observability/metrics.service';
 import { Clock } from '../common/time/clock';
 import { SecurityEventService } from '../security-events/security-event.service';
 import { AuthTokenService, IssuedAuthToken } from './auth-token.service';
 import { assertPasswordPolicy } from './password-policy';
+import { PasswordChangeService } from './password-change.service';
 import { PasswordService } from './password.service';
 import { LoginRateLimiter } from './login-rate-limiter.service';
+import { deliverIssuedToken, tokenDeliveryPolicy, type TokenDeliveryPolicy } from './auth-token-delivery';
+import { MfaEnrollmentService } from './mfa-enrollment.service';
 import { MfaService } from './mfa.service';
-import { CreatedSession, SessionService, SessionSummary } from './session.service';
+import { SessionService, SessionSummary } from './session.service';
 import { TotpService } from './totp.service';
+import {
+  AUTH_USER_SELECT,
+  DUMMY_PASSWORD_HASH,
+  accountLocked,
+  hashIp,
+  invalidCredentials,
+  invalidMfaCode,
+  invalidToken,
+  normalizeEmail,
+  userAgent,
+  type AuthRequestMetadata,
+  type IssuedTokenResponse,
+  type LoginResult,
+} from './auth.service.support';
 
-const DUMMY_PASSWORD_HASH =
-  'scrypt$16384$8$1$_LHEVNMERXnKSJ59B37E4g$vxl8wF1ZxOrTKptLz1M6f13ECXXX6h0xLGhRUylUwjjFFrZxMHC9tob6nBE0NXPkHmSeT_GCq-6-JbOnRZ2VnQ';
-
-const AUTH_USER_SELECT = {
-  id: true,
-  email: true,
-  name: true,
-  passwordHash: true,
-  status: true,
-  mfaEnabled: true,
-  mfaSecret: true,
-  mfaLastUsedStep: true,
-  lockedUntil: true,
-  failedLoginAttempts: true,
-} as const;
-
-export interface AuthRequestMetadata {
-  ip: string;
-  userAgent?: string;
-  correlationId?: string;
-}
-
-export interface AuthenticatedUser {
-  id: string;
-  email: string;
-  name: string;
-}
-
-export type LoginResult =
-  | {
-      kind: 'session';
-      user: AuthenticatedUser;
-      session: CreatedSession;
-    }
-  | {
-      kind: 'mfa_challenge';
-      challengeToken: string;
-      expiresAt: Date;
-    };
-
-export interface IssuedTokenResponse {
-  expiresAt: string;
-  /** Only populated when AUTH_TOKEN_DELIVERY=response outside production. */
-  token?: string;
-}
+export type {
+  AuthRequestMetadata,
+  AuthenticatedUser,
+  IssuedTokenResponse,
+  LoginResult,
+} from './auth.service.support';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly lockoutThreshold: number;
   private readonly lockoutMs: number;
-  private readonly tokenDelivery: 'log' | 'response' | 'none';
-  private readonly nodeEnv: string;
+  private readonly delivery: TokenDeliveryPolicy;
   private readonly mfaIssuer: string;
 
   constructor(
@@ -85,6 +60,8 @@ export class AuthService {
     private readonly tokens: AuthTokenService,
     private readonly totp: TotpService,
     private readonly mfa: MfaService,
+    private readonly mfaEnrollment: MfaEnrollmentService,
+    private readonly passwordChange: PasswordChangeService,
     private readonly securityEvents: SecurityEventService,
     private readonly metrics: MetricsService,
     private readonly clock: Clock,
@@ -92,8 +69,7 @@ export class AuthService {
   ) {
     this.lockoutThreshold = config.get<number>('ACCOUNT_LOCKOUT_THRESHOLD', 5);
     this.lockoutMs = config.get<number>('ACCOUNT_LOCKOUT_MINUTES', 15) * 60 * 1000;
-    this.tokenDelivery = config.get<'log' | 'response' | 'none'>('AUTH_TOKEN_DELIVERY', 'log');
-    this.nodeEnv = config.get<string>('NODE_ENV', 'development');
+    this.delivery = tokenDeliveryPolicy(config);
     this.mfaIssuer = config.get<string>('MFA_ISSUER', 'NOVA PMS');
   }
 
@@ -195,65 +171,13 @@ export class AuthService {
     currentSessionId: string | undefined,
     metadata: AuthRequestMetadata,
   ): Promise<void> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: AUTH_USER_SELECT,
-    });
-
-    if (user === null || user.status !== RecordStatus.ACTIVE) {
-      throw invalidCredentials();
-    }
-
-    const currentMatches = await this.passwords.verify(currentPassword, user.passwordHash);
-    if (!currentMatches) {
-      throw new UnauthorizedException({
-        code: 'invalid_current_password',
-        message: 'The current password is incorrect.',
-      });
-    }
-
-    assertPasswordPolicy(newPassword, { email: user.email, name: user.name });
-    if (await this.passwords.verify(newPassword, user.passwordHash)) {
-      throw new BadRequestException({
-        code: 'password_reuse',
-        message: 'The new password must differ from the current password.',
-      });
-    }
-
-    const passwordHash = await this.passwords.hash(newPassword);
-    const now = this.clock.now();
-
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.user.update({
-        where: { id: user.id },
-        data: {
-          passwordHash,
-          passwordChangedAt: now,
-          failedLoginAttempts: 0,
-          lockedUntil: null,
-        },
-        select: { id: true },
-      });
-
-      await transaction.session.updateMany({
-        where: {
-          userId: user.id,
-          revokedAt: null,
-          ...(currentSessionId !== undefined ? { id: { not: currentSessionId } } : {}),
-        },
-        data: { revokedAt: now, revokedReason: 'password_changed' },
-      });
-    });
-
-    await this.securityEvents.safeRecord({
-      type: 'auth.password_changed',
-      severity: 'WARNING',
-      userId: user.id,
-      actorUserId: user.id,
-      ipHash: hashIp(metadata.ip),
-      userAgent: userAgent(metadata),
-      correlationId: metadata.correlationId,
-    });
+    await this.passwordChange.changePassword(
+      userId,
+      currentPassword,
+      newPassword,
+      currentSessionId,
+      metadata,
+    );
   }
 
   async requestPasswordReset(
@@ -396,100 +320,12 @@ export class AuthService {
     });
   }
 
-  async startMfaSetup(
-    userId: string,
-    metadata: AuthRequestMetadata,
-  ): Promise<{ secret: string; otpauthUri: string; issuer: string }> {
-    this.mfa.assertConfigured();
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true, mfaEnabled: true },
-    });
-    if (user === null) {
-      throw invalidCredentials();
-    }
-    if (user.mfaEnabled) {
-      throw new ConflictException({
-        code: 'mfa_already_enabled',
-        message: 'MFA is already enabled. Disable it before enrolling a new authenticator.',
-      });
-    }
-
-    const secret = this.totp.generateSecret();
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        mfaSecret: this.mfa.encryptSecret(secret),
-        mfaEnabled: false,
-        mfaEnrolledAt: null,
-        mfaLastUsedStep: null,
-      },
-      select: { id: true },
-    });
-
-    await this.securityEvents.safeRecord({
-      type: 'auth.mfa_setup_started',
-      userId: user.id,
-      actorUserId: user.id,
-      ipHash: hashIp(metadata.ip),
-      userAgent: userAgent(metadata),
-      correlationId: metadata.correlationId,
-    });
-
-    return {
-      secret,
-      otpauthUri: this.totp.provisioningUri({
-        secret,
-        email: user.email,
-        issuer: this.mfaIssuer,
-      }),
-      issuer: this.mfaIssuer,
-    };
+  startMfaSetup(userId: string, metadata: AuthRequestMetadata) {
+    return this.mfaEnrollment.startMfaSetup(userId, metadata);
   }
 
   async enableMfa(userId: string, code: string, metadata: AuthRequestMetadata): Promise<void> {
-    this.mfa.assertConfigured();
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, mfaEnabled: true, mfaSecret: true, mfaLastUsedStep: true },
-    });
-    if (user === null || user.mfaSecret === null) {
-      throw new BadRequestException({
-        code: 'mfa_setup_required',
-        message: 'Start MFA setup before enabling it.',
-      });
-    }
-    if (user.mfaEnabled) {
-      throw new ConflictException({
-        code: 'mfa_already_enabled',
-        message: 'MFA is already enabled.',
-      });
-    }
-
-    const verification = this.totp.verify(this.mfa.decryptSecret(user.mfaSecret), code);
-    if (verification === null) {
-      throw invalidMfaCode();
-    }
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        mfaEnabled: true,
-        mfaEnrolledAt: this.clock.now(),
-        mfaLastUsedStep: verification.step,
-      },
-      select: { id: true },
-    });
-
-    await this.securityEvents.safeRecord({
-      type: 'auth.mfa_enabled',
-      severity: 'WARNING',
-      userId: user.id,
-      actorUserId: user.id,
-      ipHash: hashIp(metadata.ip),
-      userAgent: userAgent(metadata),
-      correlationId: metadata.correlationId,
-    });
+    await this.mfaEnrollment.enableMfa(userId, code, metadata);
   }
 
   async disableMfa(
@@ -498,54 +334,7 @@ export class AuthService {
     code: string,
     metadata: AuthRequestMetadata,
   ): Promise<void> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { ...AUTH_USER_SELECT },
-    });
-    if (
-      user === null ||
-      user.status !== RecordStatus.ACTIVE ||
-      !user.mfaEnabled ||
-      user.mfaSecret === null
-    ) {
-      throw new ConflictException({
-        code: 'mfa_not_enabled',
-        message: 'MFA is not enabled for this account.',
-      });
-    }
-
-    if (!(await this.passwords.verify(password, user.passwordHash))) {
-      throw new UnauthorizedException({
-        code: 'invalid_current_password',
-        message: 'The current password is incorrect.',
-      });
-    }
-
-    const verification = this.totp.verify(this.mfa.decryptSecret(user.mfaSecret), code);
-    if (verification === null) {
-      throw invalidMfaCode();
-    }
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        mfaEnabled: false,
-        mfaSecret: null,
-        mfaEnrolledAt: null,
-        mfaLastUsedStep: null,
-      },
-      select: { id: true },
-    });
-
-    await this.securityEvents.safeRecord({
-      type: 'auth.mfa_disabled',
-      severity: 'CRITICAL',
-      userId: user.id,
-      actorUserId: user.id,
-      ipHash: hashIp(metadata.ip),
-      userAgent: userAgent(metadata),
-      correlationId: metadata.correlationId,
-    });
+    await this.mfaEnrollment.disableMfa(userId, password, code, metadata);
   }
 
   async listSessions(
@@ -722,69 +511,7 @@ export class AuthService {
   }
 
   private deliver(issued: IssuedAuthToken, purpose: string): IssuedTokenResponse {
-    const response: IssuedTokenResponse = { expiresAt: issued.expiresAt.toISOString() };
-
-    if (this.nodeEnv !== 'production' && this.tokenDelivery === 'response') {
-      return { ...response, token: issued.token };
-    }
-
-    if (this.nodeEnv !== 'production' && this.tokenDelivery === 'log') {
-      this.logger.warn(
-        `Development-only ${purpose} token (expires ${issued.expiresAt.toISOString()}): ${issued.token}`,
-      );
-    } else if (this.tokenDelivery === 'none') {
-      this.logger.warn(
-        `${purpose} token generated but AUTH_TOKEN_DELIVERY=none; no email provider is configured.`,
-      );
-    }
-
-    return response;
+    return deliverIssuedToken(this.delivery, this.logger, issued, purpose);
   }
-}
 
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-function hashIp(ip: string): string {
-  return createHash('sha256').update(ip, 'utf8').digest('hex');
-}
-
-function userAgent(metadata: AuthRequestMetadata): string | undefined {
-  const value = metadata.userAgent?.trim();
-  return value === undefined || value.length === 0 ? undefined : value.slice(0, 255);
-}
-
-function invalidCredentials(): UnauthorizedException {
-  return new UnauthorizedException({
-    code: 'invalid_credentials',
-    message: 'Invalid email or password.',
-  });
-}
-
-function invalidMfaCode(message = 'The authentication code is invalid.'): UnauthorizedException {
-  return new UnauthorizedException({
-    code: 'invalid_mfa_code',
-    message,
-  });
-}
-
-function invalidToken(): BadRequestException {
-  return new BadRequestException({
-    code: 'invalid_auth_token',
-    message: 'The token is invalid, expired or already used.',
-  });
-}
-
-function accountLocked(lockedUntil: Date, now: Date): HttpException {
-  throw new HttpException(
-    {
-      code: 'account_locked',
-      message: 'The account is temporarily locked after repeated failed sign-in attempts.',
-      details: {
-        retryAfterSeconds: Math.max(1, Math.ceil((lockedUntil.getTime() - now.getTime()) / 1000)),
-      },
-    },
-    423,
-  );
 }

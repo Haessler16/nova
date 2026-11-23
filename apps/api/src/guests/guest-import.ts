@@ -148,39 +148,11 @@ export function parseGuestCsv(csv: string): GuestImportPreview {
       errors.push('notes supera 2000 caracteres.');
     }
 
-    let documentType: GuestDocumentType | null = null;
-    if (documentTypeRaw !== '') {
-      const mapped = DOCUMENT_TYPES[documentTypeRaw];
-      if (mapped === undefined) {
-        errors.push(
-          'documentType debe ser CPF, PASSPORT, RG, NATIONAL_ID, DRIVER_LICENSE u OTHER.',
-        );
-      } else {
-        documentType = mapped;
-      }
-    }
-
-    let documentNumber: string | null = null;
-    if (documentNumberRaw !== '') {
-      if (documentNumberRaw.length < 3 || documentNumberRaw.length > 64) {
-        errors.push('documentNumber debe tener entre 3 y 64 caracteres.');
-      } else {
-        documentNumber = documentNumberRaw;
-      }
-    }
-
-    if ((documentType === null) !== (documentNumber === null)) {
-      errors.push('documentType y documentNumber deben informarse juntos.');
-    }
-
-    if (documentType !== null && documentNumber !== null) {
-      const key = `${documentType}:${documentNumber}`;
-      const previousLine = seenDocuments.get(key);
-      if (previousLine !== undefined) {
-        errors.push(`documento duplicado en el archivo (también en la línea ${previousLine}).`);
-      } else {
-        seenDocuments.set(key, record.line);
-      }
+    const document = parseDocumentFields(documentTypeRaw, documentNumberRaw);
+    errors.push(...document.errors);
+    const duplicate = registerDocument(document.type, document.number, record.line, seenDocuments);
+    if (duplicate !== null) {
+      errors.push(duplicate);
     }
 
     return {
@@ -189,8 +161,8 @@ export function parseGuestCsv(csv: string): GuestImportPreview {
         fullName,
         email: email === '' ? null : email.toLowerCase(),
         phone: phone === '' ? null : phone,
-        documentType,
-        documentNumber,
+        documentType: document.type,
+        documentNumber: document.number,
         notes: notes === '' ? null : notes,
       },
       errors,
@@ -203,6 +175,65 @@ export function parseGuestCsv(csv: string): GuestImportPreview {
     invalidRows: rows.filter((row) => row.errors.length > 0).length,
     rows,
   };
+}
+
+interface ParsedDocumentFields {
+  type: GuestDocumentType | null;
+  number: string | null;
+  errors: string[];
+}
+
+/** Document columns are optional, but they must be informed as a pair. */
+function parseDocumentFields(
+  documentTypeRaw: string,
+  documentNumberRaw: string,
+): ParsedDocumentFields {
+  const errors: string[] = [];
+
+  let type: GuestDocumentType | null = null;
+  if (documentTypeRaw !== '') {
+    const mapped = DOCUMENT_TYPES[documentTypeRaw];
+    if (mapped === undefined) {
+      errors.push('documentType debe ser CPF, PASSPORT, RG, NATIONAL_ID, DRIVER_LICENSE u OTHER.');
+    } else {
+      type = mapped;
+    }
+  }
+
+  let number: string | null = null;
+  if (documentNumberRaw !== '') {
+    if (documentNumberRaw.length < 3 || documentNumberRaw.length > 64) {
+      errors.push('documentNumber debe tener entre 3 y 64 caracteres.');
+    } else {
+      number = documentNumberRaw;
+    }
+  }
+
+  if ((type === null) !== (number === null)) {
+    errors.push('documentType y documentNumber deben informarse juntos.');
+  }
+
+  return { type, number, errors };
+}
+
+/** Returns the duplicate error message instead of pushing, so the caller decides. */
+function registerDocument(
+  type: GuestDocumentType | null,
+  number: string | null,
+  line: number,
+  seenDocuments: Map<string, number>,
+): string | null {
+  if (type === null || number === null) {
+    return null;
+  }
+
+  const key = `${type}:${number}`;
+  const previousLine = seenDocuments.get(key);
+  if (previousLine !== undefined) {
+    return `documento duplicado en el archivo (también en la línea ${previousLine}).`;
+  }
+  seenDocuments.set(key, line);
+  return null;
 }
 
 function isHeader(value: string): value is Header {

@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   FolioLineStatus,
   OperationalCloseStatus,
@@ -16,89 +11,33 @@ import { TenantContext } from '../common/http/request-context';
 import { money, parseCalendarDate } from '../common/money/decimal';
 import { Clock } from '../common/time/clock';
 import { requirePropertyContext } from '../inventory/room-state.service';
-import { computeOperationalDay } from '../operational-day/operational-day';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CloseOperationalDayDto,
   ListOperationalClosesQueryDto,
   ReopenOperationalDayDto,
 } from './dto/night-audit.dto';
+import {
+  assertOperationalDateCloseable,
+  assertSnapshotCloseable,
+  findCloseReplay,
+  findExistingClose,
+  loadCloseProperty,
+  writeOperationalClose,
+} from './night-audit.close';
+import {
+  OPERATIONAL_CLOSE_SELECT,
+  mapClose,
+  type NightAuditBlocker,
+  type NightAuditSnapshot,
+  type OperationalCloseResponse,
+} from './night-audit.contracts';
 
-const OPERATIONAL_CLOSE_SELECT = Prisma.validator<Prisma.OperationalCloseSelect>()({
-  id: true,
-  operationalDate: true,
-  status: true,
-  snapshot: true,
-  notes: true,
-  closedByUserId: true,
-  closedAt: true,
-  reopenedByUserId: true,
-  reopenedAt: true,
-  reopenReason: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-type OperationalCloseRow = Prisma.OperationalCloseGetPayload<{
-  select: typeof OPERATIONAL_CLOSE_SELECT;
-}>;
-
-export interface NightAuditBlocker {
-  code: string;
-  count: number;
-  message: string;
-}
-
-export interface NightAuditSnapshot {
-  generatedAt: string;
-  operationalDate: string;
-  timezone: string;
-  operationalDayStart: string;
-  currencyCode: string;
-  counts: {
-    openCashSessions: number;
-    openFolios: number;
-    confirmedArrivalsBeforeDate: number;
-    inHousePastCheckout: number;
-  };
-  totals: {
-    openFolioBalance: string;
-  };
-  blockers: NightAuditBlocker[];
-  forced: boolean;
-}
-
-export interface OperationalCloseResponse {
-  id: string;
-  operationalDate: string;
-  status: OperationalCloseStatus;
-  snapshot: Prisma.JsonValue;
-  notes: string | null;
-  closedByUserId: string | null;
-  closedAt: Date;
-  reopenedByUserId: string | null;
-  reopenedAt: Date | null;
-  reopenReason: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-function mapClose(row: OperationalCloseRow): OperationalCloseResponse {
-  return {
-    id: row.id,
-    operationalDate: row.operationalDate.toISOString().slice(0, 10),
-    status: row.status,
-    snapshot: row.snapshot,
-    notes: row.notes,
-    closedByUserId: row.closedByUserId,
-    closedAt: row.closedAt,
-    reopenedByUserId: row.reopenedByUserId,
-    reopenedAt: row.reopenedAt,
-    reopenReason: row.reopenReason,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
+export type {
+  NightAuditBlocker,
+  NightAuditSnapshot,
+  OperationalCloseResponse,
+} from './night-audit.contracts';
 
 @Injectable()
 export class NightAuditService {
@@ -155,148 +94,40 @@ export class NightAuditService {
     const propertyId = requirePropertyContext(context);
     const operationalDate = parseCalendarDate(dto.operationalDate, 'operationalDate');
 
-    const replay = await this.prisma.operationalClose.findFirst({
-      where: {
-        organizationId: context.organizationId,
-        propertyId,
-        idempotencyKey: dto.idempotencyKey,
-      },
-      select: OPERATIONAL_CLOSE_SELECT,
-    });
+    const replay = await findCloseReplay(
+      this.prisma,
+      context.organizationId,
+      propertyId,
+      dto,
+    );
     if (replay !== null) {
-      if (replay.operationalDate.toISOString().slice(0, 10) !== dto.operationalDate) {
-        throw this.idempotencyReuse();
-      }
       return mapClose(replay);
     }
 
-    const property = await this.prisma.property.findFirst({
-      where: { id: propertyId, organizationId: context.organizationId },
-      select: {
-        timezone: true,
-        operationalDayStart: true,
-        currencyCode: true,
-      },
-    });
-    if (property === null) {
-      throw new NotFoundException({
-        code: 'property_not_found',
-        message: 'Property not found in this organization.',
-      });
-    }
-
-    const current = computeOperationalDay(
-      this.clock.now(),
-      property.timezone,
-      property.operationalDayStart,
-    );
-    if (dto.operationalDate > current.operationalDate) {
-      throw new ConflictException({
-        code: 'operational_day_in_future',
-        message: 'The operational day cannot be closed before it starts.',
-        details: { currentOperationalDate: current.operationalDate },
-      });
-    }
+    const property = await loadCloseProperty(this.prisma, context.organizationId, propertyId);
+    assertOperationalDateCloseable(dto.operationalDate, property, this.clock.now());
 
     const snapshot = await this.buildSnapshot(
       context.organizationId,
       propertyId,
       dto.operationalDate,
-      {
-        timezone: property.timezone,
-        operationalDayStart: property.operationalDayStart,
-        currencyCode: property.currencyCode,
-      },
+      property,
       dto.force === true,
     );
+    assertSnapshotCloseable(snapshot, dto);
 
-    if (snapshot.blockers.length > 0) {
-      if (dto.force !== true) {
-        throw new ConflictException({
-          code: 'night_audit_blocked',
-          message:
-            'The operational day has unresolved items. Review the blockers or force the close with a reason.',
-          details: { blockers: snapshot.blockers },
-        });
-      }
-      if ((dto.forceReason ?? '').trim().length < 3) {
-        throw new BadRequestException({
-          code: 'force_reason_required',
-          message: 'A reason is required when forcing the operational day close.',
-        });
-      }
-    }
+    const existing = await findExistingClose(
+      this.prisma,
+      context.organizationId,
+      propertyId,
+      operationalDate,
+    );
 
-    const existing = await this.prisma.operationalClose.findFirst({
-      where: {
-        organizationId: context.organizationId,
-        propertyId,
-        operationalDate,
-      },
-      select: { id: true, status: true },
-    });
-
-    if (existing !== null && existing.status === OperationalCloseStatus.CLOSED) {
-      throw new ConflictException({
-        code: 'operational_day_already_closed',
-        message: 'This operational day is already closed.',
-        details: { operationalCloseId: existing.id },
-      });
-    }
-
-    const closed = await this.prisma.$transaction(async (transaction) => {
-      const row =
-        existing !== null
-          ? await transaction.operationalClose.update({
-              where: { id: existing.id },
-              data: {
-                status: OperationalCloseStatus.CLOSED,
-                idempotencyKey: dto.idempotencyKey,
-                snapshot: snapshot as unknown as Prisma.InputJsonValue,
-                notes: dto.notes ?? null,
-                closedByUserId: context.actor.id,
-                closedAt: this.clock.now(),
-              },
-              select: OPERATIONAL_CLOSE_SELECT,
-            })
-          : await transaction.operationalClose.create({
-              data: {
-                organizationId: context.organizationId,
-                propertyId,
-                operationalDate,
-                status: OperationalCloseStatus.CLOSED,
-                idempotencyKey: dto.idempotencyKey,
-                snapshot: snapshot as unknown as Prisma.InputJsonValue,
-                notes: dto.notes ?? null,
-                closedByUserId: context.actor.id,
-                closedAt: this.clock.now(),
-              },
-              select: OPERATIONAL_CLOSE_SELECT,
-            });
-
-      await this.audit.append(
-        {
-          organizationId: context.organizationId,
-          propertyId,
-          actorUserId: context.actor.id,
-          action: 'operational_day.closed',
-          entityType: 'OperationalClose',
-          entityId: row.id,
-          correlationId: context.correlationId,
-          reason: dto.force === true ? dto.forceReason : undefined,
-          metadata: {
-            operationalDate: dto.operationalDate,
-            forced: snapshot.forced,
-            blockers: snapshot.blockers,
-            counts: snapshot.counts,
-            totals: snapshot.totals,
-          },
-        },
-        transaction,
-      );
-
-      return row;
-    });
+    const closed = await writeOperationalClose(
+      { prisma: this.prisma, audit: this.audit, closedAt: this.clock.now() },
+      { context, propertyId, operationalDate, snapshot, dto },
+      existing,
+    );
 
     return mapClose(closed);
   }
@@ -475,10 +306,4 @@ export class NightAuditService {
     };
   }
 
-  private idempotencyReuse(): ConflictException {
-    return new ConflictException({
-      code: 'idempotency_key_reuse',
-      message: 'This idempotency key was already used for a different operational close payload.',
-    });
-  }
 }

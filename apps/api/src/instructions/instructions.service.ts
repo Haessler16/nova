@@ -15,6 +15,7 @@ import {
 import { PERMISSIONS } from '../access/permissions';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
+import { Clock } from '../common/time/clock';
 import { requirePropertyContext } from '../inventory/room-state.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -145,6 +146,7 @@ export class InstructionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly clock: Clock,
   ) {}
 
   async list(
@@ -417,7 +419,7 @@ export class InstructionsService {
         data: {
           status: target,
           ...(target === InstructionStatus.COMPLETED
-            ? { completedAt: new Date(), completedByUserId: context.actor.id }
+            ? { completedAt: this.clock.now(), completedByUserId: context.actor.id }
             : {}),
         },
         select: INSTRUCTION_SELECT,
@@ -747,7 +749,7 @@ export class InstructionsService {
           ? {}
           : {
               isActive: true,
-              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+              OR: [{ expiresAt: null }, { expiresAt: { gt: this.clock.now() } }],
             }),
       },
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],

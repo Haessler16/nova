@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
+import { Clock } from '../common/time/clock';
 
 export type RoomRackEventType =
   | 'room.updated'
@@ -34,6 +35,8 @@ export class RoomEventsService implements OnModuleDestroy {
   private readonly streams = new Map<string, Set<Subject<RoomRackEvent>>>();
   private sequence = 0;
 
+  constructor(private readonly clock: Clock) {}
+
   get cursor(): number {
     return this.sequence;
   }
@@ -44,7 +47,7 @@ export class RoomEventsService implements OnModuleDestroy {
       id: this.sequence,
       type: envelope.type,
       roomId: envelope.roomId,
-      at: new Date().toISOString(),
+      at: this.clock.now().toISOString(),
     };
     const subscribers = this.streams.get(this.key(organizationId, propertyId));
     if (subscribers !== undefined) {
@@ -72,7 +75,7 @@ export class RoomEventsService implements OnModuleDestroy {
         this.streams.set(key, subscribers);
       }
       subscriber.next({
-        data: { type: 'ready', cursor: this.sequence, at: new Date().toISOString() },
+        data: { type: 'ready', cursor: this.sequence, at: this.clock.now().toISOString() },
       });
       return () => {
         subscription.unsubscribe();

@@ -17,6 +17,14 @@ export function evaluatePasswordPolicy(
   password: string,
   context: { email?: string; name?: string } = {},
 ): PasswordPolicyViolation[] {
+  return [
+    ...lengthViolations(password),
+    ...characterClassViolations(password),
+    ...personalInfoViolations(password, context),
+  ];
+}
+
+function lengthViolations(password: string): PasswordPolicyViolation[] {
   const violations: PasswordPolicyViolation[] = [];
 
   if (password.length < PASSWORD_MIN_LENGTH) {
@@ -31,6 +39,13 @@ export function evaluatePasswordPolicy(
       message: `Password must not exceed ${PASSWORD_MAX_LENGTH} characters.`,
     });
   }
+
+  return violations;
+}
+
+function characterClassViolations(password: string): PasswordPolicyViolation[] {
+  const violations: PasswordPolicyViolation[] = [];
+
   if (!/[a-z]/.test(password)) {
     violations.push({ code: 'lowercase', message: 'Password must contain a lowercase letter.' });
   }
@@ -47,6 +62,14 @@ export function evaluatePasswordPolicy(
     violations.push({ code: 'whitespace', message: 'Password must not contain whitespace.' });
   }
 
+  return violations;
+}
+
+function personalInfoViolations(
+  password: string,
+  context: { email?: string; name?: string },
+): PasswordPolicyViolation[] {
+  const violations: PasswordPolicyViolation[] = [];
   const normalized = password.toLowerCase();
   const email = context.email?.trim().toLowerCase();
   if (email !== undefined && email.length > 0) {

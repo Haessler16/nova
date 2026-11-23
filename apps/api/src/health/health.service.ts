@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Clock } from '../common/time/clock';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -30,10 +31,11 @@ export class HealthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly clock: Clock,
   ) {}
 
   liveness(): HealthCheckResult {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return { status: 'ok', timestamp: this.clock.now().toISOString() };
   }
 
   /**
@@ -84,7 +86,7 @@ export class HealthService {
 
     return {
       status: healthy ? 'ok' : 'error',
-      timestamp: new Date().toISOString(),
+      timestamp: this.clock.now().toISOString(),
       checks,
     };
   }

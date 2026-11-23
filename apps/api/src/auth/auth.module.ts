@@ -8,7 +8,9 @@ import { AuthenticationGuard } from './authentication.guard';
 import { CsrfGuard } from './csrf.guard';
 import { CsrfService } from './csrf.service';
 import { LoginRateLimiter } from './login-rate-limiter.service';
+import { MfaEnrollmentService } from './mfa-enrollment.service';
 import { MfaService } from './mfa.service';
+import { PasswordChangeService } from './password-change.service';
 import { PasswordService } from './password.service';
 import { SessionService } from './session.service';
 import { TotpService } from './totp.service';
@@ -23,7 +25,9 @@ import { TotpService } from './totp.service';
     CsrfGuard,
     CsrfService,
     LoginRateLimiter,
+    MfaEnrollmentService,
     MfaService,
+    PasswordChangeService,
     PasswordService,
     SessionService,
     TotpService,

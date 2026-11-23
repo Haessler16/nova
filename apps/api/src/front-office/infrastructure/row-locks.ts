@@ -6,9 +6,10 @@ import {
   STAY_SELECT,
   type ReservationSummaryRow,
   type StayRow,
+  type Transaction,
 } from '../application/front-office.contracts';
 
-export type Transaction = Prisma.TransactionClient;
+export type { Transaction };
 
 /**
  * Closed list of lockable tables. Table names are never interpolated from user
@@ -21,9 +22,10 @@ const LOCKABLE = {
     label: 'Reservation',
   },
   Stay: { table: Prisma.raw('"Stay"'), code: 'stay_not_found', label: 'Stay' },
+  Incident: { table: Prisma.raw('"Incident"'), code: 'incident_not_found', label: 'Incident' },
 } as const;
 
-export type LockableEntity = keyof typeof LOCKABLE;
+type LockableEntity = keyof typeof LOCKABLE;
 
 /**
  * Takes a `FOR UPDATE` lock on a row scoped to the tenant and property. Throws
@@ -50,7 +52,7 @@ export async function lockRow(
   }
 }
 
-export interface RowScope {
+interface RowScope {
   organizationId: string;
   propertyId: string;
   id: string;

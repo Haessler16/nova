@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { RoomBlockStatus, RoomBlockType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { Clock } from '../common/time/clock';
 import { TenantContext } from '../common/http/request-context';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoomBlockDto, ReleaseRoomBlockDto } from './dto/room-block.dto';
@@ -55,6 +56,7 @@ export class RoomBlocksService {
     private readonly audit: AuditService,
     private readonly roomState: RoomStateService,
     private readonly events: RoomEventsService,
+    private readonly clock: Clock,
   ) {}
 
   async list(context: TenantContext, roomId: string): Promise<{ items: RoomBlockResponse[] }> {
@@ -194,7 +196,7 @@ export class RoomBlocksService {
         where: { id: block.id },
         data: {
           status: RoomBlockStatus.RELEASED,
-          releasedAt: new Date(),
+          releasedAt: this.clock.now(),
           releaseReason,
         },
         select: ROOM_BLOCK_SELECT,
@@ -261,7 +263,7 @@ export class RoomBlocksService {
       });
     }
 
-    if (endsAt.getTime() <= Date.now()) {
+    if (endsAt.getTime() <= this.clock.now().getTime()) {
       throw new BadRequestException({
         code: 'room_block_interval_in_past',
         message: 'A new room block must end in the future.',

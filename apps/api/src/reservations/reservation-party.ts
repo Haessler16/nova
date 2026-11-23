@@ -104,18 +104,9 @@ export function evaluatePartyReadiness(input: {
 }): PartyReadiness {
   const counts = partyCounts(input.members, input.checkInDate);
   const codes = new Set<PartyReadinessCode>();
-  const primary = input.members.find((member) => member.role === ReservationGuestRole.PRIMARY);
 
-  if (
-    primary === undefined ||
-    (input.primaryGuestId !== undefined && primary.guestId !== input.primaryGuestId)
-  ) {
-    codes.add('PRIMARY_MISSING');
-  } else if (primary !== undefined) {
-    const primaryGroup = effectiveAgeGroup(primary, input.checkInDate);
-    if (primaryGroup === GuestAgeGroup.MINOR || primary.legalIncapacity) {
-      codes.add('PRIMARY_NOT_ADULT');
-    }
+  for (const code of primaryCodes(input.members, input.checkInDate, input.primaryGuestId)) {
+    codes.add(code);
   }
 
   if (counts.unknown > 0) {
@@ -132,39 +123,8 @@ export function evaluatePartyReadiness(input: {
   );
 
   for (const member of input.members) {
-    const group = effectiveAgeGroup(member, input.checkInDate);
-    if (group === GuestAgeGroup.UNKNOWN) {
-      codes.add('PROFILE_INCOMPLETE');
-      if (!isFnrhDocument(member.documentType, member.documentNumber)) {
-        codes.add('DOCUMENT_NOT_FNRH_READY');
-      }
-      continue;
-    }
-
-    if (group === GuestAgeGroup.ADULT) {
-      if (member.legalIncapacity) {
-        if (!hasValidResponsible(member, membersById, input.checkInDate)) {
-          codes.add('LEGAL_INCAPACITY_RESPONSIBLE_MISSING');
-        }
-      }
-      if (!isFnrhDocument(member.documentType, member.documentNumber)) {
-        codes.add('DOCUMENT_NOT_FNRH_READY');
-      }
-      continue;
-    }
-
-    if (!hasValidResponsible(member, membersById, input.checkInDate)) {
-      codes.add('MINOR_RESPONSIBLE_MISSING');
-    }
-    if (member.minorSupervision === null || member.minorSupervision === MinorSupervision.UNKNOWN) {
-      codes.add('MINOR_SUPERVISION_UNKNOWN');
-    } else if (member.minorSupervision === MinorSupervision.UNACCOMPANIED_WITHOUT_AUTHORIZATION) {
-      codes.add('MINOR_AUTHORIZATION_MISSING');
-    } else if (
-      member.minorSupervision === MinorSupervision.UNACCOMPANIED_AUTHORIZED &&
-      (member.authorizationReference === null || member.authorizationReference.trim() === '')
-    ) {
-      codes.add('MINOR_AUTHORIZATION_REFERENCE_MISSING');
+    for (const code of memberCodes(member, membersById, input.checkInDate)) {
+      codes.add(code);
     }
   }
 
@@ -177,6 +137,76 @@ export function evaluatePartyReadiness(input: {
     checkInBlocked: legalCodes.length > 0,
     fnrhReady: allCodes.length === 0,
   };
+}
+
+/** A reservation needs exactly one adult primary guest. */
+function primaryCodes(
+  members: PartyMemberForReadiness[],
+  checkInDate: Date | string,
+  primaryGuestId: string | undefined,
+): PartyReadinessCode[] {
+  const primary = members.find((member) => member.role === ReservationGuestRole.PRIMARY);
+  if (
+    primary === undefined ||
+    (primaryGuestId !== undefined && primary.guestId !== primaryGuestId)
+  ) {
+    return ['PRIMARY_MISSING'];
+  }
+
+  const primaryGroup = effectiveAgeGroup(primary, checkInDate);
+  return primaryGroup === GuestAgeGroup.MINOR || primary.legalIncapacity
+    ? ['PRIMARY_NOT_ADULT']
+    : [];
+}
+
+/** Per-member readiness: profile completeness, responsibility and FNRH document. */
+function memberCodes(
+  member: PartyMemberForReadiness,
+  membersById: Map<string, PartyMemberForReadiness>,
+  checkInDate: Date | string,
+): PartyReadinessCode[] {
+  const codes: PartyReadinessCode[] = [];
+  const group = effectiveAgeGroup(member, checkInDate);
+
+  if (group === GuestAgeGroup.UNKNOWN) {
+    codes.push('PROFILE_INCOMPLETE');
+    if (!isFnrhDocument(member.documentType, member.documentNumber)) {
+      codes.push('DOCUMENT_NOT_FNRH_READY');
+    }
+    return codes;
+  }
+
+  if (group === GuestAgeGroup.ADULT) {
+    if (member.legalIncapacity && !hasValidResponsible(member, membersById, checkInDate)) {
+      codes.push('LEGAL_INCAPACITY_RESPONSIBLE_MISSING');
+    }
+    if (!isFnrhDocument(member.documentType, member.documentNumber)) {
+      codes.push('DOCUMENT_NOT_FNRH_READY');
+    }
+    return codes;
+  }
+
+  if (!hasValidResponsible(member, membersById, checkInDate)) {
+    codes.push('MINOR_RESPONSIBLE_MISSING');
+  }
+  codes.push(...minorSupervisionCodes(member));
+  return codes;
+}
+
+function minorSupervisionCodes(member: PartyMemberForReadiness): PartyReadinessCode[] {
+  if (member.minorSupervision === null || member.minorSupervision === MinorSupervision.UNKNOWN) {
+    return ['MINOR_SUPERVISION_UNKNOWN'];
+  }
+  if (member.minorSupervision === MinorSupervision.UNACCOMPANIED_WITHOUT_AUTHORIZATION) {
+    return ['MINOR_AUTHORIZATION_MISSING'];
+  }
+  if (
+    member.minorSupervision === MinorSupervision.UNACCOMPANIED_AUTHORIZED &&
+    (member.authorizationReference === null || member.authorizationReference.trim() === '')
+  ) {
+    return ['MINOR_AUTHORIZATION_REFERENCE_MISSING'];
+  }
+  return [];
 }
 
 function hasValidResponsible(

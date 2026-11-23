@@ -202,30 +202,7 @@ export class CatalogService {
         });
       }
 
-      const data: Prisma.FolioProductUpdateInput = {
-        updatedBy: { connect: { id: context.actor.id } },
-      };
-      if (dto.name !== undefined) {
-        data.name = dto.name.trim();
-      }
-      if (dto.description !== undefined) {
-        data.description = dto.description.trim() === '' ? null : dto.description.trim();
-      }
-      if (dto.category !== undefined) {
-        data.category = dto.category;
-      }
-      if (dto.unit !== undefined) {
-        data.unit = dto.unit;
-      }
-      if (dto.unitAmount !== undefined) {
-        data.unitAmount = parseMoney(dto.unitAmount, 'unitAmount');
-      }
-      if (dto.currencyCode !== undefined) {
-        data.currencyCode = dto.currencyCode;
-      }
-      if (dto.isActive !== undefined) {
-        data.isActive = dto.isActive;
-      }
+      const data = buildProductUpdateInput(dto, context.actor.id);
 
       const updated = await transaction.folioProduct.update({
         where: { id: productId },
@@ -233,25 +210,7 @@ export class CatalogService {
         select: PRODUCT_SELECT,
       });
 
-      const changes: Record<string, { from: unknown; to: unknown }> = {};
-      if (dto.name !== undefined && updated.name !== current.name) {
-        changes.name = { from: current.name, to: updated.name };
-      }
-      if (dto.category !== undefined && updated.category !== current.category) {
-        changes.category = { from: current.category, to: updated.category };
-      }
-      if (dto.unit !== undefined && updated.unit !== current.unit) {
-        changes.unit = { from: current.unit, to: updated.unit };
-      }
-      if (dto.unitAmount !== undefined && !updated.unitAmount.equals(current.unitAmount)) {
-        changes.unitAmount = {
-          from: money(current.unitAmount),
-          to: money(updated.unitAmount),
-        };
-      }
-      if (dto.isActive !== undefined && updated.isActive !== current.isActive) {
-        changes.isActive = { from: current.isActive, to: updated.isActive };
-      }
+      const changes = productChanges(dto, current, updated);
 
       await this.audit.append(
         {
@@ -287,4 +246,62 @@ export class CatalogService {
     }
     return property;
   }
+}
+
+/**
+ * Only informed fields are patched, so an update never clears a column the
+ * caller did not send. An empty description clears the column explicitly.
+ */
+function buildProductUpdateInput(
+  dto: UpdateProductDto,
+  actorUserId: string,
+): Prisma.FolioProductUpdateInput {
+  const data: Prisma.FolioProductUpdateInput = { updatedBy: { connect: { id: actorUserId } } };
+  if (dto.name !== undefined) {
+    data.name = dto.name.trim();
+  }
+  if (dto.description !== undefined) {
+    data.description = dto.description.trim() === '' ? null : dto.description.trim();
+  }
+  if (dto.category !== undefined) {
+    data.category = dto.category;
+  }
+  if (dto.unit !== undefined) {
+    data.unit = dto.unit;
+  }
+  if (dto.unitAmount !== undefined) {
+    data.unitAmount = parseMoney(dto.unitAmount, 'unitAmount');
+  }
+  if (dto.currencyCode !== undefined) {
+    data.currencyCode = dto.currencyCode;
+  }
+  if (dto.isActive !== undefined) {
+    data.isActive = dto.isActive;
+  }
+  return data;
+}
+
+/** Audit metadata only records fields that actually changed. */
+function productChanges(
+  dto: UpdateProductDto,
+  current: ProductRow,
+  updated: ProductRow,
+): Record<string, { from: unknown; to: unknown }> {
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  if (dto.name !== undefined && updated.name !== current.name) {
+    changes.name = { from: current.name, to: updated.name };
+  }
+  if (dto.category !== undefined && updated.category !== current.category) {
+    changes.category = { from: current.category, to: updated.category };
+  }
+  if (dto.unit !== undefined && updated.unit !== current.unit) {
+    changes.unit = { from: current.unit, to: updated.unit };
+  }
+  if (dto.unitAmount !== undefined && !updated.unitAmount.equals(current.unitAmount)) {
+    changes.unitAmount = { from: money(current.unitAmount), to: money(updated.unitAmount) };
+  }
+  if (dto.isActive !== undefined && updated.isActive !== current.isActive) {
+    changes.isActive = { from: current.isActive, to: updated.isActive };
+  }
+  return changes;
 }

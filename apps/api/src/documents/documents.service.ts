@@ -11,12 +11,12 @@ import type { TenantContext } from '../common/http/request-context';
 import { Clock } from '../common/time/clock';
 import { calendarDateInTimezone } from '../common/time/property-day';
 import { PrismaService } from '../prisma/prisma.service';
+import { signatureRequired, type DocumentContext, type DocumentType } from './document-context';
 import {
-  DOCUMENT_TYPE_LABELS,
-  signatureRequired,
-  type DocumentContext,
-  type DocumentType,
-} from './document-context';
+  buildDocumentContext,
+  DOCUMENT_METADATA_SELECT,
+  serializeMetadata,
+} from './documents.context';
 import { renderDocumentPdf } from './document-pdf';
 import { renderDocumentHtml } from './document-renderer';
 import type {
@@ -28,52 +28,6 @@ import type {
   PreviewDocumentDto,
   RegisterPhysicalSignatureDto,
 } from './dto/document.dto';
-
-const metadataSelect = {
-  id: true,
-  number: true,
-  documentType: true,
-  status: true,
-  locale: true,
-  templateVersion: true,
-  guestId: true,
-  reservationId: true,
-  stayId: true,
-  generatedAt: true,
-  mimeType: true,
-  fileSizeBytes: true,
-  pageCount: true,
-  sha256: true,
-  receivedAt: true,
-  receivedNotes: true,
-  createdAt: true,
-  template: { select: { id: true, key: true, name: true, version: true, locale: true } },
-  generatedBy: { select: { id: true, name: true } },
-  receivedBy: { select: { id: true, name: true } },
-  _count: { select: { printEvents: true } },
-} satisfies Prisma.GeneratedDocumentSelect;
-
-type DocumentMetadataRow = Prisma.GeneratedDocumentGetPayload<{ select: typeof metadataSelect }>;
-
-function maskDocumentNumber(value: string | null): string | null {
-  if (value === null || value.trim() === '') {
-    return null;
-  }
-  const compact = value.replace(/\s+/g, '');
-  if (compact.length <= 4) {
-    return '••••';
-  }
-  return `${'•'.repeat(Math.min(8, compact.length - 4))} ${compact.slice(-4)}`;
-}
-
-function isoDate(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
-
-function serializeMetadata(row: DocumentMetadataRow): Record<string, unknown> {
-  const { _count, ...rest } = row;
-  return { ...rest, printEventCount: _count.printEvents };
-}
 
 @Injectable()
 export class DocumentsService {
@@ -199,7 +153,7 @@ export class DocumentsService {
           sha256,
           storageKey: `db://generated-documents/${id}`,
         },
-        select: metadataSelect,
+        select: DOCUMENT_METADATA_SELECT,
       });
 
       await this.audit.append(
@@ -247,7 +201,7 @@ export class DocumentsService {
       where,
       take: query.limit ?? 50,
       orderBy: [{ generatedAt: 'desc' }, { id: 'desc' }],
-      select: metadataSelect,
+      select: DOCUMENT_METADATA_SELECT,
     });
 
     return { items: rows.map(serializeMetadata) };
@@ -258,7 +212,7 @@ export class DocumentsService {
     const row = await this.prisma.generatedDocument.findFirst({
       where: { id, organizationId: tenant.organizationId, propertyId },
       select: {
-        ...metadataSelect,
+        ...DOCUMENT_METADATA_SELECT,
         printEvents: {
           orderBy: { requestedAt: 'desc' },
           select: {
@@ -383,7 +337,7 @@ export class DocumentsService {
           receivedById: tenant.actor.id,
           receivedNotes: dto.notes ?? null,
         },
-        select: metadataSelect,
+        select: DOCUMENT_METADATA_SELECT,
       });
       await this.audit.append(
         {
@@ -476,7 +430,7 @@ export class DocumentsService {
     return `DOC-${date}-${id.replaceAll('-', '').slice(0, 12).toUpperCase()}`;
   }
 
-  private async buildContext(
+  private buildContext(
     tenant: TenantContext,
     dto: DocumentSourceDto & { type: DocumentType },
     number: string | null,
@@ -493,161 +447,13 @@ export class DocumentsService {
       body: string;
     };
   }> {
-    const propertyId = this.requireProperty(tenant);
-    const property = await this.prisma.property.findFirst({
-      where: { id: propertyId, organizationId: tenant.organizationId },
-      select: { id: true, name: true, code: true, timezone: true, currencyCode: true },
-    });
-    if (property === null) {
-      throw new NotFoundException({
-        code: 'property_not_found',
-        message: 'Property not found in the current organization.',
-      });
-    }
-
-    const reservation = await this.prisma.reservation.findFirst({
-      where: {
-        id: dto.reservationId,
-        organizationId: tenant.organizationId,
-        propertyId,
-      },
-      select: {
-        id: true,
-        guestId: true,
-        code: true,
-        status: true,
-        checkInDate: true,
-        checkOutDate: true,
-        adults: true,
-        children: true,
-        guest: {
-          select: {
-            id: true,
-            fullName: true,
-            documentType: true,
-            documentNumber: true,
-            email: true,
-            phone: true,
-          },
-        },
-        roomType: { select: { name: true } },
-        room: { select: { number: true } },
-        stay: {
-          select: { id: true, status: true, checkedInAt: true, checkedOutAt: true },
-        },
-      },
-    });
-    if (reservation === null) {
-      throw new NotFoundException({
-        code: 'reservation_not_found',
-        message: 'Reservation not found in the current property.',
-      });
-    }
-    const nights = Math.max(
-      1,
-      Math.round(
-        (reservation.checkOutDate.getTime() - reservation.checkInDate.getTime()) / 86_400_000,
-      ),
+    return buildDocumentContext(
+      this.prisma,
+      tenant,
+      this.requireProperty(tenant),
+      dto,
+      number,
+      generatedAt,
     );
-    if (dto.guestId !== undefined && dto.guestId !== reservation.guestId) {
-      throw new BadRequestException({
-        code: 'document_guest_mismatch',
-        message: 'The selected guest does not belong to this reservation.',
-      });
-    }
-    if (reservation.status === 'CANCELLED' || reservation.status === 'NO_SHOW') {
-      throw new ConflictException({
-        code: 'document_reservation_state_invalid',
-        message: 'Documents cannot be generated for a cancelled or no-show reservation.',
-      });
-    }
-    if (dto.type === 'CHECKIN_SUMMARY' && reservation.stay === null) {
-      throw new ConflictException({
-        code: 'document_checkin_required',
-        message: 'A check-in summary requires an existing stay.',
-      });
-    }
-
-    const locale = dto.locale ?? 'pt-BR';
-    const template = await this.prisma.documentTemplate.findFirst({
-      where: {
-        organizationId: tenant.organizationId,
-        propertyId,
-        key: dto.type,
-        locale,
-        isPublished: true,
-        isActive: true,
-        ...(dto.templateId !== undefined ? { id: dto.templateId } : {}),
-      },
-      orderBy: { version: 'desc' },
-      select: {
-        id: true,
-        key: true,
-        name: true,
-        title: true,
-        version: true,
-        locale: true,
-        body: true,
-      },
-    });
-    if (template === null) {
-      throw new NotFoundException({
-        code: 'document_template_not_found',
-        message: 'No published document template matches this property and type.',
-      });
-    }
-
-    const context: DocumentContext & { guestId: string } = {
-      schemaVersion: 1,
-      document: {
-        number,
-        type: dto.type,
-        typeLabel: DOCUMENT_TYPE_LABELS[dto.type],
-        title: template.title,
-        locale: template.locale as DocumentContext['document']['locale'],
-        templateVersion: template.version,
-        generatedAt: generatedAt.toISOString(),
-      },
-      template: {
-        id: template.id,
-        key: template.key as DocumentType,
-        version: template.version,
-        title: template.title,
-        body: template.body,
-      },
-      property,
-      guest: {
-        fullName: reservation.guest.fullName,
-        documentType: reservation.guest.documentType,
-        documentNumberMasked: maskDocumentNumber(reservation.guest.documentNumber),
-        email: reservation.guest.email,
-        phone: reservation.guest.phone,
-      },
-      reservation: {
-        id: reservation.id,
-        code: reservation.code,
-        status: reservation.status,
-        checkInDate: isoDate(reservation.checkInDate),
-        checkOutDate: isoDate(reservation.checkOutDate),
-        nights,
-        adults: reservation.adults,
-        children: reservation.children,
-        roomType: reservation.roomType.name,
-        roomNumber: reservation.room?.number ?? null,
-      },
-      stay:
-        reservation.stay === null
-          ? null
-          : {
-              id: reservation.stay.id,
-              status: reservation.stay.status,
-              checkedInAt: reservation.stay.checkedInAt.toISOString(),
-              checkedOutAt: reservation.stay.checkedOutAt?.toISOString() ?? null,
-            },
-      signatureRequired: signatureRequired(dto.type),
-      guestId: reservation.guestId,
-    };
-
-    return { context, template };
   }
 }

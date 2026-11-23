@@ -7,6 +7,7 @@ import {
 import { Prisma, RoomBlockType, RoomOperationalState } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
+import { Clock } from '../common/time/clock';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface ReconciliationScope {
@@ -31,10 +32,11 @@ export class RoomStateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly clock: Clock,
   ) {}
 
   async reconcileProperty(scope: ReconciliationScope): Promise<void> {
-    const now = new Date();
+    const now = this.clock.now();
 
     await this.prisma.$transaction(async (transaction) => {
       const expiredBlocks = await transaction.roomBlock.findMany({
@@ -201,7 +203,7 @@ export class RoomStateService {
       input.organizationId,
       input.propertyId,
       input.room.id,
-      new Date(),
+      this.clock.now(),
     );
 
     if (desired !== input.room.operationalState) {

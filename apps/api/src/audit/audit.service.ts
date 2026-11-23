@@ -68,31 +68,15 @@ export class AuditService {
     });
   }
 
-  async list(
+  /**
+   * Every filter comes from a validated query field and stays tenant-scoped;
+   * date ranges resolve to property-day bounds so the feed follows the hotel
+   * day rather than UTC midnight.
+   */
+  private async buildWhere(
     context: TenantContext,
     query: ListAuditEventsQueryDto,
-  ): Promise<{
-    items: Array<{
-      id: string;
-      action: string;
-      entityType: string;
-      entityId: string;
-      actorUserId: string | null;
-      occurredAt: Date;
-      correlationId: string | null;
-      reason: string | null;
-      metadata: Prisma.JsonValue | null;
-    }>;
-    nextCursor: string | null;
-  }> {
-    if (context.propertyId === undefined) {
-      throw new BadRequestException({
-        code: 'property_context_required',
-        message: 'Audit queries require property context.',
-      });
-    }
-
-    const take = Math.min(query.limit ?? 50, 100);
+  ): Promise<Prisma.AuditEventWhereInput> {
     const where: Prisma.AuditEventWhereInput = {
       organizationId: context.organizationId,
       propertyId: context.propertyId,
@@ -128,6 +112,36 @@ export class AuditService {
         ...(bounds.lt !== undefined ? { lt: bounds.lt } : {}),
       };
     }
+
+    return where;
+  }
+
+  async list(
+    context: TenantContext,
+    query: ListAuditEventsQueryDto,
+  ): Promise<{
+    items: Array<{
+      id: string;
+      action: string;
+      entityType: string;
+      entityId: string;
+      actorUserId: string | null;
+      occurredAt: Date;
+      correlationId: string | null;
+      reason: string | null;
+      metadata: Prisma.JsonValue | null;
+    }>;
+    nextCursor: string | null;
+  }> {
+    if (context.propertyId === undefined) {
+      throw new BadRequestException({
+        code: 'property_context_required',
+        message: 'Audit queries require property context.',
+      });
+    }
+
+    const take = Math.min(query.limit ?? 50, 100);
+    const where = await this.buildWhere(context, query);
 
     const rows = await this.prisma.auditEvent.findMany({
       where,

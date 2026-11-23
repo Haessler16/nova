@@ -42,10 +42,14 @@ export function nightsBetween(checkInDate: Date, checkOutDate: Date): number {
   return Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (24 * 60 * 60 * 1000));
 }
 
+/**
+ * `now` is required so every caller injects `Clock` instead of reading the wall
+ * clock here; that keeps the operational-day rules testable with a fixed time.
+ */
 export function assertStayWindow(
   checkInDate: Date,
   checkOutDate: Date,
-  now = new Date(),
+  now: Date,
   options: { allowPast?: boolean; timezone?: string } = {},
 ): void {
   if (checkOutDate.getTime() <= checkInDate.getTime()) {

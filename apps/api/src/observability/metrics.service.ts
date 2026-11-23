@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Clock } from '../common/time/clock';
 
 type Labels = Record<string, string>;
 
@@ -27,7 +28,11 @@ export const HTTP_DURATION_BUCKETS = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
 export class MetricsService {
   private readonly counters = new Map<string, Map<string, CounterSeries>>();
   private readonly histograms = new Map<string, Map<string, HistogramSeries>>();
-  private readonly startedAt = Date.now();
+  private readonly startedAt: number;
+
+  constructor(private readonly clock: Clock) {
+    this.startedAt = this.clock.now().getTime();
+  }
 
   incrementCounter(name: string, labels: Labels = {}, amount = 1): void {
     if (!Number.isFinite(amount) || amount < 0) {
@@ -53,7 +58,7 @@ export class MetricsService {
 
   render(): string {
     const lines: string[] = [];
-    const uptimeSeconds = (Date.now() - this.startedAt) / 1000;
+    const uptimeSeconds = (this.clock.now().getTime() - this.startedAt) / 1000;
 
     lines.push('# HELP nova_process_uptime_seconds Process uptime in seconds.');
     lines.push('# TYPE nova_process_uptime_seconds gauge');

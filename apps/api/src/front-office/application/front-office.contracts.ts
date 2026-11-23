@@ -1,5 +1,9 @@
 import {
+  FolioStatus,
   HousekeepingState,
+  IncidentSeverity,
+  IncidentStatus,
+  IncidentType,
   Prisma,
   ReservationStatus,
   RoomOperationalState,
@@ -7,6 +11,7 @@ import {
 } from '@prisma/client';
 import type { RoomAssignmentLease } from '../../inventory/room-assignment-leases.service';
 import { formatCalendarDate, nightsBetween } from '../../reservations/reservation-dates';
+import type { RoomMoveBlocker } from '../room-move';
 
 export type Transaction = Prisma.TransactionClient;
 
@@ -116,6 +121,14 @@ export interface CheckInRoomOption {
   reasons: string[];
 }
 
+/**
+ * Calendar date and operational date for one instant in a property's timezone.
+ */
+export interface OperationalDayView {
+  localDate: string;
+  operationalDate: string;
+}
+
 export interface CheckInWindow {
   localDate: string;
   checkInDate: string;
@@ -173,4 +186,167 @@ export function mapStay(row: StayRow): StayResponse {
       roomType: row.reservation.roomType,
     },
   };
+}
+
+export interface CheckoutFolioSummary {
+  id: string;
+  number: string;
+  status: FolioStatus;
+  currencyCode: string;
+  charges: string;
+  payments: string;
+  balance: string;
+}
+
+export interface CheckoutSummary {
+  folios: CheckoutFolioSummary[];
+  totals: { charges: string; payments: string; balance: string };
+  housekeeping: { from: HousekeepingState; to: HousekeepingState };
+  outstandingBalance: boolean;
+}
+
+/**
+ * Checkout closes the stay and the account together, then marks the room
+ * dirty. Account closure, stay checkout and housekeeping stay separate
+ * concepts, but they run inside one transaction so a failed closure never
+ * releases the room.
+ */
+export interface CheckOutResponse extends StayResponse {
+  checkout: CheckoutSummary;
+}
+
+export interface CheckoutReadiness {
+  stay: {
+    id: string;
+    status: StayStatus;
+    room: { id: string; number: string };
+    guest: { id: string; fullName: string };
+    reservation: { id: string; code: string };
+  };
+  folios: CheckoutFolioSummary[];
+  totals: { charges: string; payments: string; balance: string };
+  housekeeping: { current: HousekeepingState; target: HousekeepingState };
+  blockedReasons: Array<{ code: string; message: string }>;
+  warnings: Array<{ code: string; message: string }>;
+  canCheckOut: boolean;
+}
+
+export interface RoomRackItem {
+  id: string;
+  number: string;
+  floor: string | null;
+  building: string | null;
+  roomType: { id: string; name: string; code: string };
+  housekeepingState: string;
+  operationalState: string;
+  occupancy: 'VACANT' | 'OCCUPIED';
+  currentStay: {
+    id: string;
+    reservationId: string;
+    code: string;
+    guestName: string;
+    checkOutDate: string;
+  } | null;
+  activeBlock: { id: string; type: string; endsAt: Date } | null;
+  nextArrival: {
+    reservationId: string;
+    code: string;
+    guestName: string;
+    checkInDate: string;
+  } | null;
+}
+
+export interface FrontOfficeOverview {
+  operationalDate: string;
+  selectedDate: string;
+  isHistorical: boolean;
+  localDate: string;
+  localTime: string;
+  timezone: string;
+  operationalDayStart: string;
+  counts: {
+    arrivals: number;
+    departures: number;
+    inHouse: number;
+    noShowCandidates: number;
+    vacantRooms: number;
+    occupiedRooms: number;
+  };
+  arrivals: ReservationSummaryResponse[];
+  departures: StayResponse[];
+  inHouse: StayResponse[];
+  noShowCandidates: ReservationSummaryResponse[];
+  roomRack: RoomRackItem[];
+}
+
+export interface IncidentResponse {
+  id: string;
+  type: IncidentType;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  title: string;
+  description: string;
+  resolution: string | null;
+  resolvedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  room: { id: string; number: string } | null;
+  reservation: { id: string; code: string } | null;
+  stay: { id: string; status: StayStatus } | null;
+  createdBy: { id: string; name: string } | null;
+  resolvedBy: { id: string; name: string } | null;
+}
+
+export interface RoomMoveCandidateType {
+  id: string;
+  name: string;
+  code: string;
+  capacityAdults: number;
+  capacityChildren: number;
+}
+
+export interface RoomMoveCandidate {
+  id: string;
+  number: string;
+  floor: string | null;
+  building: string | null;
+  roomType: RoomMoveCandidateType;
+  housekeepingState: HousekeepingState;
+  operationalState: RoomOperationalState;
+  occupancy: 'VACANT' | 'OCCUPIED';
+  activeBlock: { id: string; type: string; endsAt: Date } | null;
+  eligible: boolean;
+  blockers: RoomMoveBlocker[];
+  warnings: Array<{ code: 'housekeeping_not_ready'; message: string }>;
+}
+
+/**
+ * Read model for the guided room-move flow. It mirrors the rules the
+ * transactional move applies, but never reserves or mutates a room.
+ */
+export interface RoomMoveCandidates {
+  stay: {
+    id: string;
+    status: StayStatus;
+    room: {
+      id: string;
+      number: string;
+      floor: string | null;
+      building: string | null;
+      housekeepingState: HousekeepingState;
+      roomType: RoomMoveCandidateType;
+    };
+    guest: { id: string; fullName: string };
+    reservation: {
+      id: string;
+      code: string;
+      status: ReservationStatus;
+      checkInDate: string;
+      checkOutDate: string;
+      nights: number;
+      adults: number;
+      children: number;
+    };
+  };
+  candidates: RoomMoveCandidate[];
 }

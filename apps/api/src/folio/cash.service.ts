@@ -8,6 +8,7 @@ import { CashMovementType, CashSessionStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { money, parseCalendarDate, parseMoney } from '../common/money/decimal';
+import { Clock } from '../common/time/clock';
 import { requirePropertyContext } from '../inventory/room-state.service';
 import { computeOperationalDay } from '../operational-day/operational-day';
 import { PrismaService } from '../prisma/prisma.service';
@@ -140,6 +141,7 @@ export class CashService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly clock: Clock,
   ) {}
 
   async list(
@@ -208,7 +210,7 @@ export class CashService {
 
     const property = await this.loadProperty(context.organizationId, propertyId);
     const current = computeOperationalDay(
-      new Date(),
+      this.clock.now(),
       property.timezone,
       property.operationalDayStart,
     );
@@ -443,7 +445,7 @@ export class CashService {
           status: CashSessionStatus.CLOSED,
           closingAmount,
           expectedCashAmount: expected,
-          closedAt: new Date(),
+          closedAt: this.clock.now(),
           closedByUserId: context.actor.id,
         },
       });

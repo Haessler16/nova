@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Clock } from '../common/time/clock';
 import { MetricsService } from '../observability/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomStateService } from './room-state.service';
@@ -31,6 +32,7 @@ export class RoomBlockExpiryScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly roomState: RoomStateService,
     private readonly metrics: MetricsService,
+    private readonly clock: Clock,
     config: ConfigService,
   ) {
     this.enabled = config.get<boolean>('ROOM_BLOCK_EXPIRY_ENABLED', true);
@@ -69,7 +71,7 @@ export class RoomBlockExpiryScheduler implements OnModuleInit, OnModuleDestroy {
     }
 
     this.running = true;
-    const startedAt = Date.now();
+    const startedAt = this.clock.now().getTime();
     try {
       const locked = await this.tryAdvisoryLock();
       if (!locked) {
@@ -80,7 +82,7 @@ export class RoomBlockExpiryScheduler implements OnModuleInit, OnModuleDestroy {
       }
 
       try {
-        const now = new Date();
+        const now = this.clock.now();
         const candidates = await this.prisma.roomBlock.findMany({
           where: { status: 'ACTIVE', endsAt: { lte: now } },
           distinct: ['organizationId', 'propertyId'],
@@ -104,7 +106,7 @@ export class RoomBlockExpiryScheduler implements OnModuleInit, OnModuleDestroy {
         });
         this.metrics.incrementCounter('nova_room_block_expiry_blocks_total', {}, expiredBlocks);
         this.logger.log(
-          `Room block expiry (${trigger}): ${expiredBlocks} block(s) reconciled across ${candidates.length} propert${candidates.length === 1 ? 'y' : 'ies'} in ${Date.now() - startedAt}ms.`,
+          `Room block expiry (${trigger}): ${expiredBlocks} block(s) reconciled across ${candidates.length} propert${candidates.length === 1 ? 'y' : 'ies'} in ${this.clock.now().getTime() - startedAt}ms.`,
         );
         return { skipped: false, properties: candidates.length, expiredBlocks };
       } finally {

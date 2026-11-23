@@ -1,4 +1,5 @@
 import { HealthService } from './health.service';
+import { FakeClock } from '../common/time/fake-clock';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -13,7 +14,7 @@ function buildService(databaseHealthy: boolean, redisHealthy: boolean): HealthSe
     isHealthy: jest.fn().mockResolvedValue(redisHealthy),
   } as unknown as RedisService;
 
-  return new HealthService(prisma, redis);
+  return new HealthService(prisma, redis, new FakeClock('2026-11-22T12:00:00.000Z'));
 }
 
 describe('HealthService', () => {
@@ -54,7 +55,11 @@ describe('HealthService', () => {
     } as unknown as PrismaService;
     const redis = { isHealthy: jest.fn() } as unknown as RedisService;
 
-    const result = await new HealthService(prisma, redis).version();
+    const result = await new HealthService(
+      prisma,
+      redis,
+      new FakeClock('2026-11-22T12:00:00.000Z'),
+    ).version();
 
     expect(result.status).toBe('ok');
     expect(result.database).toEqual({ reachable: false, latestMigration: null });
@@ -68,7 +73,11 @@ describe('HealthService', () => {
       isHealthy: jest.fn().mockResolvedValue(true),
     } as unknown as RedisService;
 
-    const result = await new HealthService(prisma, redis).readiness();
+    const result = await new HealthService(
+      prisma,
+      redis,
+      new FakeClock('2026-11-22T12:00:00.000Z'),
+    ).readiness();
 
     expect(result.status).toBe('error');
     expect(result.checks).toEqual({ database: 'down', redis: 'up' });

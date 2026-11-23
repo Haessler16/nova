@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PilotFeedbackStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
+import { Clock } from '../common/time/clock';
 import { requirePropertyContext } from '../inventory/room-state.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePilotFeedbackDto, ListPilotFeedbackQueryDto } from './dto/pilot.dto';
@@ -50,6 +51,7 @@ export class PilotService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly clock: Clock,
   ) {}
 
   async submit(
@@ -164,7 +166,7 @@ export class PilotService {
         where: { id: row.id },
         data: {
           status: PilotFeedbackStatus.REVIEWED,
-          reviewedAt: new Date(),
+          reviewedAt: this.clock.now(),
           reviewedByUserId: context.actor.id,
         },
       });

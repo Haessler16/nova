@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { money } from '../common/money/decimal';
+import { Clock } from '../common/time/clock';
 import {
   addCalendarDays,
   calendarDateInTimezone,
@@ -36,6 +37,7 @@ export class ExportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly clock: Clock,
   ) {}
 
   async guests(context: TenantContext, query: ExportGuestsQueryDto): Promise<CsvExport> {
@@ -330,7 +332,7 @@ export class ExportsService {
         message: 'Property not found in the current organization.',
       });
     }
-    return calendarDateInTimezone(new Date(), property.timezone);
+    return calendarDateInTimezone(this.clock.now(), property.timezone);
   }
 }
 

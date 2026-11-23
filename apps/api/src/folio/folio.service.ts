@@ -390,12 +390,7 @@ export class FolioService {
     const quantity =
       dto.quantity === undefined ? new Prisma.Decimal(1) : this.parseQuantity(dto.quantity);
 
-    if (productId === null && (dto.description === undefined || dto.amount === undefined)) {
-      throw new BadRequestException({
-        code: 'charge_payload_required',
-        message: 'A charge requires either a productId or a description with an amount.',
-      });
-    }
+    assertChargePayload(productId, dto);
 
     const replay = await this.prisma.folioLine.findFirst({
       where: {
@@ -413,13 +408,7 @@ export class FolioService {
       },
     });
     if (replay !== null) {
-      const sameProduct = (replay.productId ?? null) === productId;
-      const sameQuantity = replay.quantity.equals(quantity);
-      const sameManualPayload =
-        productId !== null ||
-        (replay.description === (dto.description ?? '').trim() &&
-          replay.amount.equals(parseMoney(dto.amount ?? '', 'amount')));
-      if (replay.folioId !== folioId || !sameProduct || !sameQuantity || !sameManualPayload) {
+      if (!chargeReplayMatches(replay, folioId, dto, productId, quantity)) {
         throw this.idempotencyReuse('charge');
       }
       return this.get(context, folioId);
@@ -1006,4 +995,42 @@ export class FolioService {
       message: `This idempotency key was already used with a different ${scope} payload.`,
     });
   }
+}
+
+function assertChargePayload(productId: string | null, dto: AddFolioChargeDto): void {
+  if (productId === null && (dto.description === undefined || dto.amount === undefined)) {
+    throw new BadRequestException({
+      code: 'charge_payload_required',
+      message: 'A charge requires either a productId or a description with an amount.',
+    });
+  }
+}
+
+interface ChargeReplayRow {
+  folioId: string;
+  description: string;
+  amount: Prisma.Decimal;
+  productId: string | null;
+  quantity: Prisma.Decimal;
+}
+
+/**
+ * A replayed idempotency key is only accepted when it describes the same charge:
+ * same folio, same product, same quantity and, for manual charges, same
+ * description and amount.
+ */
+function chargeReplayMatches(
+  replay: ChargeReplayRow,
+  folioId: string,
+  dto: AddFolioChargeDto,
+  productId: string | null,
+  quantity: Prisma.Decimal,
+): boolean {
+  const sameProduct = (replay.productId ?? null) === productId;
+  const sameQuantity = replay.quantity.equals(quantity);
+  const sameManualPayload =
+    productId !== null ||
+    (replay.description === (dto.description ?? '').trim() &&
+      replay.amount.equals(parseMoney(dto.amount ?? '', 'amount')));
+  return replay.folioId === folioId && sameProduct && sameQuantity && sameManualPayload;
 }

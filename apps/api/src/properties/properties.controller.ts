@@ -10,6 +10,7 @@ import {
   PROPERTY_HEADER,
   TenantContext,
 } from '../common/http/request-context';
+import { Clock } from '../common/time/clock';
 import { computeOperationalDay } from '../operational-day/operational-day';
 import { PermissionsGuard } from '../tenancy/permissions.guard';
 import { TenantContextGuard } from '../tenancy/tenant-context.guard';
@@ -27,6 +28,7 @@ export class PropertiesController {
   constructor(
     private readonly tenancy: TenancyService,
     private readonly properties: PropertiesService,
+    private readonly clock: Clock,
   ) {}
 
   @Get()
@@ -44,7 +46,7 @@ export class PropertiesController {
   @ApiHeader({ name: PROPERTY_HEADER, required: true })
   async operationalDay(@Tenant() tenant: TenantContext) {
     const property = await this.properties.getCurrent(tenant);
-    return computeOperationalDay(new Date(), property.timezone, property.operationalDayStart);
+    return computeOperationalDay(this.clock.now(), property.timezone, property.operationalDayStart);
   }
 
   @Patch('current')
