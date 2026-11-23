@@ -4,24 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  FolioLineSource,
-  FolioLineStatus,
-  FolioProductCategory,
-  FolioStatus,
-  Prisma,
-} from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { FolioLineStatus, FolioStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
-import { computeFolioTotals } from './folio-totals';
 import { TenantContext } from '../common/http/request-context';
 import { money, parseMoney } from '../common/money/decimal';
 import { Clock } from '../common/time/clock';
-import {
-  addCalendarDays,
-  calendarDateInTimezone,
-  propertyDayStart,
-} from '../common/time/property-day';
 import { requirePropertyContext } from '../inventory/room-state.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -32,183 +19,33 @@ import {
   RecordPaymentDto,
   VoidFolioChargeDto,
 } from './dto/folio.dto';
+import {
+  assertChargePayload,
+  chargeReplayMatches,
+  parseChargeQuantity,
+  resolveFolioCharge,
+} from './folio.charges';
+import {
+  FOLIO_SELECT,
+  mapFolio,
+  type FolioResponse,
+  type FolioRow,
+} from './folio.contracts';
+import { getFolio, listFolios } from './folio.queries';
+import {
+  generateFolioNumber,
+  idempotencyReuse,
+  loadFolioProperty,
+  lockFolio,
+  lockFolioTotals,
+  resolveFolioLink,
+} from './folio.support';
 
-const LINE_SELECT = Prisma.validator<Prisma.FolioLineSelect>()({
-  id: true,
-  folioId: true,
-  description: true,
-  amount: true,
-  currencyCode: true,
-  status: true,
-  postedAt: true,
-  voidedAt: true,
-  voidReason: true,
-  productId: true,
-  quantity: true,
-  unitAmount: true,
-  unit: true,
-  source: true,
-  createdByUserId: true,
-  createdAt: true,
-});
-
-/** Default provenance for a catalog consumption, derived from its category. */
-const CATEGORY_SOURCE: Record<FolioProductCategory, FolioLineSource> = {
-  MINIBAR: FolioLineSource.MINIBAR,
-  FOOD_BEVERAGE: FolioLineSource.FRONT_DESK,
-  PARKING: FolioLineSource.PARKING,
-  LAUNDRY: FolioLineSource.SERVICE,
-  SERVICE: FolioLineSource.SERVICE,
-  OTHER: FolioLineSource.FRONT_DESK,
-};
-
-const PAYMENT_SELECT = Prisma.validator<Prisma.PaymentSelect>()({
-  id: true,
-  folioId: true,
-  amount: true,
-  currencyCode: true,
-  method: true,
-  status: true,
-  referenceId: true,
-  description: true,
-  receivedByUserId: true,
-  receivedAt: true,
-  createdAt: true,
-});
-
-const FOLIO_SELECT = Prisma.validator<Prisma.FolioSelect>()({
-  id: true,
-  number: true,
-  status: true,
-  currencyCode: true,
-  stayId: true,
-  reservationId: true,
-  notes: true,
-  openedByUserId: true,
-  closedAt: true,
-  createdAt: true,
-  updatedAt: true,
-  lines: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: LINE_SELECT },
-  payments: { orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }], select: PAYMENT_SELECT },
-});
-
-type FolioRow = Prisma.FolioGetPayload<{ select: typeof FOLIO_SELECT }>;
-type LineRow = Prisma.FolioLineGetPayload<{ select: typeof LINE_SELECT }>;
-type PaymentRow = Prisma.PaymentGetPayload<{ select: typeof PAYMENT_SELECT }>;
-type Transaction = Prisma.TransactionClient;
-
-export interface FolioLineResponse {
-  id: string;
-  description: string;
-  amount: string;
-  currencyCode: string;
-  status: FolioLineStatus;
-  postedAt: Date;
-  voidedAt: Date | null;
-  voidReason: string | null;
-  productId: string | null;
-  quantity: string;
-  unitAmount: string | null;
-  unit: string | null;
-  source: FolioLineSource;
-  createdByUserId: string | null;
-}
-
-export interface PaymentResponse {
-  id: string;
-  amount: string;
-  currencyCode: string;
-  method: string;
-  status: string;
-  referenceId: string | null;
-  description: string | null;
-  receivedByUserId: string | null;
-  receivedAt: Date;
-}
-
-export interface FolioResponse {
-  id: string;
-  number: string;
-  status: FolioStatus;
-  currencyCode: string;
-  stayId: string | null;
-  reservationId: string | null;
-  notes: string | null;
-  openedByUserId: string | null;
-  closedAt: Date | null;
-  totals: { charges: string; payments: string; balance: string };
-  lines: FolioLineResponse[];
-  payments: PaymentResponse[];
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-interface FolioTotals {
-  charges: Prisma.Decimal;
-  payments: Prisma.Decimal;
-  balance: Prisma.Decimal;
-}
-
-function computeTotals(lines: readonly LineRow[], payments: readonly PaymentRow[]): FolioTotals {
-  return computeFolioTotals(lines, payments);
-}
-
-function mapLine(line: LineRow): FolioLineResponse {
-  return {
-    id: line.id,
-    description: line.description,
-    amount: money(line.amount),
-    currencyCode: line.currencyCode,
-    status: line.status,
-    postedAt: line.postedAt,
-    voidedAt: line.voidedAt,
-    voidReason: line.voidReason,
-    productId: line.productId,
-    quantity: line.quantity.toFixed(2),
-    unitAmount: line.unitAmount === null ? null : money(line.unitAmount),
-    unit: line.unit,
-    source: line.source,
-    createdByUserId: line.createdByUserId,
-  };
-}
-
-function mapPayment(payment: PaymentRow): PaymentResponse {
-  return {
-    id: payment.id,
-    amount: money(payment.amount),
-    currencyCode: payment.currencyCode,
-    method: payment.method,
-    status: payment.status,
-    referenceId: payment.referenceId,
-    description: payment.description,
-    receivedByUserId: payment.receivedByUserId,
-    receivedAt: payment.receivedAt,
-  };
-}
-
-function mapFolio(folio: FolioRow): FolioResponse {
-  const totals = computeTotals(folio.lines, folio.payments);
-  return {
-    id: folio.id,
-    number: folio.number,
-    status: folio.status,
-    currencyCode: folio.currencyCode,
-    stayId: folio.stayId,
-    reservationId: folio.reservationId,
-    notes: folio.notes,
-    openedByUserId: folio.openedByUserId,
-    closedAt: folio.closedAt,
-    totals: {
-      charges: money(totals.charges),
-      payments: money(totals.payments),
-      balance: money(totals.balance),
-    },
-    lines: folio.lines.map(mapLine),
-    payments: folio.payments.map(mapPayment),
-    createdAt: folio.createdAt,
-    updatedAt: folio.updatedAt,
-  };
-}
+export type {
+  FolioLineResponse,
+  FolioResponse,
+  PaymentResponse,
+} from './folio.contracts';
 
 @Injectable()
 export class FolioService {
@@ -222,65 +59,16 @@ export class FolioService {
     context: TenantContext,
     query: ListFoliosQueryDto,
   ): Promise<{ items: FolioResponse[] }> {
-    const propertyId = requirePropertyContext(context);
-
-    const where: Prisma.FolioWhereInput = {
-      organizationId: context.organizationId,
-      propertyId,
-    };
-    if (query.status !== undefined) {
-      where.status = query.status;
-    }
-    if (query.stayId !== undefined) {
-      where.stayId = query.stayId;
-    }
-    if (query.reservationId !== undefined) {
-      where.reservationId = query.reservationId;
-    }
-    if (query.search !== undefined && query.search.trim() !== '') {
-      const search = query.search.trim();
-      where.OR = [
-        { number: { contains: search, mode: 'insensitive' } },
-        { reservation: { code: { contains: search, mode: 'insensitive' } } },
-        { reservation: { guest: { fullName: { contains: search, mode: 'insensitive' } } } },
-        { stay: { guest: { fullName: { contains: search, mode: 'insensitive' } } } },
-        { stay: { room: { number: { contains: search, mode: 'insensitive' } } } },
-        { reservation: { room: { number: { contains: search, mode: 'insensitive' } } } },
-      ];
-    }
-    if (query.date !== undefined) {
-      const property = await this.loadProperty(context.organizationId, propertyId);
-      where.createdAt = {
-        gte: propertyDayStart(query.date, property.timezone),
-        lt: propertyDayStart(addCalendarDays(query.date, 1), property.timezone),
-      };
-    }
-
-    const rows = await this.prisma.folio.findMany({
-      where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 100,
-      select: FOLIO_SELECT,
-    });
-
-    return { items: rows.map(mapFolio) };
+    return listFolios(this.prisma, context.organizationId, requirePropertyContext(context), query);
   }
 
   async get(context: TenantContext, folioId: string): Promise<FolioResponse> {
-    const propertyId = requirePropertyContext(context);
-    const folio = await this.prisma.folio.findFirst({
-      where: { id: folioId, organizationId: context.organizationId, propertyId },
-      select: FOLIO_SELECT,
-    });
-    if (folio === null) {
-      throw new NotFoundException({ code: 'folio_not_found', message: 'Folio not found.' });
-    }
-    return mapFolio(folio);
+    return getFolio(this.prisma, context.organizationId, requirePropertyContext(context), folioId);
   }
 
   async create(context: TenantContext, dto: CreateFolioDto): Promise<FolioResponse> {
     const propertyId = requirePropertyContext(context);
-    const property = await this.loadProperty(context.organizationId, propertyId);
+    const property = await loadFolioProperty(this.prisma, context.organizationId, propertyId);
 
     const existing = await this.prisma.folio.findFirst({
       where: {
@@ -295,7 +83,7 @@ export class FolioService {
         existing.stayId !== (dto.stayId ?? null) ||
         existing.reservationId !== (dto.reservationId ?? null)
       ) {
-        throw this.idempotencyReuse('folio');
+        throw idempotencyReuse('folio');
       }
       return mapFolio(existing);
     }
@@ -303,7 +91,7 @@ export class FolioService {
     let created: FolioRow;
     try {
       created = await this.prisma.$transaction(async (transaction) => {
-        const link = await this.resolveLink(transaction, {
+        const link = await resolveFolioLink(transaction, {
           organizationId: context.organizationId,
           propertyId,
           stayId: dto.stayId,
@@ -336,7 +124,7 @@ export class FolioService {
             propertyId,
             stayId: link.stayId,
             reservationId: link.reservationId,
-            number: this.generateNumber(property.timezone),
+            number: generateFolioNumber(this.clock, property.timezone),
             status: FolioStatus.OPEN,
             currencyCode: property.currencyCode,
             notes: dto.notes ?? null,
@@ -388,7 +176,7 @@ export class FolioService {
     const propertyId = requirePropertyContext(context);
     const productId = dto.productId ?? null;
     const quantity =
-      dto.quantity === undefined ? new Prisma.Decimal(1) : this.parseQuantity(dto.quantity);
+      dto.quantity === undefined ? new Prisma.Decimal(1) : parseChargeQuantity(dto.quantity);
 
     assertChargePayload(productId, dto);
 
@@ -409,13 +197,13 @@ export class FolioService {
     });
     if (replay !== null) {
       if (!chargeReplayMatches(replay, folioId, dto, productId, quantity)) {
-        throw this.idempotencyReuse('charge');
+        throw idempotencyReuse('charge');
       }
       return this.get(context, folioId);
     }
 
     await this.prisma.$transaction(async (transaction) => {
-      const folio = await this.lockFolio(transaction, context.organizationId, propertyId, folioId);
+      const folio = await lockFolio(transaction, context.organizationId, propertyId, folioId);
       if (folio.status !== FolioStatus.OPEN) {
         throw new ConflictException({
           code: 'folio_not_open',
@@ -429,7 +217,7 @@ export class FolioService {
         });
       }
 
-      const charge = await this.resolveCharge(transaction, {
+      const charge = await resolveFolioCharge(transaction, {
         organizationId: context.organizationId,
         propertyId,
         productId,
@@ -496,7 +284,7 @@ export class FolioService {
     const propertyId = requirePropertyContext(context);
 
     await this.prisma.$transaction(async (transaction) => {
-      const folio = await this.lockFolio(transaction, context.organizationId, propertyId, folioId);
+      const folio = await lockFolio(transaction, context.organizationId, propertyId, folioId);
       if (folio.status !== FolioStatus.OPEN) {
         throw new ConflictException({
           code: 'folio_not_open',
@@ -524,7 +312,7 @@ export class FolioService {
         return;
       }
 
-      const totals = await this.lockFolioTotals(
+      const totals = await lockFolioTotals(
         transaction,
         context.organizationId,
         propertyId,
@@ -588,13 +376,13 @@ export class FolioService {
         !replay.amount.equals(amount) ||
         replay.method !== dto.method
       ) {
-        throw this.idempotencyReuse('payment');
+        throw idempotencyReuse('payment');
       }
       return this.get(context, folioId);
     }
 
     await this.prisma.$transaction(async (transaction) => {
-      const folio = await this.lockFolio(transaction, context.organizationId, propertyId, folioId);
+      const folio = await lockFolio(transaction, context.organizationId, propertyId, folioId);
       if (folio.status === FolioStatus.CANCELLED) {
         throw new ConflictException({
           code: 'folio_cancelled',
@@ -614,7 +402,7 @@ export class FolioService {
         });
       }
 
-      const totals = await this.lockFolioTotals(
+      const totals = await lockFolioTotals(
         transaction,
         context.organizationId,
         propertyId,
@@ -690,12 +478,12 @@ export class FolioService {
     const propertyId = requirePropertyContext(context);
 
     await this.prisma.$transaction(async (transaction) => {
-      const folio = await this.lockFolio(transaction, context.organizationId, propertyId, folioId);
+      const folio = await lockFolio(transaction, context.organizationId, propertyId, folioId);
       if (folio.status === FolioStatus.CANCELLED) {
         return;
       }
 
-      const totals = await this.lockFolioTotals(
+      const totals = await lockFolioTotals(
         transaction,
         context.organizationId,
         propertyId,
@@ -731,306 +519,4 @@ export class FolioService {
 
     return this.get(context, folioId);
   }
-
-  private parseQuantity(value: string): Prisma.Decimal {
-    const quantity = new Prisma.Decimal(value);
-    if (quantity.lessThanOrEqualTo(0) || quantity.greaterThan(new Prisma.Decimal('9999'))) {
-      throw new BadRequestException({
-        code: 'invalid_quantity',
-        message: 'quantity must be greater than zero and at most 9999.',
-      });
-    }
-    return quantity.toDecimalPlaces(2);
-  }
-
-  /**
-   * Resolves the charge payload. A catalog consumption always uses the price
-   * stored in PostgreSQL at posting time (never a client-supplied amount) and
-   * snapshots unit and description on the line.
-   */
-  private async resolveCharge(
-    transaction: Transaction,
-    input: {
-      organizationId: string;
-      propertyId: string;
-      productId: string | null;
-      quantity: Prisma.Decimal;
-      description?: string;
-      amount?: string;
-      source?: FolioLineSource;
-      folioCurrencyCode: string;
-    },
-  ): Promise<{
-    description: string;
-    amount: Prisma.Decimal;
-    unitAmount: Prisma.Decimal | null;
-    unit: string | null;
-    source: FolioLineSource;
-  }> {
-    const requestedDescription = (input.description ?? '').trim();
-
-    if (input.productId === null) {
-      if (requestedDescription.length === 0) {
-        throw new BadRequestException({
-          code: 'charge_payload_required',
-          message: 'A manual charge requires a description.',
-        });
-      }
-      return {
-        description: requestedDescription,
-        amount: parseMoney(input.amount ?? '', 'amount'),
-        unitAmount: null,
-        unit: null,
-        source: input.source ?? FolioLineSource.MANUAL,
-      };
-    }
-
-    const product = await transaction.folioProduct.findFirst({
-      where: {
-        id: input.productId,
-        organizationId: input.organizationId,
-        propertyId: input.propertyId,
-      },
-      select: {
-        id: true,
-        name: true,
-        unit: true,
-        unitAmount: true,
-        currencyCode: true,
-        category: true,
-        isActive: true,
-      },
-    });
-    if (product === null) {
-      throw new NotFoundException({
-        code: 'product_not_found',
-        message: 'Product not found in this property.',
-      });
-    }
-    if (!product.isActive) {
-      throw new ConflictException({
-        code: 'product_inactive',
-        message: 'This product is inactive and cannot be posted to a folio.',
-      });
-    }
-    if (product.currencyCode !== input.folioCurrencyCode) {
-      throw new BadRequestException({
-        code: 'currency_mismatch',
-        message: `This folio uses ${input.folioCurrencyCode}.`,
-      });
-    }
-
-    const amount = product.unitAmount
-      .times(input.quantity)
-      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-    if (amount.isZero()) {
-      throw new BadRequestException({
-        code: 'invalid_money_amount',
-        message: 'The charge amount must be greater than zero.',
-      });
-    }
-
-    const description = requestedDescription === '' ? product.name : requestedDescription;
-    if (description.length > 120) {
-      throw new BadRequestException({
-        code: 'charge_description_too_long',
-        message: 'The charge description must have at most 120 characters.',
-      });
-    }
-
-    return {
-      description,
-      amount,
-      unitAmount: product.unitAmount,
-      unit: product.unit,
-      source: input.source ?? CATEGORY_SOURCE[product.category],
-    };
-  }
-
-  private async loadProperty(
-    organizationId: string,
-    propertyId: string,
-  ): Promise<{ currencyCode: string; timezone: string }> {
-    const property = await this.prisma.property.findFirst({
-      where: { id: propertyId, organizationId },
-      select: { currencyCode: true, timezone: true },
-    });
-    if (property === null) {
-      throw new NotFoundException({
-        code: 'property_not_found',
-        message: 'Property not found in this organization.',
-      });
-    }
-    return property;
-  }
-
-  private async resolveLink(
-    transaction: Transaction,
-    input: {
-      organizationId: string;
-      propertyId: string;
-      stayId?: string;
-      reservationId?: string;
-    },
-  ): Promise<{ stayId: string | null; reservationId: string | null }> {
-    let reservationId = input.reservationId ?? null;
-
-    if (input.stayId !== undefined) {
-      const stay = await transaction.stay.findFirst({
-        where: {
-          id: input.stayId,
-          organizationId: input.organizationId,
-          propertyId: input.propertyId,
-        },
-        select: { id: true, reservationId: true },
-      });
-      if (stay === null) {
-        throw new NotFoundException({
-          code: 'stay_not_found',
-          message: 'Stay not found in this property.',
-        });
-      }
-      if (reservationId !== null && reservationId !== stay.reservationId) {
-        throw new BadRequestException({
-          code: 'folio_link_mismatch',
-          message: 'The stay and reservation do not belong to each other.',
-        });
-      }
-      reservationId = stay.reservationId;
-    }
-
-    if (reservationId !== null) {
-      const reservation = await transaction.reservation.findFirst({
-        where: {
-          id: reservationId,
-          organizationId: input.organizationId,
-          propertyId: input.propertyId,
-        },
-        select: { id: true },
-      });
-      if (reservation === null) {
-        throw new NotFoundException({
-          code: 'reservation_not_found',
-          message: 'Reservation not found in this property.',
-        });
-      }
-    } else {
-      throw new BadRequestException({
-        code: 'folio_link_required',
-        message: 'A folio must be linked to a stay or reservation.',
-      });
-    }
-
-    return { stayId: input.stayId ?? null, reservationId };
-  }
-
-  private async lockFolio(
-    transaction: Transaction,
-    organizationId: string,
-    propertyId: string,
-    folioId: string,
-  ): Promise<{
-    id: string;
-    number: string;
-    status: FolioStatus;
-    currencyCode: string;
-    notes: string | null;
-  }> {
-    const rows = await transaction.$queryRaw<
-      Array<{
-        id: string;
-        number: string;
-        status: FolioStatus;
-        currencyCode: string;
-        notes: string | null;
-      }>
-    >`
-      SELECT "id", "number", "status", "currencyCode", "notes"
-      FROM "Folio"
-      WHERE "organizationId" = ${organizationId}::uuid
-        AND "propertyId" = ${propertyId}::uuid
-        AND "id" = ${folioId}::uuid
-      FOR UPDATE
-    `;
-    const folio = rows[0];
-    if (folio === undefined) {
-      throw new NotFoundException({ code: 'folio_not_found', message: 'Folio not found.' });
-    }
-    return folio;
-  }
-
-  private async lockFolioTotals(
-    transaction: Transaction,
-    organizationId: string,
-    propertyId: string,
-    folioId: string,
-  ): Promise<FolioTotals> {
-    const [lines, payments] = await Promise.all([
-      transaction.folioLine.findMany({
-        where: {
-          organizationId,
-          propertyId,
-          folioId,
-          status: FolioLineStatus.POSTED,
-        },
-        select: { amount: true, status: true },
-      }),
-      transaction.payment.findMany({
-        where: { organizationId, propertyId, folioId, status: 'COMPLETED' },
-        select: { amount: true, status: true },
-      }),
-    ]);
-
-    return computeFolioTotals(lines, payments);
-  }
-
-  private generateNumber(timezone: string): string {
-    const day = calendarDateInTimezone(this.clock.now(), timezone).replaceAll('-', '');
-    return `F-${day}-${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
-  }
-
-  private idempotencyReuse(scope: string): ConflictException {
-    return new ConflictException({
-      code: 'idempotency_key_reuse',
-      message: `This idempotency key was already used with a different ${scope} payload.`,
-    });
-  }
-}
-
-function assertChargePayload(productId: string | null, dto: AddFolioChargeDto): void {
-  if (productId === null && (dto.description === undefined || dto.amount === undefined)) {
-    throw new BadRequestException({
-      code: 'charge_payload_required',
-      message: 'A charge requires either a productId or a description with an amount.',
-    });
-  }
-}
-
-interface ChargeReplayRow {
-  folioId: string;
-  description: string;
-  amount: Prisma.Decimal;
-  productId: string | null;
-  quantity: Prisma.Decimal;
-}
-
-/**
- * A replayed idempotency key is only accepted when it describes the same charge:
- * same folio, same product, same quantity and, for manual charges, same
- * description and amount.
- */
-function chargeReplayMatches(
-  replay: ChargeReplayRow,
-  folioId: string,
-  dto: AddFolioChargeDto,
-  productId: string | null,
-  quantity: Prisma.Decimal,
-): boolean {
-  const sameProduct = (replay.productId ?? null) === productId;
-  const sameQuantity = replay.quantity.equals(quantity);
-  const sameManualPayload =
-    productId !== null ||
-    (replay.description === (dto.description ?? '').trim() &&
-      replay.amount.equals(parseMoney(dto.amount ?? '', 'amount')));
-  return replay.folioId === folioId && sameProduct && sameQuantity && sameManualPayload;
 }

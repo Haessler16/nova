@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import {
   InstructionCategory,
   InstructionEventType,
@@ -12,7 +6,6 @@ import {
   InstructionVisibility,
   Prisma,
 } from '@prisma/client';
-import { PERMISSIONS } from '../access/permissions';
 import { AuditService } from '../audit/audit.service';
 import { TenantContext } from '../common/http/request-context';
 import { Clock } from '../common/time/clock';
@@ -20,7 +13,6 @@ import { requirePropertyContext } from '../inventory/room-state.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ConfirmSourceSuggestionsDto,
-  ConfirmSuggestionDto,
   CreateGuestNoteDto,
   CreateInstructionDto,
   ListGuestNotesQueryDto,
@@ -29,117 +21,35 @@ import {
   UpdateGuestNoteDto,
   UpdateInstructionDto,
 } from './dto/instruction.dto';
+import { GuestNotesService } from './guest-notes.service';
 import {
-  hashContent,
-  hashSourceText,
-  hashSuggestion,
-  INSTRUCTION_PARSER_VERSION,
-  parseSourceNote,
-  redactSensitiveCardData,
-} from './instruction-parser';
+  allowedVisibilities,
+  assertCanWriteVisibility,
+  assertReservationInScope,
+  canSeeConfidential,
+  findVisibleInstruction,
+} from './instructions.access';
+import {
+  INSTRUCTION_SELECT,
+  type GuestNoteRow,
+  type InstructionRow,
+  type SourceNoteRow,
+} from './instructions.contracts';
+import {
+  confirmSourceSuggestionsFor,
+  listSourceNotesFor,
+  parseSourceNoteFor,
+} from './instructions.source-notes';
+import {
+  ALLOWED_TRANSITIONS,
+  assertValidityRange,
+  eventTypeForStatus,
+  normalizeTags,
+  parseOptionalDate,
+} from './instructions.support';
+import { redactSensitiveCardData } from './instruction-parser';
 
-const INSTRUCTION_SELECT = {
-  id: true,
-  organizationId: true,
-  propertyId: true,
-  reservationId: true,
-  sourceNoteId: true,
-  category: true,
-  title: true,
-  body: true,
-  tags: true,
-  priority: true,
-  status: true,
-  source: true,
-  sourceDepartment: true,
-  visibility: true,
-  assignedDepartment: true,
-  assignedUserId: true,
-  actionType: true,
-  executionMoment: true,
-  paymentMethod: true,
-  actionDueAt: true,
-  validFrom: true,
-  validUntil: true,
-  completedAt: true,
-  completedByUserId: true,
-  createdByUserId: true,
-  dedupeKey: true,
-  metadata: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
-const SOURCE_NOTE_SELECT = {
-  id: true,
-  organizationId: true,
-  propertyId: true,
-  reservationId: true,
-  sourceTextOriginal: true,
-  sourceTextHash: true,
-  contentHash: true,
-  parserVersion: true,
-  redacted: true,
-  suggestions: true,
-  warnings: true,
-  sourceSystem: true,
-  sourceDepartment: true,
-  externalReference: true,
-  importedByUserId: true,
-  importedAt: true,
-} as const;
-
-const GUEST_NOTE_SELECT = {
-  id: true,
-  organizationId: true,
-  propertyId: true,
-  guestId: true,
-  category: true,
-  body: true,
-  priority: true,
-  visibility: true,
-  purpose: true,
-  expiresAt: true,
-  isActive: true,
-  createdByUserId: true,
-  updatedByUserId: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
-type InstructionRow = Prisma.ReservationInstructionGetPayload<{
-  select: typeof INSTRUCTION_SELECT;
-}>;
-type SourceNoteRow = Prisma.ReservationSourceNoteGetPayload<{ select: typeof SOURCE_NOTE_SELECT }>;
-type GuestNoteRow = Prisma.GuestNoteGetPayload<{ select: typeof GUEST_NOTE_SELECT }>;
-
-const ALLOWED_TRANSITIONS: Record<InstructionStatus, InstructionStatus[]> = {
-  NEW: [
-    InstructionStatus.ACKNOWLEDGED,
-    InstructionStatus.IN_PROGRESS,
-    InstructionStatus.COMPLETED,
-    InstructionStatus.DISMISSED,
-    InstructionStatus.NEEDS_CLARIFICATION,
-  ],
-  ACKNOWLEDGED: [
-    InstructionStatus.IN_PROGRESS,
-    InstructionStatus.COMPLETED,
-    InstructionStatus.DISMISSED,
-    InstructionStatus.NEEDS_CLARIFICATION,
-  ],
-  IN_PROGRESS: [
-    InstructionStatus.COMPLETED,
-    InstructionStatus.DISMISSED,
-    InstructionStatus.NEEDS_CLARIFICATION,
-  ],
-  NEEDS_CLARIFICATION: [
-    InstructionStatus.ACKNOWLEDGED,
-    InstructionStatus.IN_PROGRESS,
-    InstructionStatus.DISMISSED,
-  ],
-  COMPLETED: [],
-  DISMISSED: [],
-};
+export type { InstructionRow, SourceNoteRow, GuestNoteRow } from './instructions.contracts';
 
 @Injectable()
 export class InstructionsService {
@@ -147,6 +57,7 @@ export class InstructionsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly clock: Clock,
+    private readonly guestNotes: GuestNotesService,
   ) {}
 
   async list(
@@ -155,11 +66,11 @@ export class InstructionsService {
     query: ListInstructionsQueryDto,
   ): Promise<{ items: InstructionRow[]; nextCursor: string | null }> {
     const propertyId = requirePropertyContext(context);
-    await this.assertReservation(context, reservationId);
+    await assertReservationInScope(this.prisma, context, propertyId, reservationId);
 
     const take = Math.min(query.limit ?? 50, 100);
-    const visibility = this.allowedVisibilities(context);
-    const includeConfidential = this.canSeeConfidential(context);
+    const visibility = allowedVisibilities(context);
+    const includeConfidential = canSeeConfidential(context);
     const where: Prisma.ReservationInstructionWhereInput = {
       organizationId: context.organizationId,
       propertyId,
@@ -217,11 +128,18 @@ export class InstructionsService {
     reservationId: string,
     instructionId: string,
   ): Promise<InstructionRow> {
-    const instruction = await this.findVisible(context, reservationId, instructionId);
+    const propertyId = requirePropertyContext(context);
+    const instruction = await findVisibleInstruction(
+      this.prisma,
+      context,
+      propertyId,
+      reservationId,
+      instructionId,
+    );
     if (instruction.category === InstructionCategory.CONFIDENTIAL) {
       await this.audit.append({
         organizationId: context.organizationId,
-        propertyId: requirePropertyContext(context),
+        propertyId,
         actorUserId: context.actor.id,
         action: 'instruction.confidential_read',
         entityType: 'ReservationInstruction',
@@ -239,8 +157,8 @@ export class InstructionsService {
     dto: CreateInstructionDto,
   ): Promise<InstructionRow> {
     const propertyId = requirePropertyContext(context);
-    await this.assertReservation(context, reservationId);
-    this.assertCanWriteVisibility(context, dto.visibility, dto.category);
+    await assertReservationInScope(this.prisma, context, propertyId, reservationId);
+    assertCanWriteVisibility(context, dto.visibility, dto.category);
 
     const actionDueAt = parseOptionalDate(dto.actionDueAt, 'actionDueAt');
     const validFrom = parseOptionalDate(dto.validFrom, 'validFrom');
@@ -317,8 +235,14 @@ export class InstructionsService {
     dto: UpdateInstructionDto,
   ): Promise<InstructionRow> {
     const propertyId = requirePropertyContext(context);
-    const current = await this.findVisible(context, reservationId, instructionId);
-    this.assertCanWriteVisibility(context, dto.visibility, current.category);
+    const current = await findVisibleInstruction(
+      this.prisma,
+      context,
+      propertyId,
+      reservationId,
+      instructionId,
+    );
+    assertCanWriteVisibility(context, dto.visibility, current.category);
 
     if (Object.keys(dto).length === 0) {
       return current;
@@ -399,7 +323,13 @@ export class InstructionsService {
     reason?: string,
   ): Promise<InstructionRow> {
     const propertyId = requirePropertyContext(context);
-    const current = await this.findVisible(context, reservationId, instructionId);
+    const current = await findVisibleInstruction(
+      this.prisma,
+      context,
+      propertyId,
+      reservationId,
+      instructionId,
+    );
 
     if (current.status === target) {
       return current;
@@ -474,7 +404,7 @@ export class InstructionsService {
     }>;
   }> {
     const propertyId = requirePropertyContext(context);
-    await this.findVisible(context, reservationId, instructionId);
+    await findVisibleInstruction(this.prisma, context, propertyId, reservationId, instructionId);
 
     const items = await this.prisma.instructionEvent.findMany({
       where: {
@@ -498,106 +428,20 @@ export class InstructionsService {
     return { items };
   }
 
-  /**
-   * Parses and stores the immutable source text. The original text is redacted
-   * for PAN/CVV before insert; the exact received text digest is preserved.
-   * Parsing never creates instructions, payments or charges.
-   */
   async parseSource(
     context: TenantContext,
     reservationId: string,
     dto: ParseSourceNoteDto,
   ): Promise<SourceNoteRow> {
     const propertyId = requirePropertyContext(context);
-    await this.assertReservation(context, reservationId);
-
-    const parsed = parseSourceNote(dto.text);
-    if (parsed.originalText.length === 0) {
-      throw new BadRequestException({
-        code: 'source_note_empty',
-        message: 'The source note text must not be empty.',
-      });
-    }
-
-    const contentHash = hashContent(parsed.originalText);
-    const existing = await this.prisma.reservationSourceNote.findFirst({
-      where: {
-        organizationId: context.organizationId,
-        propertyId,
-        reservationId,
-        contentHash,
-        parserVersion: INSTRUCTION_PARSER_VERSION,
-      },
-      select: SOURCE_NOTE_SELECT,
-    });
-    if (existing !== null) {
-      return existing;
-    }
-
-    try {
-      return await this.prisma.$transaction(async (transaction) => {
-        const created = await transaction.reservationSourceNote.create({
-          data: {
-            organizationId: context.organizationId,
-            propertyId,
-            reservationId,
-            sourceTextOriginal: parsed.originalText,
-            sourceTextHash: hashSourceText(dto.text),
-            contentHash,
-            parserVersion: INSTRUCTION_PARSER_VERSION,
-            redacted: parsed.redacted,
-            suggestions: parsed.suggestions as unknown as Prisma.InputJsonValue,
-            warnings: parsed.warnings as unknown as Prisma.InputJsonValue,
-            sourceSystem: dto.sourceSystem?.trim(),
-            sourceDepartment: dto.sourceDepartment?.trim(),
-            externalReference: dto.externalReference?.trim(),
-            importedByUserId: context.actor.id,
-          },
-          select: SOURCE_NOTE_SELECT,
-        });
-
-        await this.audit.append(
-          {
-            organizationId: context.organizationId,
-            propertyId,
-            actorUserId: context.actor.id,
-            action: 'reservation.source_note.imported',
-            entityType: 'ReservationSourceNote',
-            entityId: created.id,
-            correlationId: context.correlationId,
-            metadata: {
-              reservationId,
-              parserVersion: created.parserVersion,
-              redacted: created.redacted,
-              suggestionCount: parsed.suggestions.length,
-              warningCount: parsed.warnings.length,
-            },
-          },
-          transaction,
-        );
-
-        return created;
-      });
-    } catch (error) {
-      // Two concurrent retries can both pass the pre-check; the unique content
-      // hash is the authority. Return the winner instead of failing the import.
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        const raced = await this.prisma.reservationSourceNote.findFirst({
-          where: {
-            organizationId: context.organizationId,
-            propertyId,
-            reservationId,
-            contentHash,
-            parserVersion: INSTRUCTION_PARSER_VERSION,
-          },
-          select: SOURCE_NOTE_SELECT,
-        });
-        if (raced !== null) {
-          return raced;
-        }
-      }
-      throw error;
-    }
+    await assertReservationInScope(this.prisma, context, propertyId, reservationId);
+    return parseSourceNoteFor(
+      { prisma: this.prisma, audit: this.audit },
+      context,
+      propertyId,
+      reservationId,
+      dto,
+    );
   }
 
   async listSourceNotes(
@@ -605,126 +449,26 @@ export class InstructionsService {
     reservationId: string,
   ): Promise<{ items: SourceNoteRow[] }> {
     const propertyId = requirePropertyContext(context);
-    await this.assertReservation(context, reservationId);
-
-    const items = await this.prisma.reservationSourceNote.findMany({
-      where: { organizationId: context.organizationId, propertyId, reservationId },
-      orderBy: [{ importedAt: 'desc' }, { id: 'desc' }],
-      select: SOURCE_NOTE_SELECT,
-    });
-
-    return { items };
+    await assertReservationInScope(this.prisma, context, propertyId, reservationId);
+    return listSourceNotesFor(this.prisma, context, propertyId, reservationId);
   }
 
-  /**
-   * Confirms human-reviewed suggestions. Only instruction rows are created;
-   * there is no side effect on folio, cash, payments, tariffs or room state.
-   */
   async confirmSourceSuggestions(
     context: TenantContext,
     reservationId: string,
     sourceNoteId: string,
     dto: ConfirmSourceSuggestionsDto,
-  ): Promise<{
-    sourceNoteId: string;
-    created: InstructionRow[];
-    skipped: number;
-  }> {
+  ): Promise<{ sourceNoteId: string; created: InstructionRow[]; skipped: number }> {
     const propertyId = requirePropertyContext(context);
-    await this.assertReservation(context, reservationId);
-
-    const sourceNote = await this.prisma.reservationSourceNote.findFirst({
-      where: {
-        id: sourceNoteId,
-        organizationId: context.organizationId,
-        propertyId,
-        reservationId,
-      },
-      select: { id: true },
-    });
-    if (sourceNote === null) {
-      throw new NotFoundException({
-        code: 'source_note_not_found',
-        message: 'Source note not found for the selected reservation.',
-      });
-    }
-
-    return this.prisma.$transaction(async (transaction) => {
-      const created: InstructionRow[] = [];
-      let skipped = 0;
-
-      for (const suggestion of dto.suggestions) {
-        this.assertCanWriteVisibility(context, suggestion.visibility, suggestion.category);
-        const dedupeKey = hashSuggestion(suggestion);
-        const existing = await transaction.reservationInstruction.findFirst({
-          where: { sourceNoteId: sourceNote.id, dedupeKey },
-          select: { id: true },
-        });
-        if (existing !== null) {
-          skipped += 1;
-          continue;
-        }
-
-        const instruction = await transaction.reservationInstruction.create({
-          data: {
-            organizationId: context.organizationId,
-            propertyId,
-            reservationId,
-            sourceNoteId: sourceNote.id,
-            category: suggestion.category,
-            title: redactSensitiveCardData(suggestion.title.trim()).text,
-            body: redactSensitiveCardData(suggestion.body.trim()).text,
-            priority: suggestion.priority ?? 'NORMAL',
-            status: suggestion.status ?? InstructionStatus.NEW,
-            source: 'IMPORT',
-            visibility: suggestion.visibility ?? InstructionVisibility.ALL_AUTHORIZED,
-            assignedDepartment: suggestion.assignedDepartment?.trim(),
-            actionType: suggestion.actionType,
-            executionMoment: suggestion.executionMoment,
-            paymentMethod: suggestion.paymentMethod,
-            dedupeKey,
-            createdByUserId: context.actor.id,
-          },
-          select: INSTRUCTION_SELECT,
-        });
-
-        await transaction.instructionEvent.create({
-          data: {
-            organizationId: context.organizationId,
-            propertyId,
-            instructionId: instruction.id,
-            eventType: InstructionEventType.CONFIRMED_FROM_SOURCE,
-            actorUserId: context.actor.id,
-            toStatus: instruction.status,
-            metadata: { sourceNoteId: sourceNote.id },
-          },
-        });
-
-        created.push(instruction);
-      }
-
-      if (created.length > 0) {
-        await this.audit.append(
-          {
-            organizationId: context.organizationId,
-            propertyId,
-            actorUserId: context.actor.id,
-            action: 'instruction.confirmed_from_source',
-            entityType: 'ReservationSourceNote',
-            entityId: sourceNote.id,
-            correlationId: context.correlationId,
-            metadata: {
-              reservationId,
-              createdCount: created.length,
-              skippedCount: skipped,
-            },
-          },
-          transaction,
-        );
-      }
-
-      return { sourceNoteId: sourceNote.id, created, skipped };
-    });
+    await assertReservationInScope(this.prisma, context, propertyId, reservationId);
+    return confirmSourceSuggestionsFor(
+      { prisma: this.prisma, audit: this.audit },
+      context,
+      propertyId,
+      reservationId,
+      sourceNoteId,
+      dto,
+    );
   }
 
   async listGuestNotes(
@@ -732,31 +476,7 @@ export class InstructionsService {
     guestId: string,
     query: ListGuestNotesQueryDto,
   ): Promise<{ items: GuestNoteRow[] }> {
-    const propertyId = requirePropertyContext(context);
-    await this.assertGuest(context, guestId);
-
-    const visibility = this.allowedVisibilities(context);
-    const includeConfidential = this.canSeeConfidential(context);
-
-    const items = await this.prisma.guestNote.findMany({
-      where: {
-        organizationId: context.organizationId,
-        propertyId,
-        guestId,
-        visibility: { in: visibility },
-        ...(includeConfidential ? {} : { category: { not: InstructionCategory.CONFIDENTIAL } }),
-        ...(query.includeInactive === true
-          ? {}
-          : {
-              isActive: true,
-              OR: [{ expiresAt: null }, { expiresAt: { gt: this.clock.now() } }],
-            }),
-      },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
-      select: GUEST_NOTE_SELECT,
-    });
-
-    return { items };
+    return this.guestNotes.list(context, guestId, query);
   }
 
   async createGuestNote(
@@ -764,44 +484,7 @@ export class InstructionsService {
     guestId: string,
     dto: CreateGuestNoteDto,
   ): Promise<GuestNoteRow> {
-    const propertyId = requirePropertyContext(context);
-    await this.assertGuest(context, guestId);
-    this.assertCanWriteVisibility(context, dto.visibility, dto.category);
-
-    return this.prisma.$transaction(async (transaction) => {
-      const created = await transaction.guestNote.create({
-        data: {
-          organizationId: context.organizationId,
-          propertyId,
-          guestId,
-          category: dto.category ?? InstructionCategory.GENERAL,
-          body: redactSensitiveCardData(dto.body.trim()).text,
-          priority: dto.priority ?? 'NORMAL',
-          visibility: dto.visibility ?? InstructionVisibility.ALL_AUTHORIZED,
-          purpose: dto.purpose?.trim(),
-          expiresAt: parseOptionalDate(dto.expiresAt, 'expiresAt'),
-          createdByUserId: context.actor.id,
-          updatedByUserId: context.actor.id,
-        },
-        select: GUEST_NOTE_SELECT,
-      });
-
-      await this.audit.append(
-        {
-          organizationId: context.organizationId,
-          propertyId,
-          actorUserId: context.actor.id,
-          action: 'guest_note.created',
-          entityType: 'GuestNote',
-          entityId: created.id,
-          correlationId: context.correlationId,
-          metadata: { guestId, category: created.category, priority: created.priority },
-        },
-        transaction,
-      );
-
-      return created;
-    });
+    return this.guestNotes.create(context, guestId, dto);
   }
 
   async updateGuestNote(
@@ -810,251 +493,10 @@ export class InstructionsService {
     noteId: string,
     dto: UpdateGuestNoteDto,
   ): Promise<GuestNoteRow> {
-    const propertyId = requirePropertyContext(context);
-    await this.assertGuest(context, guestId);
-
-    const current = await this.prisma.guestNote.findFirst({
-      where: {
-        id: noteId,
-        organizationId: context.organizationId,
-        propertyId,
-        guestId,
-      },
-      select: GUEST_NOTE_SELECT,
-    });
-    if (current === null) {
-      throw new NotFoundException({
-        code: 'guest_note_not_found',
-        message: 'Guest note not found for the selected guest.',
-      });
-    }
-    this.assertCanWriteVisibility(context, dto.visibility, current.category);
-
-    if (Object.keys(dto).length === 0) {
-      return current;
-    }
-
-    return this.prisma.$transaction(async (transaction) => {
-      const updated = await transaction.guestNote.update({
-        where: { id: current.id },
-        data: {
-          ...(dto.body !== undefined
-            ? { body: redactSensitiveCardData(dto.body.trim()).text }
-            : {}),
-          ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
-          ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
-          ...(dto.purpose !== undefined ? { purpose: dto.purpose.trim() } : {}),
-          ...(dto.expiresAt !== undefined
-            ? { expiresAt: parseOptionalDate(dto.expiresAt, 'expiresAt') ?? null }
-            : {}),
-          ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-          updatedByUserId: context.actor.id,
-        },
-        select: GUEST_NOTE_SELECT,
-      });
-
-      await this.audit.append(
-        {
-          organizationId: context.organizationId,
-          propertyId,
-          actorUserId: context.actor.id,
-          action: 'guest_note.updated',
-          entityType: 'GuestNote',
-          entityId: updated.id,
-          correlationId: context.correlationId,
-          metadata: { guestId, fields: Object.keys(dto), isActive: updated.isActive },
-        },
-        transaction,
-      );
-
-      return updated;
-    });
-  }
-
-  private async assertReservation(context: TenantContext, reservationId: string): Promise<void> {
-    const propertyId = requirePropertyContext(context);
-    const reservation = await this.prisma.reservation.findFirst({
-      where: { id: reservationId, organizationId: context.organizationId, propertyId },
-      select: { id: true },
-    });
-    if (reservation === null) {
-      throw new NotFoundException({
-        code: 'reservation_not_found',
-        message: 'Reservation not found in the selected property.',
-      });
-    }
-  }
-
-  private async assertGuest(context: TenantContext, guestId: string): Promise<void> {
-    const propertyId = requirePropertyContext(context);
-    const guest = await this.prisma.guest.findFirst({
-      where: { id: guestId, organizationId: context.organizationId, propertyId },
-      select: { id: true },
-    });
-    if (guest === null) {
-      throw new NotFoundException({
-        code: 'guest_not_found',
-        message: 'Guest not found in the selected property.',
-      });
-    }
-  }
-
-  private async findVisible(
-    context: TenantContext,
-    reservationId: string,
-    instructionId: string,
-  ): Promise<InstructionRow> {
-    const propertyId = requirePropertyContext(context);
-    const visibility = this.allowedVisibilities(context);
-    const includeConfidential = this.canSeeConfidential(context);
-
-    const instruction = await this.prisma.reservationInstruction.findFirst({
-      where: {
-        id: instructionId,
-        organizationId: context.organizationId,
-        propertyId,
-        reservationId,
-        visibility: { in: visibility },
-        ...(includeConfidential ? {} : { category: { not: InstructionCategory.CONFIDENTIAL } }),
-      },
-      select: INSTRUCTION_SELECT,
-    });
-
-    if (instruction === null) {
-      throw new NotFoundException({
-        code: 'instruction_not_found',
-        message: 'Instruction not found or not visible to your role.',
-      });
-    }
-
-    return instruction;
-  }
-
-  private allowedVisibilities(context: TenantContext): InstructionVisibility[] {
-    const result: InstructionVisibility[] = [InstructionVisibility.ALL_AUTHORIZED];
-    const permissions = context.permissions;
-
-    if (
-      permissions.has(PERMISSIONS.FRONT_OFFICE_READ) ||
-      permissions.has(PERMISSIONS.FRONT_OFFICE_MANAGE)
-    ) {
-      result.push(InstructionVisibility.FRONT_DESK);
-    }
-    if (permissions.has(PERMISSIONS.RESERVATIONS_MANAGE)) {
-      result.push(InstructionVisibility.RESERVATIONS);
-    }
-    if (permissions.has(PERMISSIONS.REPORTS_FINANCIAL)) {
-      result.push(InstructionVisibility.FINANCE);
-    }
-    if (
-      permissions.has(PERMISSIONS.PROPERTY_MANAGE) ||
-      permissions.has(PERMISSIONS.AUDIT_READ) ||
-      permissions.has(PERMISSIONS.ORGANIZATION_PROPERTIES_MANAGE)
-    ) {
-      result.push(InstructionVisibility.MANAGEMENT);
-    }
-    return result;
-  }
-
-  private canSeeConfidential(context: TenantContext): boolean {
-    return (
-      context.permissions.has(PERMISSIONS.AUDIT_READ) ||
-      context.permissions.has(PERMISSIONS.PROPERTY_MANAGE) ||
-      context.permissions.has(PERMISSIONS.ORGANIZATION_PROPERTIES_MANAGE)
-    );
-  }
-
-  private assertCanWriteVisibility(
-    context: TenantContext,
-    visibility: InstructionVisibility | undefined,
-    category: InstructionCategory | undefined,
-  ): void {
-    if (category === InstructionCategory.CONFIDENTIAL && !this.canSeeConfidential(context)) {
-      throw new ForbiddenException({
-        code: 'instruction_confidential_forbidden',
-        message: 'Your role cannot create or update confidential instructions.',
-      });
-    }
-
-    if (visibility === undefined) {
-      return;
-    }
-
-    const allowed = this.allowedVisibilities(context);
-    if (!allowed.includes(visibility)) {
-      throw new ForbiddenException({
-        code: 'instruction_visibility_forbidden',
-        message: 'Your role cannot target that visibility.',
-        details: { visibility },
-      });
-    }
-  }
-}
-
-function normalizeTags(tags: string[] | undefined): string[] {
-  if (tags === undefined) {
-    return [];
-  }
-  const seen = new Set<string>();
-  const normalized: string[] = [];
-  for (const value of tags) {
-    const tag = value.trim().slice(0, 32);
-    if (tag.length === 0) {
-      continue;
-    }
-    const key = tag.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    normalized.push(tag);
-    if (normalized.length === 10) {
-      break;
-    }
-  }
-  return normalized;
-}
-
-function assertValidityRange(validFrom: Date | undefined, validUntil: Date | undefined): void {
-  if (validFrom !== undefined && validUntil !== undefined && validUntil <= validFrom) {
-    throw new BadRequestException({
-      code: 'instruction_invalid_validity',
-      message: 'validUntil must be later than validFrom.',
-    });
-  }
-}
-
-function parseOptionalDate(value: string | undefined, field: string): Date | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new BadRequestException({
-      code: 'invalid_date',
-      message: `${field} must be a valid ISO-8601 date.`,
-    });
-  }
-  return date;
-}
-
-function eventTypeForStatus(status: InstructionStatus): InstructionEventType {
-  switch (status) {
-    case InstructionStatus.ACKNOWLEDGED:
-      return InstructionEventType.ACKNOWLEDGED;
-    case InstructionStatus.IN_PROGRESS:
-      return InstructionEventType.IN_PROGRESS;
-    case InstructionStatus.COMPLETED:
-      return InstructionEventType.COMPLETED;
-    case InstructionStatus.DISMISSED:
-      return InstructionEventType.DISMISSED;
-    case InstructionStatus.NEEDS_CLARIFICATION:
-      return InstructionEventType.NEEDS_CLARIFICATION;
-    default:
-      return InstructionEventType.UPDATED;
+    return this.guestNotes.update(context, guestId, noteId, dto);
   }
 }
 
 // Keep the imported type referenced so the public DTO stays in sync with the
 // parser contract during refactors.
-export type { ConfirmSuggestionDto };
+export type { ConfirmSuggestionDto } from './dto/instruction.dto';

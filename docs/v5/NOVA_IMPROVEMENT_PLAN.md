@@ -193,18 +193,18 @@ Escribe al menos estos casos para `computeOperationalDay`/check-in: antes/despu�
 
 ## F5 — Guardrails de ESLint (hacer justo después de F1)
 
-**Objetivo:** que lo corregido no vuelva a degradarse. Primero en `warn` para no bloquear; subir a `error` cuando F1/F2 terminen.
+**Objetivo:** que lo corregido no vuelva a degradarse. Primero en `warn` para no bloquear; subir a `error` cuando F1/F2 terminen. **Estado: `error` desde que `eslint src` quedó en 0 warnings** (reservations, reports, reservation-party, rooms, night-audit, admin, auth, folio e instructions partidos).
 
 `apps/api/.eslintrc.js` (añadir a `rules`)
 
 ```js
 rules: {
   // ...existentes
-  'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
-  'max-lines-per-function': ['warn', { max: 120, skipBlankLines: true, skipComments: true }],
-  complexity: ['warn', 15],
+  'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+  'max-lines-per-function': ['error', { max: 120, skipBlankLines: true, skipComments: true }],
+  complexity: ['error', 15],
   'no-restricted-syntax': [
-    'warn',
+    'error',
     {
       selector: "NewExpression[callee.name='Date'][arguments.length=0]",
       message: 'Inject Clock and use clock.now() instead of new Date().',
@@ -225,7 +225,7 @@ overrides: [
 
 Para la web (`apps/web/.eslintrc.json`), añade `max-lines` a 300 en `warn` para `src/components/**` y `src/app/**/_components/**`.
 
-**Aceptación:** `pnpm lint` pasa (con warnings). Guarda el recuento inicial de warnings en la descripción del PR y baja el umbral al terminar F2/F3 (`error`).
+**Aceptación:** `pnpm lint` pasa sin warnings (161 → 0) y las reglas quedan en `error`, de modo que cualquier archivo nuevo que las viole rompe el lint.
 
 ---
 
