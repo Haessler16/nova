@@ -1,148 +1,16 @@
 'use client';
 
-import {
-  Alert,
-  AlertDescription,
-  AlertIcon,
-  Badge,
-  Button,
-  HStack,
-  Input,
-  Stack,
-  Table,
-  TableContainer,
-  Tbody,
-  Td,
-  Text,
-  Textarea,
-  Th,
-  Thead,
-  Tr,
-  useToast,
-} from '@chakra-ui/react';
+import { Alert, AlertDescription, AlertIcon, Button } from '@chakra-ui/react';
 import NextLink from 'next/link';
-import { useEffect, useState, type ChangeEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
-import { PageHeader, SectionCard } from '@/components/ui';
-import { useSession } from '@/context/session';
-import { api, errorMessage } from '@/lib/api';
-import type { GuestImportPreview, GuestImportResult } from '@/lib/guest-import-types';
-import { useImportDraftStore } from '@/stores/import-draft';
-
-const TEMPLATE = [
-  'fullName,email,phone,documentType,documentNumber,notes',
-  'Ana Silva,ana.silva@example.test,+55 11 90000-0000,PASSPORT,AB123456,Cliente sintético',
-].join('\n');
+import { PageHeader } from '@/components/ui';
+import { ImportEditorCard } from './_components/import-editor-card';
+import { ImportPreviewCard } from './_components/import-preview-card';
+import { ImportResultCard } from './_components/import-result-card';
+import { useImportDraft } from './_hooks/use-import-draft';
 
 function ImportsContent() {
-  const { tenant } = useSession();
-  const toast = useToast();
-  const tenantKey = `${tenant.organizationId}:${tenant.propertyId}`;
-  const draftTenantKey = useImportDraftStore((state) => state.tenantKey);
-  const storedCsv = useImportDraftStore((state) => state.csv);
-  const storedPreview = useImportDraftStore((state) => state.preview);
-  const storedIdempotencyKey = useImportDraftStore((state) => state.idempotencyKey);
-  const storedResult = useImportDraftStore((state) => state.result);
-
-  // Hide the previous property's draft until ensureTenant resets it.
-  const tenantMatches = draftTenantKey === tenantKey;
-  const csv = tenantMatches ? storedCsv : '';
-  const preview = tenantMatches ? storedPreview : null;
-  const idempotencyKey = tenantMatches ? storedIdempotencyKey : null;
-  const result = tenantMatches ? storedResult : null;
-  const ensureTenant = useImportDraftStore((state) => state.ensureTenant);
-  const setCsv = useImportDraftStore((state) => state.setCsv);
-  const setPreview = useImportDraftStore((state) => state.setPreview);
-  const complete = useImportDraftStore((state) => state.complete);
-  const [busy, setBusy] = useState<'preview' | 'commit' | null>(null);
-  const [online, setOnline] = useState(true);
-
-  useEffect(() => {
-    ensureTenant(tenantKey);
-  }, [ensureTenant, tenantKey]);
-
-  useEffect(() => {
-    function update(): void {
-      setOnline(navigator.onLine);
-    }
-    update();
-    window.addEventListener('online', update);
-    window.addEventListener('offline', update);
-    return () => {
-      window.removeEventListener('online', update);
-      window.removeEventListener('offline', update);
-    };
-  }, []);
-
-  async function handleFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
-    const file = event.target.files?.[0];
-    if (file === undefined) {
-      return;
-    }
-    if (file.size > 512 * 1024) {
-      toast({ title: 'El archivo supera 512 KB', status: 'error' });
-      return;
-    }
-    setCsv(await file.text());
-  }
-
-  async function runPreview(): Promise<void> {
-    setBusy('preview');
-    try {
-      const data = await api<GuestImportPreview>('/api/v1/guests/import/preview', {
-        method: 'POST',
-        tenant,
-        body: { csv },
-      });
-      setPreview(data, crypto.randomUUID());
-    } catch (cause) {
-      toast({
-        title: 'No se pudo leer el CSV',
-        description: errorMessage(cause),
-        status: 'error',
-        duration: 8000,
-      });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function runCommit(): Promise<void> {
-    if (preview === null || idempotencyKey === null || preview.invalidRows > 0) {
-      return;
-    }
-    setBusy('commit');
-    try {
-      const data = await api<GuestImportResult>('/api/v1/guests/import', {
-        method: 'POST',
-        tenant,
-        body: { csv, idempotencyKey },
-      });
-      complete(data);
-      toast({
-        title: data.replayed ? 'Importación ya confirmada' : 'Importación completada',
-        description: `${data.createdCount} huéspedes creados.`,
-        status: 'success',
-      });
-    } catch (cause) {
-      toast({
-        title: 'No se pudo importar',
-        description: errorMessage(cause),
-        status: 'error',
-        duration: 8000,
-      });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const canPreview = csv.trim() !== '' && online && busy === null;
-  const canCommit =
-    preview !== null &&
-    preview.invalidRows === 0 &&
-    preview.totalRows > 0 &&
-    online &&
-    busy === null;
+  const draft = useImportDraft();
 
   return (
     <>
@@ -156,7 +24,7 @@ function ImportsContent() {
         }
       />
 
-      {!online && (
+      {!draft.online && (
         <Alert status="warning" mb={4} borderRadius="md">
           <AlertIcon />
           <AlertDescription>
@@ -166,145 +34,21 @@ function ImportsContent() {
         </Alert>
       )}
 
-      <SectionCard>
-        <Stack spacing={4}>
-          <HStack justify="space-between" wrap="wrap" spacing={2}>
-            <Text fontSize="sm" color="gray.600">
-              Columnas: fullName, email, phone, documentType, documentNumber, notes. Máximo 500
-              filas y 512 KB. Delimitador coma o punto y coma.
-            </Text>
-            <Button size="xs" variant="ghost" onClick={() => setCsv(TEMPLATE)}>
-              Usar plantilla
-            </Button>
-          </HStack>
+      <ImportEditorCard
+        tenantKey={draft.tenantKey}
+        csv={draft.csv}
+        busy={draft.busy}
+        canPreview={draft.canPreview}
+        canCommit={draft.canCommit}
+        onChangeCsv={draft.setCsv}
+        onFile={(event) => void draft.loadFile(event)}
+        onPreview={() => void draft.runPreview()}
+        onCommit={() => void draft.runCommit()}
+      />
 
-          <Input
-            type="file"
-            accept=".csv,text/csv"
-            size="sm"
-            aria-label="Archivo CSV de huéspedes"
-            onChange={(event) => void handleFile(event)}
-          />
+      {draft.result !== null && <ImportResultCard result={draft.result} />}
 
-          <Textarea
-            value={csv}
-            onChange={(event) => setCsv(event.target.value)}
-            rows={8}
-            fontFamily="mono"
-            fontSize="sm"
-            placeholder={TEMPLATE}
-            aria-label="Contenido CSV"
-          />
-
-          <HStack>
-            <Button
-              size="sm"
-              colorScheme="brand"
-              onClick={() => void runPreview()}
-              isDisabled={!canPreview}
-              isLoading={busy === 'preview'}
-            >
-              Vista previa
-            </Button>
-            <Button
-              size="sm"
-              colorScheme="green"
-              onClick={() => void runCommit()}
-              isDisabled={!canCommit}
-              isLoading={busy === 'commit'}
-            >
-              Confirmar importación
-            </Button>
-            <Text fontSize="xs" color="gray.500">
-              Clave de tenant: {tenantKey}
-            </Text>
-          </HStack>
-        </Stack>
-      </SectionCard>
-
-      {result !== null && (
-        <SectionCard>
-          <Alert status={result.replayed ? 'info' : 'success'} borderRadius="md">
-            <AlertIcon />
-            <AlertDescription>
-              {result.replayed
-                ? 'Esta importación ya se había confirmado con la misma clave; no se crearon duplicados.'
-                : `Se crearon ${result.createdCount} huéspedes.`}{' '}
-              Importación <code>{result.importId}</code>.{' '}
-              <Button as={NextLink} href="/guests" size="xs" variant="link">
-                Revisar huéspedes
-              </Button>
-            </AlertDescription>
-          </Alert>
-        </SectionCard>
-      )}
-
-      {preview !== null && (
-        <SectionCard>
-          <HStack mb={3} spacing={3} wrap="wrap">
-            <Text fontWeight="semibold">Vista previa</Text>
-            <Badge colorScheme="gray">{preview.totalRows} filas</Badge>
-            <Badge colorScheme="green">{preview.validRows} válidas</Badge>
-            <Badge colorScheme={preview.invalidRows > 0 ? 'red' : 'gray'}>
-              {preview.invalidRows} con errores
-            </Badge>
-            {preview.invalidRows > 0 && (
-              <Text fontSize="xs" color="red.600">
-                Corregí el CSV y volvé a generar la vista previa; no se puede confirmar con errores.
-              </Text>
-            )}
-          </HStack>
-
-          <TableContainer maxH="420px" overflowY="auto">
-            <Table size="sm">
-              <Thead>
-                <Tr>
-                  <Th>Línea</Th>
-                  <Th>Nombre</Th>
-                  <Th>Contacto</Th>
-                  <Th>Documento</Th>
-                  <Th>Estado</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {preview.rows.map((row) => (
-                  <Tr key={row.line}>
-                    <Td>{row.line}</Td>
-                    <Td>{row.values.fullName === '' ? '—' : row.values.fullName}</Td>
-                    <Td>
-                      <Text fontSize="sm">{row.values.email ?? '—'}</Text>
-                      <Text fontSize="xs" color="gray.500">
-                        {row.values.phone ?? 'sin teléfono'}
-                      </Text>
-                    </Td>
-                    <Td>
-                      {row.values.documentType !== null && row.values.documentNumber !== null
-                        ? `${row.values.documentType} ${row.values.documentNumber}`
-                        : '—'}
-                    </Td>
-                    <Td>
-                      {row.errors.length === 0 ? (
-                        <Badge colorScheme="green">OK</Badge>
-                      ) : (
-                        <Stack spacing={1}>
-                          <Badge colorScheme="red" width="fit-content">
-                            Error
-                          </Badge>
-                          {row.errors.map((message) => (
-                            <Text key={message} fontSize="xs" color="red.600">
-                              {message}
-                            </Text>
-                          ))}
-                        </Stack>
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </TableContainer>
-        </SectionCard>
-      )}
+      {draft.preview !== null && <ImportPreviewCard preview={draft.preview} />}
     </>
   );
 }

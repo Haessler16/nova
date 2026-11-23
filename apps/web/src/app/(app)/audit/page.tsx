@@ -1,52 +1,16 @@
 'use client';
 
-import {
-  Badge,
-  Button,
-  Code,
-  HStack,
-  Input,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalHeader,
-  ModalOverlay,
-  Stack,
-  Table,
-  TableContainer,
-  Tbody,
-  Td,
-  Text,
-  Th,
-  Thead,
-  Tr,
-  useDisclosure,
-} from '@chakra-ui/react';
+import { Button, HStack, Stack, useDisclosure } from '@chakra-ui/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
-import { DateField } from '@/components/date-field';
 import { ErrorAlert, PageHeader, QueryFeedback, SectionCard } from '@/components/ui';
 import { useSession } from '@/context/session';
 import { useAuditFeedStore } from '@/stores/audit-feed';
-import { formatDateTime, formatJson } from '@/lib/format';
 import type { AuditEvent } from '@/lib/types';
-
-interface AuditFilters {
-  action: string;
-  entityType: string;
-  actorUserId: string;
-  fromDate: string;
-  toDate: string;
-}
-
-const EMPTY_FILTERS: AuditFilters = {
-  action: '',
-  entityType: '',
-  actorUserId: '',
-  fromDate: '',
-  toDate: '',
-};
+import { EMPTY_FILTERS, type AuditFilters } from './audit-filters';
+import { AuditEventModal } from './_components/audit-event-modal';
+import { AuditEventsTable } from './_components/audit-events-table';
+import { AuditFilterBar } from './_components/audit-filter-bar';
 
 function AuditContent() {
   const { tenant } = useSession();
@@ -97,6 +61,11 @@ function AuditContent() {
     setFilters({ ...EMPTY_FILTERS });
   }
 
+  function openDetail(event: AuditEvent): void {
+    setSelected(event);
+    metadataModal.onOpen();
+  }
+
   return (
     <>
       <PageHeader
@@ -105,76 +74,13 @@ function AuditContent() {
       />
 
       <SectionCard>
-        <form onSubmit={applyFilters}>
-          <HStack wrap="wrap" spacing={2} mb={4} align="flex-end">
-            <Input
-              size="sm"
-              width="230px"
-              placeholder="Acción, ej. reservation.created"
-              aria-label="Filtrar por acción"
-              value={inputs.action}
-              onChange={(event) => setInputs({ ...inputs, action: event.target.value })}
-            />
-            <Input
-              size="sm"
-              width="190px"
-              placeholder="Entidad, ej. Reservation"
-              aria-label="Filtrar por tipo de entidad"
-              value={inputs.entityType}
-              onChange={(event) => setInputs({ ...inputs, entityType: event.target.value })}
-            />
-            <Input
-              size="sm"
-              width="250px"
-              placeholder="Actor (UUID)"
-              aria-label="Filtrar por actor"
-              value={inputs.actorUserId}
-              onChange={(event) => setInputs({ ...inputs, actorUserId: event.target.value })}
-            />
-            <HStack spacing={1}>
-              <Text fontSize="xs" color="textSecondary">
-                Desde
-              </Text>
-              <DateField
-                size="sm"
-                width="150px"
-                value={inputs.fromDate}
-                placeholder="dd/mm/aaaa"
-                ariaLabel="Fecha desde"
-                isClearable
-                onChange={(fromDate) =>
-                  setInputs({
-                    ...inputs,
-                    fromDate,
-                    ...(inputs.toDate !== '' && inputs.toDate <= fromDate ? { toDate: '' } : {}),
-                  })
-                }
-              />
-              <Text fontSize="xs" color="textSecondary">
-                Hasta
-              </Text>
-              <DateField
-                size="sm"
-                width="150px"
-                value={inputs.toDate}
-                min={inputs.fromDate !== '' ? inputs.fromDate : undefined}
-                placeholder="dd/mm/aaaa"
-                ariaLabel="Fecha hasta"
-                isClearable
-                onChange={(toDate) => setInputs({ ...inputs, toDate })}
-              />
-            </HStack>
-            <Button size="sm" type="submit" variant="outline">
-              Filtrar
-            </Button>
-            <Button size="sm" variant="ghost" onClick={resetFilters}>
-              Limpiar
-            </Button>
-            <Text fontSize="xs" color="textSecondary" ml="auto">
-              {items.length} eventos
-            </Text>
-          </HStack>
-        </form>
+        <AuditFilterBar
+          inputs={inputs}
+          total={items.length}
+          onChange={setInputs}
+          onSubmit={applyFilters}
+          onReset={resetFilters}
+        />
 
         <QueryFeedback
           loading={loading}
@@ -183,71 +89,7 @@ function AuditContent() {
           isEmpty={items.length === 0}
           emptyText="No hay eventos de auditoría para los filtros."
         >
-          <TableContainer>
-            <Table size="sm">
-              <Thead>
-                <Tr>
-                  <Th>Fecha</Th>
-                  <Th>Acción</Th>
-                  <Th>Entidad</Th>
-                  <Th>Actor</Th>
-                  <Th>Correlación</Th>
-                  <Th />
-                </Tr>
-              </Thead>
-              <Tbody>
-                {items.map((event) => (
-                  <Tr key={event.id}>
-                    <Td whiteSpace="nowrap">
-                      <Text fontSize="xs">{formatDateTime(event.occurredAt)}</Text>
-                    </Td>
-                    <Td>
-                      <Text as="code" fontSize="xs" fontWeight="semibold">
-                        {event.action}
-                      </Text>
-                      {event.reason !== null && (
-                        <Text fontSize="xs" color="textSecondary" noOfLines={1} maxW="280px">
-                          {event.reason}
-                        </Text>
-                      )}
-                    </Td>
-                    <Td>
-                      <Badge colorScheme="brand" textTransform="none">
-                        {event.entityType}
-                      </Badge>
-                      <Text fontFamily="mono" fontSize="xs" color="textSecondary">
-                        {event.entityId.slice(0, 8)}…
-                      </Text>
-                    </Td>
-                    <Td>
-                      <Text fontFamily="mono" fontSize="xs">
-                        {event.actorUserId !== null
-                          ? `${event.actorUserId.slice(0, 8)}…`
-                          : 'sistema'}
-                      </Text>
-                    </Td>
-                    <Td>
-                      <Text fontFamily="mono" fontSize="xs" color="textSecondary">
-                        {event.correlationId !== null ? `${event.correlationId.slice(0, 8)}…` : '—'}
-                      </Text>
-                    </Td>
-                    <Td>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        onClick={() => {
-                          setSelected(event);
-                          metadataModal.onOpen();
-                        }}
-                      >
-                        Detalle
-                      </Button>
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </TableContainer>
+          <AuditEventsTable items={items} onSelect={openDetail} />
 
           {moreError !== null && (
             <Stack mt={3}>
@@ -270,33 +112,11 @@ function AuditContent() {
         </QueryFeedback>
       </SectionCard>
 
-      <Modal isOpen={metadataModal.isOpen} onClose={metadataModal.onClose} size="xl">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader fontSize="md">Evento de auditoría</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            {selected !== null && (
-              <Stack spacing={3}>
-                <Text fontSize="sm" fontWeight="semibold">
-                  {selected.action}
-                </Text>
-                <Text fontSize="xs" color="textSecondary">
-                  {selected.entityType} · {selected.entityId}
-                </Text>
-                <Text fontSize="xs" color="textSecondary">
-                  {formatDateTime(selected.occurredAt)} · actor {selected.actorUserId ?? 'sistema'}{' '}
-                  · correlación {selected.correlationId ?? '—'}
-                </Text>
-                {selected.reason !== null && <Text fontSize="sm">Motivo: {selected.reason}</Text>}
-                <Code display="block" whiteSpace="pre-wrap" p={3} borderRadius="md" fontSize="xs">
-                  {formatJson(selected.metadata)}
-                </Code>
-              </Stack>
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+      <AuditEventModal
+        isOpen={metadataModal.isOpen}
+        onClose={metadataModal.onClose}
+        event={selected}
+      />
     </>
   );
 }

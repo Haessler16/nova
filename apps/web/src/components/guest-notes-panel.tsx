@@ -1,66 +1,26 @@
 'use client';
 
-import {
-  Badge,
-  Box,
-  Button,
-  HStack,
-  Input,
-  Select,
-  Stack,
-  Text,
-  Textarea,
-  useToast,
-} from '@chakra-ui/react';
+import { Box, Button, HStack, Stack, Text, useToast } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
-import {
-  INSTRUCTION_CATEGORY_LABELS,
-  INSTRUCTION_PRIORITY_COLORS,
-  INSTRUCTION_PRIORITY_LABELS,
-  formatDateTime,
-} from '@/lib/format';
-import type { GuestNote, InstructionCategory, InstructionPriority } from '@/lib/types';
+import type { GuestNote } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
-import { Field, QueryFeedback, SectionCard, StatusBadge } from './ui';
+import { GuestNoteForm, EMPTY_GUEST_NOTE_DRAFT, type GuestNoteDraft } from './guest-note-form';
+import { GuestNoteItem } from './guest-note-item';
+import { QueryFeedback, SectionCard } from './ui';
 
 interface GuestNotesPanelProps {
   guestId: string;
   canManage: boolean;
 }
 
-const CATEGORY_OPTIONS: InstructionCategory[] = [
-  'GENERAL',
-  'MEAL',
-  'ROOM',
-  'IMPORTANT',
-  'EXTRA',
-  'CONFIDENTIAL',
-];
-
-const PRIORITY_OPTIONS: InstructionPriority[] = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'];
-
-const PURPOSE_OPTIONS = [
-  { value: 'PREFERENCE', label: 'Preferencia' },
-  { value: 'ALERT', label: 'Alerta operativa' },
-  { value: 'ACCESSIBILITY', label: 'Accesibilidad' },
-  { value: 'BILLING', label: 'Facturación' },
-  { value: 'OTHER', label: 'Otro' },
-];
-
 export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
   const { tenant } = useSession();
   const toast = useToast();
 
   const [showInactive, setShowInactive] = useState(false);
-  const [form, setForm] = useState({
-    category: 'GENERAL' as InstructionCategory,
-    priority: 'NORMAL' as InstructionPriority,
-    purpose: 'PREFERENCE',
-    expiresAt: '',
-    body: '',
-  });
+  const [draft, setDraft] = useState<GuestNoteDraft>(EMPTY_GUEST_NOTE_DRAFT);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -75,7 +35,7 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
 
   async function handleCreate(event: FormEvent): Promise<void> {
     event.preventDefault();
-    if (form.body.trim().length < 2) {
+    if (draft.body.trim().length < 2) {
       return;
     }
     setSaving(true);
@@ -84,20 +44,16 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
         method: 'POST',
         tenant,
         body: {
-          category: form.category,
-          priority: form.priority,
-          body: form.body.trim(),
-          purpose: form.purpose,
-          ...(form.expiresAt !== '' ? { expiresAt: new Date(form.expiresAt).toISOString() } : {}),
+          category: draft.category,
+          priority: draft.priority,
+          body: draft.body.trim(),
+          purpose: draft.purpose,
+          ...(draft.expiresAt !== ''
+            ? { expiresAt: new Date(draft.expiresAt).toISOString() }
+            : {}),
         },
       });
-      setForm({
-        category: 'GENERAL',
-        priority: 'NORMAL',
-        purpose: 'PREFERENCE',
-        expiresAt: '',
-        body: '',
-      });
+      setDraft(EMPTY_GUEST_NOTE_DRAFT);
       notes.reload();
     } catch (cause) {
       toast({
@@ -155,126 +111,25 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
       >
         <Stack spacing={2}>
           {notes.data?.items.map((note) => (
-            <Box
+            <GuestNoteItem
               key={note.id}
-              borderWidth="1px"
-              borderColor="gray.200"
-              borderRadius="md"
-              p={3}
-              opacity={note.isActive ? 1 : 0.6}
-            >
-              <HStack justify="space-between" align="start" wrap="wrap">
-                <HStack wrap="wrap">
-                  <StatusBadge
-                    color={INSTRUCTION_PRIORITY_COLORS[note.priority]}
-                    label={INSTRUCTION_PRIORITY_LABELS[note.priority]}
-                  />
-                  <Badge colorScheme="gray">{INSTRUCTION_CATEGORY_LABELS[note.category]}</Badge>
-                  {!note.isActive && (
-                    <Badge colorScheme="gray" textTransform="none">
-                      Inactiva
-                    </Badge>
-                  )}
-                </HStack>
-                {canManage && (
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    isLoading={busyId === note.id}
-                    onClick={() => void toggleActive(note)}
-                  >
-                    {note.isActive ? 'Desactivar' : 'Reactivar'}
-                  </Button>
-                )}
-              </HStack>
-              <Text fontSize="sm" mt={2} whiteSpace="pre-wrap">
-                {note.body}
-              </Text>
-              <Text fontSize="xs" color="gray.500" mt={1}>
-                {note.purpose !== null ? `${note.purpose} · ` : ''}
-                {formatDateTime(note.createdAt)}
-                {note.expiresAt !== null ? ` · expira ${formatDateTime(note.expiresAt)}` : ''}
-              </Text>
-            </Box>
+              note={note}
+              canManage={canManage}
+              busy={busyId === note.id}
+              onToggle={(target) => void toggleActive(target)}
+            />
           ))}
         </Stack>
       </QueryFeedback>
 
       {canManage && (
-        <Box as="form" mt={4} onSubmit={(event) => void handleCreate(event)}>
-          <Field label="Nueva nota del huésped">
-            <Textarea
-              rows={2}
-              value={form.body}
-              onChange={(event) => setForm({ ...form, body: event.target.value })}
-              placeholder="Preferencia, alerta o información persistente."
-            />
-          </Field>
-          <HStack mt={2} spacing={2}>
-            <Select
-              size="sm"
-              maxW="180px"
-              value={form.category}
-              onChange={(event) =>
-                setForm({ ...form, category: event.target.value as InstructionCategory })
-              }
-            >
-              {CATEGORY_OPTIONS.map((category) => (
-                <option key={category} value={category}>
-                  {INSTRUCTION_CATEGORY_LABELS[category]}
-                </option>
-              ))}
-            </Select>
-            <Select
-              size="sm"
-              maxW="140px"
-              value={form.priority}
-              onChange={(event) =>
-                setForm({ ...form, priority: event.target.value as InstructionPriority })
-              }
-            >
-              {PRIORITY_OPTIONS.map((priority) => (
-                <option key={priority} value={priority}>
-                  {INSTRUCTION_PRIORITY_LABELS[priority]}
-                </option>
-              ))}
-            </Select>
-            <Button
-              size="sm"
-              colorScheme="brand"
-              type="submit"
-              isLoading={saving}
-              isDisabled={form.body.trim().length < 2}
-            >
-              Guardar
-            </Button>
-          </HStack>
-          <HStack mt={2} spacing={2} align="end" wrap="wrap">
-            <Field label="Propósito">
-              <Select
-                size="sm"
-                value={form.purpose}
-                onChange={(event) => setForm({ ...form, purpose: event.target.value })}
-              >
-                {PURPOSE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              label="Expira"
-              helper="Opcional. Se guarda como instante; la interfaz usa la zona horaria del navegador."
-            >
-              <Input
-                size="sm"
-                type="datetime-local"
-                value={form.expiresAt}
-                onChange={(event) => setForm({ ...form, expiresAt: event.target.value })}
-              />
-            </Field>
-          </HStack>
+        <Box mt={4}>
+          <GuestNoteForm
+            draft={draft}
+            onChange={setDraft}
+            saving={saving}
+            onSubmit={(event) => void handleCreate(event)}
+          />
         </Box>
       )}
     </SectionCard>
