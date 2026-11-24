@@ -1107,7 +1107,7 @@ These choices should be confirmed against the existing repository and current st
 
 ### ADR-058 — i18n propia con diccionarios tipados y `pt-BR` prioritario, activada por cookie durante la migración
 
-- Status: accepted; implemented for the shared layer and entry routes in Fase 7 (part 1). Screens pending.
+- Status: accepted; parts 1–4 implemented in Fase 7 (shared layer and entry routes, `inventory/room-types`, `/reservations` and `/front-office`). Remaining screens (part 5) pending.
 - Date: 2026-11-18.
 - Context: la ficha prioriza `pt-BR` para la interfaz de recepción, pero ADR-050 dejó la copia en español «para acompañar la app existente» y no había ninguna capa de i18n: ~292 cadenas visibles estaban escritas a mano dentro de 31 archivos. Traducir todo de una vez, sin capa, garantiza pantallas mezcladas y un glosario inconsistente (`Habitación`/`UH`, `Folio`/`Conta`). El requisito de la ficha es explícito: no mezclar portugués y español en la misma pantalla, y no cambiar los valores persistidos por una traducción.
 - Options:
@@ -1123,8 +1123,9 @@ These choices should be confirmed against the existing repository and current st
   - Glosario de recepción adoptado en `pt-BR`: `UH` (unidad habitacional), `Hóspede`, `Governança`, `Caixa`, `Conta` (folio), `Reserva`, `Check-in`, `Checkout`, `Propriedade`.
   - `format.ts` expone `INTL_LOCALE` (`es-AR`, `pt-BR`) para que fechas e importes sigan el locale cuando las pantallas migren.
 - Consequences:
-  - La copia compartida (chrome, navegación, `ActionDialog`, estados de carga/error/vacío, login y página offline) ya se resuelve por diccionario y responde a `nova_locale=pt-BR`; el resto de las pantallas sigue en español y se migra en las partes 2–4 del informe de fase.
-  - Mientras `DEFAULT_LOCALE` sea `es`, activar `pt-BR` muestra portugués sólo en las superficies migradas: es una vista previa de QA, no el estado de entrega. La fase cierra cuando todas las pantallas estén migradas y el valor por defecto cambie.
+  - La copia compartida (chrome, navegación, `ActionDialog`, estados de carga/error/vacío, login y página offline) se resuelve por diccionario y responde a `nova_locale=pt-BR` (parte 1); `inventory/room-types` fue la pantalla piloto (parte 2); `/reservations` con sus paneles de fiesta, instrucciones y documentos se migró en la parte 3 y `/front-office` completo —cinco pestañas, room rack, búsqueda operativa, wizard de check-in y los cinco modales de operación— en la parte 4. Queda la parte 5: `dashboard`, `reports`, `imports`, `audit`, `admin`, `account`, `settings`, `catalog`, `cashier`, `calendar`, `guests`, `folios`, `folios/[id]`, `inventory/rooms` y `pilot`.
+  - Mientras `DEFAULT_LOCALE` sea `es`, activar `pt-BR` muestra portugués en las superficies de las partes 1–4 y español en el resto: es una vista previa de QA, no el estado de entrega. La fase cierra cuando la parte 5 esté migrada y el valor por defecto cambie.
+  - Las partes 3 y 4 dejaron verificado typecheck, lint, tests y build, con paridad exacta de diccionarios (`es`/`pt-BR`) y barrido de literales en las pantallas migradas; no hubo render autenticado en navegador (PostgreSQL/Redis apagados). El detalle y las cifras están en `docs/archive/v4/FASE_7_REPORT.md`.
   - ADR-050 queda superado en su punto «UI copy stays in Spanish»: el español deja de ser el único idioma y pasa a ser un locale más.
   - No hay dependencias nuevas ni cambios de contrato HTTP; los valores persistidos y los códigos de error no cambian.
 - Validation required:

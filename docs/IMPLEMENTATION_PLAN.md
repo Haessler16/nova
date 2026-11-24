@@ -273,6 +273,24 @@ Status: **implemented locally on 2026-11-15**.
 - [ ] real preauthorization/payment provider integration (requires the payment module);
 - [ ] property-timezone wall-clock editing for instruction validity and room blocks.
 
+## Phase 12 — Operational gap closure after Phase 11 (implemented locally)
+
+Status: **implemented incrementally 2026-11-16 → 2026-11-24** from `docs/archive/v4/NOVA_PMS_FICHA_04_OPENCODE_TECHNICAL.md` (ficha 04). Pilot validation, remote CI observation and browser review remain pending. Phases 0–11 above are unchanged; this section records the work that came after Phase 11.
+
+- [x] **Búsqueda operativa con `unaccent`.** `GET /reservations` resolves accented guest names through the PostgreSQL `unaccent` extension (`prisma/migrations/20261116120000_phase12_search_unaccent`, pinned to `public`) and combines those IDs with the existing `OR`; codes and room numbers stay on `contains`. No parallel search endpoint: the existing list keeps tenant, permissions, pagination and overlap filters.
+- [x] **Room rack v2.** `/inventory/rooms` returns derived occupancy, current stay, next arrival, active block, `updatedBy` and lease, plus `summary`, `facets` and combinable server-side filters (`roomTypeId`, `status`, `housekeepingState`, `operationalState`, `occupancy`, `floor`, `building`, `minCapacity`, `search`, `cursor`). Contextual drawer with housekeeping, block, lease and history actions (ADR-050/ADR-051).
+- [x] **Lease de selección (RSV-004).** Redis `SET NX PX` with configurable TTL (1–600 s), Lua renew/release, forced release and transfer, all audited; PostgreSQL exclusion constraints still decide the commit (ADR-051/ADR-052).
+- [x] **Rack en tiempo real.** In-process SSE (`GET /inventory/rooms/updates`) published after commit, with a 15 s poll and exponential-backoff reconnect as fallback; no broker yet (ADR-053).
+- [x] **Catálogo de consumos.** `FolioProduct` master data per property (SKU, category, unit, decimal price, active flag) with `catalog.product_created`/`updated` audit (`prisma/migrations/20261117120000_phase4_catalog_consumptions`); `POST /folios/:id/charges` resolves the price server-side and `FolioLine` snapshots `unitAmount`, `quantity`, `unit` and `source` (ADR-054). UI at `/catalog`.
+- [x] **Checkout que cierra cuenta y estancia en una transacción**, with `checkout-readiness`, `folio_balance_outstanding` and audited override (ADR-055); guided room move with shared predicates and a candidates read model (ADR-056); single `ActionDialog` with tones for operational decisions (ADR-057).
+- [x] **i18n parts 1–4.** Typed `es`/`pt-BR` dictionaries without new dependencies, locale resolved from the `nova_locale` cookie in the root layout: shared layer and entry routes (part 1), `inventory/room-types` (part 2), `/reservations` and its party/instructions/documents panels (part 3), `/front-office` including the check-in wizard and the five operation dialogs (part 4). ADR-058/ADR-059.
+- [x] **Deuda de mantenibilidad del plan v5 que cayó en esta etapa.** `Clock` injectable and `new Date()` reduced to 6 occurrences in 5 files; `front-office.service.ts` split to 136 lines; `/front-office` and `/reservations` pages reduced to 12 lines with `_components/`, `_hooks/` and `_lib/`.
+- [ ] i18n part 5: `dashboard`, `reports`, `imports`, `audit`, `admin`, `account`, `settings`, `catalog`, `cashier`, `calendar`, `guests`, `folios`, `folios/[id]`, `inventory/rooms` and `pilot`; then switch `DEFAULT_LOCALE` to `pt-BR`.
+- [ ] Dark mode palette, contrast review and the `subtle` badge variant.
+- [ ] FNRH adapter, credentials and homologation; payment provider/preauthorization; RLS (ADR-060) and LGPD retention (ADR-061); offline outbox (ADR-063).
+
+Evidence and per-phase acceptance tables: `docs/archive/v4/FASE_1_REPORT.md` … `FASE_7_REPORT.md`. Open risks that must be closed before a pilot sign-off: `unaccent` requires permission to create the extension in `public`; the SSE stream is per API instance and converges through polling; every item above was verified by typecheck, lint, unit tests and build, but not by e2e or in a browser in this environment.
+
 ## Indicative timeline
 
 For one experienced full-stack developer working full-time, a usable pilot-quality Front Office core may take roughly 20–30+ weeks depending on discovery, test depth, design and integration complexity. A broader hardened commercial release may take 30–40+ weeks. Treat these as planning ranges, not promises. Validate with a hotel pilot before fixing a commercial date.
