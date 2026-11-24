@@ -3,20 +3,23 @@
 import { Box, Stack, Text } from '@chakra-ui/react';
 import { QueryFeedback } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { RoomDetail } from '../_hooks/use-room-detail';
 
 export function RoomHistorySection({ detail }: { detail: RoomDetail['detail'] }) {
+  const { t } = useI18n();
+
   return (
     <Box>
       <Text fontWeight="semibold" mb={2}>
-        Historial
+        {t('rooms.history.title')}
       </Text>
       <QueryFeedback
         loading={detail.loading}
         error={detail.error}
         onRetry={detail.reload}
         isEmpty={(detail.data?.history.length ?? 0) === 0}
-        emptyText="Sin historial."
+        emptyText={t('rooms.history.empty')}
       >
         <Stack spacing={2} maxH="320px" overflowY="auto">
           {detail.data?.history.map((entry) => (

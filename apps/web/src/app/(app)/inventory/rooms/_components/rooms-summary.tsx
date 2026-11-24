@@ -1,18 +1,24 @@
 'use client';
 
 import { Box, SimpleGrid, Text } from '@chakra-ui/react';
+import { useI18n } from '@/lib/i18n';
 import type { RoomListSummary } from '@/lib/types';
 
 export function RoomsSummary({ summary }: { summary: RoomListSummary | undefined }) {
+  const { t } = useI18n();
   const summaryCards = [
-    { label: 'Libres', value: summary?.vacant ?? 0, color: 'mint.600' },
-    { label: 'Ocupadas', value: summary?.occupied ?? 0, color: 'brand.600' },
-    { label: 'Limpias', value: summary?.clean ?? 0, color: 'sky.600' },
-    { label: 'Sucias', value: summary?.dirty ?? 0, color: 'danger.500' },
-    { label: 'En limpieza', value: summary?.cleaning ?? 0, color: 'warning.500' },
-    { label: 'Inspeccionadas', value: summary?.inspected ?? 0, color: 'mint.600' },
-    { label: 'Fuera de orden', value: summary?.outOfOrder ?? 0, color: 'danger.500' },
-    { label: 'Fuera de servicio', value: summary?.outOfService ?? 0, color: 'warning.500' },
+    { label: t('rooms.summary.vacant'), value: summary?.vacant ?? 0, color: 'mint.600' },
+    { label: t('rooms.summary.occupied'), value: summary?.occupied ?? 0, color: 'brand.600' },
+    { label: t('rooms.summary.clean'), value: summary?.clean ?? 0, color: 'sky.600' },
+    { label: t('rooms.summary.dirty'), value: summary?.dirty ?? 0, color: 'danger.500' },
+    { label: t('rooms.summary.cleaning'), value: summary?.cleaning ?? 0, color: 'warning.500' },
+    { label: t('rooms.summary.inspected'), value: summary?.inspected ?? 0, color: 'mint.600' },
+    { label: t('rooms.summary.outOfOrder'), value: summary?.outOfOrder ?? 0, color: 'danger.500' },
+    {
+      label: t('rooms.summary.outOfService'),
+      value: summary?.outOfService ?? 0,
+      color: 'warning.500',
+    },
   ];
 
   return (
@@ -30,8 +36,7 @@ export function RoomsSummary({ summary }: { summary: RoomListSummary | undefined
         ))}
       </SimpleGrid>
       <Text fontSize="xs" color="textSecondary" mb={3}>
-        {summary?.totalRooms ?? 0} habitaciones activas en la propiedad. Los contadores no dependen
-        de los filtros.
+        {t('rooms.summary.note', { count: summary?.totalRooms ?? 0 })}
       </Text>
     </>
   );

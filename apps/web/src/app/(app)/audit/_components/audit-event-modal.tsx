@@ -12,6 +12,7 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { formatDateTime, formatJson } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { AuditEvent } from '@/lib/types';
 
 export function AuditEventModal({
@@ -23,11 +24,13 @@ export function AuditEventModal({
   onClose: () => void;
   event: AuditEvent | null;
 }) {
+  const { t } = useI18n();
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <ModalOverlay />
       <ModalContent>
-        <ModalHeader fontSize="md">Evento de auditoría</ModalHeader>
+        <ModalHeader fontSize="md">{t('audit.modal.title')}</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
           {event !== null && (
@@ -39,10 +42,13 @@ export function AuditEventModal({
                 {event.entityType} · {event.entityId}
               </Text>
               <Text fontSize="xs" color="textSecondary">
-                {formatDateTime(event.occurredAt)} · actor {event.actorUserId ?? 'sistema'} ·
-                correlación {event.correlationId ?? '—'}
+                {formatDateTime(event.occurredAt)} ·{' '}
+                {t('audit.modal.actor', { actor: event.actorUserId ?? t('audit.system') })} ·{' '}
+                {t('audit.modal.correlation', { correlation: event.correlationId ?? '—' })}
               </Text>
-              {event.reason !== null && <Text fontSize="sm">Motivo: {event.reason}</Text>}
+              {event.reason !== null && (
+                <Text fontSize="sm">{t('audit.modal.reason', { reason: event.reason })}</Text>
+              )}
               <Code display="block" whiteSpace="pre-wrap" p={3} borderRadius="md" fontSize="xs">
                 {formatJson(event.metadata)}
               </Code>

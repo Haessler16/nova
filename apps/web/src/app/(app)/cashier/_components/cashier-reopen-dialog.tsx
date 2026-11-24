@@ -4,30 +4,33 @@ import { Stack, Text, Textarea } from '@chakra-ui/react';
 import { ActionDialog } from '@/components/action-dialog';
 import { Field } from '@/components/ui';
 import { formatCalendarDate } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { CashierReopen } from '../_hooks/use-cashier-reopen';
 
 export function CashierReopenDialog({ reopen }: { reopen: CashierReopen }) {
+  const { t } = useI18n();
+
   return (
     <ActionDialog
       isOpen={reopen.modal.isOpen}
       onClose={reopen.close}
       tone="critical"
-      title="Reabrir día operativo"
+      title={t('cashier.reopen.title')}
       summary={
         reopen.target === null
-          ? 'Seleccioná un cierre para ver el resumen aquí.'
-          : `Reabrir el cierre de ${formatCalendarDate(reopen.target.operationalDate)} vuelve a dejar el día
-            operativo pendiente de noche. La acción queda auditada con el motivo y no borra el
-            registro anterior.`
+          ? t('cashier.reopen.summaryEmpty')
+          : t('cashier.reopen.summary', {
+              date: formatCalendarDate(reopen.target.operationalDate),
+            })
       }
-      confirmLabel="Reabrir día"
+      confirmLabel={t('cashier.reopen.confirm')}
       hasUnsavedChanges={reopen.reason.trim().length > 0}
       isLoading={reopen.saving}
       error={reopen.apiError ?? undefined}
       onConfirm={() => void reopen.submit()}
     >
       <Stack spacing={3}>
-        <Field label="Motivo" isRequired error={reopen.errors['reopen.reason']}>
+        <Field label={t('cashier.reopen.reason')} isRequired error={reopen.errors['reopen.reason']}>
           <Textarea
             value={reopen.reason}
             onChange={(event) => reopen.setReason(event.target.value)}
@@ -37,8 +40,7 @@ export function CashierReopenDialog({ reopen }: { reopen: CashierReopen }) {
           />
         </Field>
         <Text fontSize="xs" color="textSecondary">
-          Reabrir un día ya cerrado solo debe usarse para corregir errores de cierre; el motivo
-          queda registrado en la auditoría.
+          {t('cashier.reopen.hint')}
         </Text>
       </Stack>
     </ActionDialog>

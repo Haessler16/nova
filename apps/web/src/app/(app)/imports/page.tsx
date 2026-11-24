@@ -4,22 +4,24 @@ import { Alert, AlertDescription, AlertIcon, Button } from '@chakra-ui/react';
 import NextLink from 'next/link';
 import { PropertyGate } from '@/components/app-shell';
 import { PageHeader } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import { ImportEditorCard } from './_components/import-editor-card';
 import { ImportPreviewCard } from './_components/import-preview-card';
 import { ImportResultCard } from './_components/import-result-card';
 import { useImportDraft } from './_hooks/use-import-draft';
 
 function ImportsContent() {
+  const { t } = useI18n();
   const draft = useImportDraft();
 
   return (
     <>
       <PageHeader
-        title="Importaciones"
-        description="Carga de huéspedes por CSV con vista previa y confirmación explícita. Nada se guarda hasta confirmar; la importación es todo o nada y la clave de idempotencia evita duplicados al reintentar."
+        title={t('imports.title')}
+        description={t('imports.description')}
         actions={
           <Button as={NextLink} href="/guests" size="sm" variant="outline">
-            Ver huéspedes
+            {t('imports.viewGuests')}
           </Button>
         }
       />
@@ -27,10 +29,7 @@ function ImportsContent() {
       {!draft.online && (
         <Alert status="warning" mb={4} borderRadius="md">
           <AlertIcon />
-          <AlertDescription>
-            Sin conexión: podés preparar el archivo, pero la vista previa y la confirmación se
-            habilitan al volver a estar en línea. No se encolan escrituras.
-          </AlertDescription>
+          <AlertDescription>{t('imports.offline')}</AlertDescription>
         </Alert>
       )}
 

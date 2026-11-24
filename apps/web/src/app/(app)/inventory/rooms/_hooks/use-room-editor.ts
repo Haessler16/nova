@@ -4,6 +4,7 @@ import { useDisclosure, useToast } from '@chakra-ui/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { Room, RoomType } from '@/lib/types';
 import type { FieldErrors } from '@/lib/validation';
 import { hasErrors, validateRoom } from '@/lib/validation';
@@ -11,6 +12,7 @@ import {
   EMPTY_ROOM_FORM,
   createRoomBody,
   roomFormFrom,
+  roomValidationOptions,
   updateRoomBody,
   type RoomForm,
 } from '../_lib/rooms';
@@ -29,6 +31,7 @@ export function useRoomEditor({
   bumpDetail: () => void;
 }) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
   const createModal = useDisclosure();
   const editModal = useDisclosure();
@@ -59,7 +62,7 @@ export function useRoomEditor({
 
   async function handleCreate(event: FormEvent): Promise<void> {
     event.preventDefault();
-    const nextErrors = validateRoom(createForm);
+    const nextErrors = validateRoom(createForm, roomValidationOptions(t));
     setCreateErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -71,7 +74,7 @@ export function useRoomEditor({
         tenant,
         body: createRoomBody(createForm),
       });
-      toast({ title: 'Habitación creada', status: 'success' });
+      toast({ title: t('rooms.editor.toastCreated'), status: 'success' });
       createModal.onClose();
       setCreateForm({
         ...EMPTY_ROOM_FORM,
@@ -80,7 +83,7 @@ export function useRoomEditor({
       reload();
     } catch (cause) {
       toast({
-        title: 'No se pudo crear la habitación',
+        title: t('rooms.editor.toastCreateError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 7000,
@@ -95,7 +98,7 @@ export function useRoomEditor({
     if (selectedRoomId === null) {
       return;
     }
-    const nextErrors = validateRoom(editForm);
+    const nextErrors = validateRoom(editForm, roomValidationOptions(t));
     setEditErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -107,13 +110,13 @@ export function useRoomEditor({
         tenant,
         body: updateRoomBody(editForm),
       });
-      toast({ title: 'Habitación actualizada', status: 'success' });
+      toast({ title: t('rooms.editor.toastUpdated'), status: 'success' });
       editModal.onClose();
       reload();
       bumpDetail();
     } catch (cause) {
       toast({
-        title: 'No se pudo actualizar',
+        title: t('rooms.editor.toastUpdateError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 7000,

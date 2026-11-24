@@ -4,17 +4,15 @@ import { useToast } from '@chakra-ui/react';
 import { useEffect, useState } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { CashSession } from '@/lib/types';
 import type { FieldErrors } from '@/lib/validation';
 import { hasErrors } from '@/lib/validation';
-import {
-  EMPTY_CLOSE_FORM,
-  closeFormErrors,
-  type CloseCashForm,
-} from '../_lib/cashier-forms';
+import { EMPTY_CLOSE_FORM, closeFormErrors, type CloseCashForm } from '../_lib/cashier-forms';
 
 export function useCashierClose(session: CashSession | null, onClosed: () => void) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
 
   const [saving, setSaving] = useState(false);
@@ -38,7 +36,7 @@ export function useCashierClose(session: CashSession | null, onClosed: () => voi
     if (session === null) {
       return;
     }
-    const nextErrors = closeFormErrors(form);
+    const nextErrors = closeFormErrors(form, t);
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -58,14 +56,14 @@ export function useCashierClose(session: CashSession | null, onClosed: () => voi
           idempotencyKey: `cash-close-ui-${crypto.randomUUID()}`,
         },
       });
-      toast({ title: 'Caja cerrada', status: 'success' });
+      toast({ title: t('cashier.close.toast.ok'), status: 'success' });
       onClosed();
       setForm({ closingAmount: '', varianceReason: '', notes: '' });
     } catch (cause) {
       const message = errorMessage(cause);
       setApiError(message);
       toast({
-        title: 'No se pudo cerrar la caja',
+        title: t('cashier.close.toast.error'),
         description: message,
         status: 'error',
       });

@@ -1,7 +1,8 @@
 'use client';
 
 import { Box, Button, HStack, Input, Text } from '@chakra-ui/react';
-import { HOUSEKEEPING_LABELS, HOUSEKEEPING_TRANSITIONS } from '@/lib/format';
+import { HOUSEKEEPING_TRANSITIONS, housekeepingLabel } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { Room } from '@/lib/types';
 import type { RoomHousekeeping } from '../_hooks/use-room-housekeeping';
 
@@ -12,17 +13,18 @@ export function RoomHousekeepingSection({
   room: Room;
   housekeeping: RoomHousekeeping;
 }) {
+  const { t, locale } = useI18n();
   const nextHousekeeping = HOUSEKEEPING_TRANSITIONS[room.housekeepingState];
 
   return (
     <Box>
       <Text fontWeight="semibold" mb={2}>
-        Transición de housekeeping
+        {t('rooms.housekeeping.title')}
       </Text>
       <HStack mb={2}>
         <Input
           size="sm"
-          placeholder="Motivo (opcional)"
+          placeholder={t('rooms.housekeeping.reasonPlaceholder')}
           value={housekeeping.reason}
           onChange={(event) => housekeeping.setReason(event.target.value)}
         />
@@ -30,7 +32,7 @@ export function RoomHousekeepingSection({
       <HStack wrap="wrap">
         {nextHousekeeping.length === 0 && (
           <Text fontSize="sm" color="textSecondary">
-            Sin transiciones disponibles.
+            {t('rooms.housekeeping.none')}
           </Text>
         )}
         {nextHousekeeping.map((state) => (
@@ -41,7 +43,7 @@ export function RoomHousekeepingSection({
             isLoading={housekeeping.transitioning}
             onClick={() => void housekeeping.transition(state)}
           >
-            → {HOUSEKEEPING_LABELS[state]}
+            → {housekeepingLabel(locale, state)}
           </Button>
         ))}
       </HStack>

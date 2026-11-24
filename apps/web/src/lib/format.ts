@@ -87,6 +87,20 @@ export const FOLIO_LINE_SOURCE_LABELS: Record<FolioLineSource, string> = {
   INTEGRATION: 'Integración',
 };
 
+const FOLIO_LINE_SOURCE_LABEL_KEYS: Record<FolioLineSource, TranslationKey> = {
+  MANUAL: 'folioLineSource.manual',
+  MINIBAR: 'folioLineSource.minibar',
+  FRONT_DESK: 'folioLineSource.frontDesk',
+  PARKING: 'folioLineSource.parking',
+  SERVICE: 'folioLineSource.service',
+  INTEGRATION: 'folioLineSource.integration',
+};
+
+/** Localized origin of a folio line. */
+export function folioLineSourceLabel(locale: Locale, source: FolioLineSource): string {
+  return translate(locale, FOLIO_LINE_SOURCE_LABEL_KEYS[source]);
+}
+
 export const PRODUCT_CATEGORY_LABELS: Record<FolioProductCategory, string> = {
   MINIBAR: 'Minibar',
   FOOD_BEVERAGE: 'Alimentos y bebidas',
@@ -95,6 +109,20 @@ export const PRODUCT_CATEGORY_LABELS: Record<FolioProductCategory, string> = {
   SERVICE: 'Servicios',
   OTHER: 'Otros',
 };
+
+const PRODUCT_CATEGORY_LABEL_KEYS: Record<FolioProductCategory, TranslationKey> = {
+  MINIBAR: 'productCategory.minibar',
+  FOOD_BEVERAGE: 'productCategory.foodBeverage',
+  PARKING: 'productCategory.parking',
+  LAUNDRY: 'productCategory.laundry',
+  SERVICE: 'productCategory.service',
+  OTHER: 'productCategory.other',
+};
+
+/** Localized catalog category. */
+export function productCategoryLabel(locale: Locale, category: FolioProductCategory): string {
+  return translate(locale, PRODUCT_CATEGORY_LABEL_KEYS[category]);
+}
 
 export const HOUSEKEEPING_LABELS: Record<HousekeepingState, string> = {
   DIRTY: 'Sucia',
@@ -175,6 +203,27 @@ export const BLOCK_STATUS_LABELS: Record<RoomBlockStatus, string> = {
   RELEASED: 'Liberado',
   EXPIRED: 'Expirado',
 };
+
+const BLOCK_TYPE_LABEL_KEYS: Record<RoomBlockType, TranslationKey> = {
+  OUT_OF_ORDER: 'blockType.outOfOrder',
+  OUT_OF_SERVICE: 'blockType.outOfService',
+};
+
+/** Localized room-block type. */
+export function blockTypeLabel(locale: Locale, type: RoomBlockType): string {
+  return translate(locale, BLOCK_TYPE_LABEL_KEYS[type]);
+}
+
+const BLOCK_STATUS_LABEL_KEYS: Record<RoomBlockStatus, TranslationKey> = {
+  ACTIVE: 'blockStatus.active',
+  RELEASED: 'blockStatus.released',
+  EXPIRED: 'blockStatus.expired',
+};
+
+/** Localized room-block status. */
+export function blockStatusLabel(locale: Locale, status: RoomBlockStatus): string {
+  return translate(locale, BLOCK_STATUS_LABEL_KEYS[status]);
+}
 
 const RESERVATION_STATUS_LABEL_KEYS: Record<ReservationStatus, TranslationKey> = {
   CONFIRMED: 'reservation.status.confirmed',
@@ -443,6 +492,17 @@ export const FOLIO_STATUS_LABELS: Record<FolioStatus, string> = {
   CANCELLED: 'Cancelado',
 };
 
+const FOLIO_STATUS_LABEL_KEYS: Record<FolioStatus, TranslationKey> = {
+  OPEN: 'folioStatus.open',
+  SETTLED: 'folioStatus.settled',
+  CANCELLED: 'folioStatus.cancelled',
+};
+
+/** Localized folio status. */
+export function folioStatusLabel(locale: Locale, status: FolioStatus): string {
+  return translate(locale, FOLIO_STATUS_LABEL_KEYS[status]);
+}
+
 export const FOLIO_STATUS_COLORS: Record<FolioStatus, string> = {
   OPEN: 'sky',
   SETTLED: 'mint',
@@ -456,6 +516,18 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   REFUNDED: 'Reintegrado',
 };
 
+const PAYMENT_STATUS_LABEL_KEYS: Record<PaymentStatus, TranslationKey> = {
+  PENDING: 'paymentStatus.pending',
+  COMPLETED: 'paymentStatus.completed',
+  FAILED: 'paymentStatus.failed',
+  REFUNDED: 'paymentStatus.refunded',
+};
+
+/** Localized payment status. */
+export function paymentStatusLabel(locale: Locale, status: PaymentStatus): string {
+  return translate(locale, PAYMENT_STATUS_LABEL_KEYS[status]);
+}
+
 export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
   PENDING: 'warning',
   COMPLETED: 'mint',
@@ -468,6 +540,16 @@ export const CASH_SESSION_STATUS_LABELS: Record<CashSessionStatus, string> = {
   CLOSED: 'Cerrada',
 };
 
+const CASH_SESSION_STATUS_LABEL_KEYS: Record<CashSessionStatus, TranslationKey> = {
+  OPEN: 'cashSessionStatus.open',
+  CLOSED: 'cashSessionStatus.closed',
+};
+
+/** Localized cash-session status. */
+export function cashSessionStatusLabel(locale: Locale, status: CashSessionStatus): string {
+  return translate(locale, CASH_SESSION_STATUS_LABEL_KEYS[status]);
+}
+
 export const CASH_SESSION_STATUS_COLORS: Record<CashSessionStatus, string> = {
   OPEN: 'sky',
   CLOSED: 'mint',
@@ -479,6 +561,31 @@ export const CASH_MOVEMENT_LABELS: Record<CashMovementType, string> = {
   REFUND: 'Reintegro',
   ADJUSTMENT: 'Ajuste (+)',
 };
+
+const CASH_MOVEMENT_LABEL_KEYS: Record<CashMovementType, TranslationKey> = {
+  CASH_IN: 'cashMovement.cashIn',
+  CASH_OUT: 'cashMovement.cashOut',
+  REFUND: 'cashMovement.refund',
+  ADJUSTMENT: 'cashMovement.adjustment',
+};
+
+/** Localized cash-movement type. */
+export function cashMovementLabel(locale: Locale, type: CashMovementType): string {
+  return translate(locale, CASH_MOVEMENT_LABEL_KEYS[type]);
+}
+
+const OPERATIONAL_CLOSE_LABEL_KEYS: Record<OperationalCloseStatus, TranslationKey> = {
+  CLOSED: 'operationalClose.closed',
+  REOPENED: 'operationalClose.reopened',
+};
+
+/** Localized operational-day close status. */
+export function operationalCloseStatusLabel(
+  locale: Locale,
+  status: OperationalCloseStatus,
+): string {
+  return translate(locale, OPERATIONAL_CLOSE_LABEL_KEYS[status]);
+}
 
 export const OPERATIONAL_CLOSE_LABELS: Record<OperationalCloseStatus, string> = {
   CLOSED: 'Día cerrado',
@@ -567,6 +674,20 @@ const INSTRUCTION_PRIORITY_LABEL_KEYS: Record<InstructionPriority, TranslationKe
   HIGH: 'instruction.priority.high',
   CRITICAL: 'instruction.priority.critical',
 };
+
+const GUEST_NOTE_PURPOSE_LABEL_KEYS: Record<string, TranslationKey> = {
+  PREFERENCE: 'guestNotes.purpose.preference',
+  ALERT: 'guestNotes.purpose.alert',
+  ACCESSIBILITY: 'guestNotes.purpose.accessibility',
+  BILLING: 'guestNotes.purpose.billing',
+  OTHER: 'guestNotes.purpose.other',
+};
+
+/** Localized guest-note purpose; unknown values fall back to the raw value. */
+export function guestNotePurposeLabel(locale: Locale, purpose: string): string {
+  const key = GUEST_NOTE_PURPOSE_LABEL_KEYS[purpose];
+  return key === undefined ? purpose : translate(locale, key);
+}
 
 export const INSTRUCTION_PRIORITY_LABELS: Record<InstructionPriority, string> = {
   LOW: translate('es', 'instruction.priority.low'),

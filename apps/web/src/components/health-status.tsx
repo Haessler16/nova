@@ -2,6 +2,7 @@
 
 import { Badge, Box, Button, Code, HStack, Stack, Text } from '@chakra-ui/react';
 import { useCallback, useEffect, useState } from 'react';
+import { useI18n } from '@/lib/i18n';
 import { SectionCard } from './ui';
 
 interface ReadinessResponse {
@@ -21,6 +22,7 @@ type State =
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 function DependencyBadge({ label, value }: { label: string; value: 'up' | 'down' | undefined }) {
+  const { t } = useI18n();
   const ok = value === 'up';
   return (
     <HStack
@@ -37,13 +39,14 @@ function DependencyBadge({ label, value }: { label: string; value: 'up' | 'down'
         {label}
       </Text>
       <Badge colorScheme={ok ? 'mint' : 'danger'} ml="auto">
-        {value ?? 'unknown'}
+        {value ?? t('healthStatus.unknown')}
       </Badge>
     </HStack>
   );
 }
 
 export function HealthStatus() {
+  const { t, intlLocale } = useI18n();
   const [state, setState] = useState<State>({ kind: 'loading' });
 
   const load = useCallback(async () => {
@@ -59,16 +62,16 @@ export function HealthStatus() {
       } else {
         setState({
           kind: 'unavailable',
-          message: `API respondió ${response.status}. Revisá PostgreSQL y Redis.`,
+          message: t('healthStatus.httpError', { status: response.status }),
         });
       }
     } catch {
       setState({
         kind: 'unavailable',
-        message: `No se pudo contactar la API en ${API_URL}.`,
+        message: t('healthStatus.unreachable', { url: API_URL }),
       });
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -79,29 +82,31 @@ export function HealthStatus() {
       <HStack justify="space-between" align="center" mb={4} gap={3} wrap="wrap">
         <Box>
           <Text fontWeight="semibold" fontSize="sm">
-            Dependencias de la plataforma
+            {t('healthStatus.title')}
           </Text>
           <Text fontSize="xs" color="textSecondary">
-            Readiness de API, PostgreSQL y Redis.
+            {t('healthStatus.subtitle')}
           </Text>
         </Box>
         <HStack spacing={2}>
-          {state.kind === 'ready' && <Badge colorScheme="mint">API ready</Badge>}
-          {state.kind === 'unavailable' && <Badge colorScheme="danger">API not ready</Badge>}
+          {state.kind === 'ready' && <Badge colorScheme="mint">{t('healthStatus.ready')}</Badge>}
+          {state.kind === 'unavailable' && (
+            <Badge colorScheme="danger">{t('healthStatus.notReady')}</Badge>
+          )}
           <Button
             size="xs"
             variant="outline"
             onClick={() => void load()}
             isLoading={state.kind === 'loading'}
           >
-            Reintentar
+            {t('healthStatus.retry')}
           </Button>
         </HStack>
       </HStack>
 
       {state.kind === 'loading' && (
         <Text fontSize="sm" color="textSecondary">
-          Consultando readiness…
+          {t('healthStatus.loading')}
         </Text>
       )}
 
@@ -109,7 +114,9 @@ export function HealthStatus() {
         <Stack spacing={2}>
           <SimpleDependencies checks={state.data.checks} />
           <Text fontSize="xs" color="textSecondary">
-            Última verificación: {new Date(state.data.timestamp).toLocaleString('es-AR')}
+            {t('healthStatus.lastCheck', {
+              date: new Date(state.data.timestamp).toLocaleString(intlLocale),
+            })}
           </Text>
         </Stack>
       )}
@@ -118,7 +125,7 @@ export function HealthStatus() {
         <Stack spacing={2}>
           <Text fontSize="sm">{state.message}</Text>
           <Text fontSize="xs" color="textSecondary">
-            Configuración esperada: <Code>{API_URL}</Code>
+            {t('healthStatus.expectedConfig')} <Code>{API_URL}</Code>
           </Text>
         </Stack>
       )}

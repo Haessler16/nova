@@ -15,11 +15,8 @@ import {
   Tr,
 } from '@chakra-ui/react';
 import { QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
-import {
-  RECORD_STATUS_COLORS,
-  RECORD_STATUS_LABELS,
-  formatDateTime,
-} from '@/lib/format';
+import { RECORD_STATUS_COLORS, formatDateTime, recordStatusLabel } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { Membership } from '@/lib/types';
 import type { AdminData } from '../_hooks/use-admin-data';
 
@@ -36,19 +33,20 @@ export function AdminMembersPanel({
   onProperties: (member: Membership) => void;
   onSessions: (member: Membership) => void;
 }) {
+  const { t, locale } = useI18n();
   const { memberships } = data;
 
   return (
     <TabPanel px={0}>
       <SectionCard>
         <HStack justify="space-between" mb={4}>
-          <Text fontWeight="semibold">Membresías de la organización</Text>
+          <Text fontWeight="semibold">{t('admin.members.title')}</Text>
           <HStack>
             <Button size="sm" variant="ghost" onClick={memberships.reload}>
-              Actualizar
+              {t('admin.members.refresh')}
             </Button>
             <Button size="sm" colorScheme="brand" onClick={onCreate}>
-              Nuevo miembro
+              {t('admin.members.create')}
             </Button>
           </HStack>
         </HStack>
@@ -57,17 +55,17 @@ export function AdminMembersPanel({
           error={memberships.error}
           onRetry={memberships.reload}
           isEmpty={(memberships.data?.items.length ?? 0) === 0}
-          emptyText="La organización no tiene membresías."
+          emptyText={t('admin.members.empty')}
         >
           <TableContainer>
             <Table size="sm">
               <Thead>
                 <Tr>
-                  <Th>Usuario</Th>
-                  <Th>Rol de organización</Th>
-                  <Th>Propiedades</Th>
-                  <Th>Estado</Th>
-                  <Th>Alta</Th>
+                  <Th>{t('admin.members.user')}</Th>
+                  <Th>{t('admin.members.orgRole')}</Th>
+                  <Th>{t('admin.members.properties')}</Th>
+                  <Th>{t('admin.members.status')}</Th>
+                  <Th>{t('admin.members.createdAt')}</Th>
                   <Th />
                 </Tr>
               </Thead>
@@ -80,12 +78,12 @@ export function AdminMembersPanel({
                         {member.user.email}
                       </Text>
                     </Td>
-                    <Td>{member.role?.name ?? 'Sin rol'}</Td>
+                    <Td>{member.role?.name ?? t('admin.members.noRole')}</Td>
                     <Td>
                       <HStack spacing={1} wrap="wrap">
                         {member.propertyMemberships.length === 0 && (
                           <Text fontSize="xs" color="gray.500">
-                            Sin asignaciones
+                            {t('admin.members.noAssignments')}
                           </Text>
                         )}
                         {member.propertyMemberships.map((assignment) => (
@@ -98,7 +96,7 @@ export function AdminMembersPanel({
                     <Td>
                       <StatusBadge
                         color={RECORD_STATUS_COLORS[member.status] ?? 'gray'}
-                        label={RECORD_STATUS_LABELS[member.status] ?? member.status}
+                        label={recordStatusLabel(locale, member.status)}
                       />
                     </Td>
                     <Td>
@@ -109,13 +107,13 @@ export function AdminMembersPanel({
                     <Td>
                       <HStack spacing={1} justify="flex-end">
                         <Button size="xs" variant="ghost" onClick={() => onEdit(member)}>
-                          Editar
+                          {t('admin.members.edit')}
                         </Button>
                         <Button size="xs" variant="ghost" onClick={() => onProperties(member)}>
-                          Propiedades
+                          {t('admin.members.propertiesAction')}
                         </Button>
                         <Button size="xs" variant="ghost" onClick={() => onSessions(member)}>
-                          Sesiones
+                          {t('admin.members.sessionsAction')}
                         </Button>
                       </HStack>
                     </Td>

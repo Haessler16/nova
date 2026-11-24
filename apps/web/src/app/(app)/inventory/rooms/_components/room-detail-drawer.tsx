@@ -11,6 +11,7 @@ import {
   Stack,
   Text,
 } from '@chakra-ui/react';
+import { useI18n } from '@/lib/i18n';
 import type { Room } from '@/lib/types';
 import type { RoomBlocks } from '../_hooks/use-room-blocks';
 import type { RoomDetail } from '../_hooks/use-room-detail';
@@ -45,16 +46,18 @@ export function RoomDetailDrawer({
   leases: RoomLeases;
   actorId: string | undefined;
 }) {
+  const { t } = useI18n();
+
   return (
     <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="lg">
       <DrawerOverlay />
       <DrawerContent>
         <DrawerCloseButton />
         <DrawerHeader>
-          Habitación {room?.number}
+          {t('rooms.drawer.title', { number: room?.number ?? '' })}
           {room !== null && (
             <Text fontSize="sm" fontWeight="normal" color="textSecondary">
-              {room.roomType.name} · {room.attributes.join(' · ') || 'sin atributos'}
+              {room.roomType.name} · {room.attributes.join(' · ') || t('rooms.drawer.noAttributes')}
             </Text>
           )}
         </DrawerHeader>

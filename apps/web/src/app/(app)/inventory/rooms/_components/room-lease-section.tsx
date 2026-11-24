@@ -2,6 +2,7 @@
 
 import { Box, Button, HStack, Input, Stack, Text } from '@chakra-ui/react';
 import { formatDateTime } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { Room } from '@/lib/types';
 import type { RoomLeases } from '../_hooks/use-room-leases';
 
@@ -14,16 +15,20 @@ export function RoomLeaseSection({
   actorId: string | undefined;
   leases: RoomLeases;
 }) {
+  const { t } = useI18n();
+
   return (
     <Box>
       <Text fontWeight="semibold" mb={2}>
-        Selección temporal
+        {t('rooms.lease.title')}
       </Text>
       {room.lease !== null ? (
         <Stack spacing={2}>
           <Text fontSize="sm">
-            En selección por <strong>{room.lease.ownerDisplayName}</strong> hasta{' '}
-            {formatDateTime(room.lease.expiresAt)}.
+            {t('rooms.lease.selectedBy', {
+              name: room.lease.ownerDisplayName,
+              date: formatDateTime(room.lease.expiresAt),
+            })}
           </Text>
           {room.lease.ownerUserId === actorId ? (
             <HStack>
@@ -33,7 +38,7 @@ export function RoomLeaseSection({
                 isLoading={leases.busy}
                 onClick={() => void leases.renew()}
               >
-                Renovar
+                {t('rooms.lease.renew')}
               </Button>
               <Button
                 size="sm"
@@ -41,7 +46,7 @@ export function RoomLeaseSection({
                 isLoading={leases.busy}
                 onClick={() => void leases.release()}
               >
-                Liberar
+                {t('rooms.lease.release')}
               </Button>
             </HStack>
           ) : (
@@ -50,7 +55,7 @@ export function RoomLeaseSection({
                 <>
                   <Input
                     size="sm"
-                    placeholder="Motivo de la liberación"
+                    placeholder={t('rooms.lease.forceReasonPlaceholder')}
                     value={leases.forceReason}
                     onChange={(event) => leases.setForceReason(event.target.value)}
                   />
@@ -62,7 +67,7 @@ export function RoomLeaseSection({
                       isDisabled={leases.forceReason.trim() === ''}
                       onClick={() => void leases.forceRelease()}
                     >
-                      Confirmar liberación
+                      {t('rooms.lease.confirmForce')}
                     </Button>
                     <Button
                       size="sm"
@@ -70,7 +75,7 @@ export function RoomLeaseSection({
                       isDisabled={leases.busy}
                       onClick={leases.cancelForce}
                     >
-                      Cancelar
+                      {t('rooms.lease.cancel')}
                     </Button>
                   </HStack>
                 </>
@@ -82,7 +87,7 @@ export function RoomLeaseSection({
                   isLoading={leases.busy}
                   onClick={() => leases.setForceOpen(true)}
                 >
-                  Liberar selección forzada
+                  {t('rooms.lease.forceRelease')}
                 </Button>
               )}
             </Stack>
@@ -91,8 +96,7 @@ export function RoomLeaseSection({
       ) : (
         <Stack spacing={2}>
           <Text fontSize="sm" color="textSecondary">
-            Nadie está seleccionando esta habitación. La selección expira sola y no reserva la
-            habitación.
+            {t('rooms.lease.free')}
           </Text>
           <Button
             size="sm"
@@ -101,7 +105,7 @@ export function RoomLeaseSection({
             isLoading={leases.busy}
             onClick={() => void leases.acquire()}
           >
-            Tomar selección
+            {t('rooms.lease.acquire')}
           </Button>
         </Stack>
       )}

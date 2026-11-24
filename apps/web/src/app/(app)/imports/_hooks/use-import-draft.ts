@@ -4,12 +4,14 @@ import { useToast } from '@chakra-ui/react';
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { GuestImportPreview, GuestImportResult } from '@/lib/guest-import-types';
 import { useImportDraftStore } from '@/stores/import-draft';
 import { useOnlineStatus } from './use-online-status';
 
 export function useImportDraft() {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
   const tenantKey = `${tenant.organizationId}:${tenant.propertyId}`;
   const draftTenantKey = useImportDraftStore((state) => state.tenantKey);
@@ -41,7 +43,7 @@ export function useImportDraft() {
       return;
     }
     if (file.size > 512 * 1024) {
-      toast({ title: 'El archivo supera 512 KB', status: 'error' });
+      toast({ title: t('imports.toast.fileTooLarge'), status: 'error' });
       return;
     }
     setCsv(await file.text());
@@ -58,7 +60,7 @@ export function useImportDraft() {
       setPreview(data, crypto.randomUUID());
     } catch (cause) {
       toast({
-        title: 'No se pudo leer el CSV',
+        title: t('imports.toast.previewError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -81,13 +83,13 @@ export function useImportDraft() {
       });
       complete(data);
       toast({
-        title: data.replayed ? 'Importación ya confirmada' : 'Importación completada',
-        description: `${data.createdCount} huéspedes creados.`,
+        title: data.replayed ? t('imports.toast.replayed') : t('imports.toast.completed'),
+        description: t('imports.toast.created', { count: data.createdCount }),
         status: 'success',
       });
     } catch (cause) {
       toast({
-        title: 'No se pudo importar',
+        title: t('imports.toast.error'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,

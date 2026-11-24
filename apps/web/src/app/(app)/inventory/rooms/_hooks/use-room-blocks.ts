@@ -4,17 +4,19 @@ import { useToast } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { RoomBlock } from '@/lib/types';
 import type { FieldErrors } from '@/lib/validation';
 import { hasErrors } from '@/lib/validation';
-import {
-  blockFormErrors,
-  emptyBlockForm,
-  type BlockForm,
-} from '../_lib/rooms';
+import { blockFormErrors, emptyBlockForm, type BlockForm } from '../_lib/rooms';
 
-export function useRoomBlocks(selectedRoomId: string | null, reload: () => void, bumpDetail: () => void) {
+export function useRoomBlocks(
+  selectedRoomId: string | null,
+  reload: () => void,
+  bumpDetail: () => void,
+) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
 
   const [saving, setSaving] = useState(false);
@@ -31,7 +33,7 @@ export function useRoomBlocks(selectedRoomId: string | null, reload: () => void,
     if (selectedRoomId === null) {
       return;
     }
-    const nextErrors = blockFormErrors(form);
+    const nextErrors = blockFormErrors(form, t);
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -48,13 +50,13 @@ export function useRoomBlocks(selectedRoomId: string | null, reload: () => void,
           endsAt: new Date(form.endsAt).toISOString(),
         },
       });
-      toast({ title: 'Bloqueo creado', status: 'success' });
+      toast({ title: t('rooms.blocks.toastOk'), status: 'success' });
       setForm({ ...form, reason: '' });
       reload();
       bumpDetail();
     } catch (cause) {
       toast({
-        title: 'No se pudo crear el bloqueo',
+        title: t('rooms.blocks.toastError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 7000,
@@ -68,7 +70,10 @@ export function useRoomBlocks(selectedRoomId: string | null, reload: () => void,
     if (selectedRoomId === null) {
       return;
     }
-    const reason = window.prompt('Motivo de liberación (opcional)', 'Liberado desde la UI');
+    const reason = window.prompt(
+      t('rooms.blocks.releasePrompt'),
+      t('rooms.blocks.releaseDefaultReason'),
+    );
     if (reason === null) {
       return;
     }
@@ -78,11 +83,15 @@ export function useRoomBlocks(selectedRoomId: string | null, reload: () => void,
         tenant,
         body: reason.trim() === '' ? {} : { reason: reason.trim() },
       });
-      toast({ title: 'Bloqueo liberado', status: 'success' });
+      toast({ title: t('rooms.blocks.toastReleased'), status: 'success' });
       reload();
       bumpDetail();
     } catch (cause) {
-      toast({ title: 'No se pudo liberar', description: errorMessage(cause), status: 'error' });
+      toast({
+        title: t('rooms.blocks.toastReleaseError'),
+        description: errorMessage(cause),
+        status: 'error',
+      });
     }
   }
 

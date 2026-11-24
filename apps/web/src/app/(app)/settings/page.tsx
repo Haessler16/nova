@@ -3,20 +3,19 @@
 import { SimpleGrid, Stack } from '@chakra-ui/react';
 import { PropertyGate } from '@/components/app-shell';
 import { PageHeader, QueryFeedback } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import { OperationalDayCard } from './_components/operational-day-card';
 import { PropertyMetadataCard } from './_components/property-metadata-card';
 import { PropertySettingsFormCard } from './_components/property-settings-form';
 import { usePropertySettings } from './_hooks/use-property-settings';
 
 function SettingsContent() {
+  const { t } = useI18n();
   const settings = usePropertySettings();
 
   return (
     <>
-      <PageHeader
-        title="Configuración de la propiedad"
-        description="Timezone IANA, moneda, hora de corte del día operativo y datos generales. Requiere property.manage."
-      />
+      <PageHeader title={t('settings.title')} description={t('settings.description')} />
 
       <QueryFeedback loading={settings.loading} error={settings.error} onRetry={settings.reload}>
         {settings.data !== null && (

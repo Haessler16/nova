@@ -12,6 +12,7 @@ import {
 } from '@chakra-ui/react';
 import { CalendarIcon } from '@/components/icons';
 import { formatCalendarDate, todayISO } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import { DateCalendar } from './date-field-calendar';
 
 export interface DateFieldProps {
@@ -33,7 +34,7 @@ export interface DateFieldProps {
 export function DateField({
   value,
   onChange,
-  placeholder = 'Seleccionar fecha',
+  placeholder,
   ariaLabel,
   min,
   max,
@@ -43,7 +44,9 @@ export function DateField({
   size = 'sm',
   width,
 }: DateFieldProps) {
+  const { t } = useI18n();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const placeholderText = placeholder ?? t('dateField.selectDate');
 
   function selectDate(next: string): void {
     onChange(next);
@@ -75,13 +78,13 @@ export function DateField({
           bg="white"
           borderColor="gray.200"
           isDisabled={isDisabled}
-          aria-label={ariaLabel ?? placeholder}
+          aria-label={ariaLabel ?? placeholderText}
           aria-haspopup="dialog"
           _hover={{ borderColor: 'brand.300', bg: 'brand.50' }}
         >
           <HStack as="span" width="full" justify="space-between" spacing={2}>
             <Text as="span" noOfLines={1}>
-              {value !== '' ? formatCalendarDate(value) : placeholder}
+              {value !== '' ? formatCalendarDate(value) : placeholderText}
             </Text>
             <CalendarIcon boxSize={4} color="gray.400" />
           </HStack>
@@ -94,7 +97,7 @@ export function DateField({
           p={3}
           bg="white"
           borderRadius="xl"
-          aria-label="Calendario"
+          aria-label={t('dateField.calendar')}
           borderColor="gray.200"
           boxShadow="xl"
           _focus={{ outline: 'none', boxShadow: 'xl' }}

@@ -16,6 +16,7 @@ import {
   Tr,
 } from '@chakra-ui/react';
 import { QueryFeedback, SectionCard } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import type { Role } from '@/lib/types';
 import type { AdminData } from '../_hooks/use-admin-data';
 
@@ -28,15 +29,16 @@ export function AdminRolesPanel({
   onCreate: () => void;
   onEdit: (role: Role) => void;
 }) {
+  const { t } = useI18n();
   const { roles } = data;
 
   return (
     <TabPanel px={0}>
       <SectionCard>
         <HStack justify="space-between" mb={4}>
-          <Text fontWeight="semibold">Roles de organización</Text>
+          <Text fontWeight="semibold">{t('admin.roles.title')}</Text>
           <Button size="sm" colorScheme="brand" onClick={onCreate}>
-            Nuevo rol
+            {t('admin.roles.create')}
           </Button>
         </HStack>
         <QueryFeedback
@@ -44,17 +46,17 @@ export function AdminRolesPanel({
           error={roles.error}
           onRetry={roles.reload}
           isEmpty={(roles.data?.items.length ?? 0) === 0}
-          emptyText="No hay roles."
+          emptyText={t('admin.roles.empty')}
         >
           <TableContainer>
             <Table size="sm">
               <Thead>
                 <Tr>
-                  <Th>Rol</Th>
-                  <Th>Key</Th>
-                  <Th isNumeric>Permisos</Th>
-                  <Th isNumeric>Miembros</Th>
-                  <Th>Tipo</Th>
+                  <Th>{t('admin.roles.role')}</Th>
+                  <Th>{t('admin.roles.key')}</Th>
+                  <Th isNumeric>{t('admin.roles.permissions')}</Th>
+                  <Th isNumeric>{t('admin.roles.members')}</Th>
+                  <Th>{t('admin.roles.type')}</Th>
                   <Th />
                 </Tr>
               </Thead>
@@ -69,7 +71,7 @@ export function AdminRolesPanel({
                     <Td isNumeric>{role.membershipCount}</Td>
                     <Td>
                       <Badge colorScheme={role.system ? 'brand' : 'gray'} textTransform="none">
-                        {role.system ? 'Sistema' : 'Personalizado'}
+                        {role.system ? t('admin.roles.system') : t('admin.roles.custom')}
                       </Badge>
                     </Td>
                     <Td>
@@ -78,9 +80,9 @@ export function AdminRolesPanel({
                         variant="ghost"
                         onClick={() => onEdit(role)}
                         isDisabled={role.system}
-                        title={role.system ? 'Los roles de sistema son inmutables' : undefined}
+                        title={role.system ? t('admin.roles.systemLocked') : undefined}
                       >
-                        Editar
+                        {t('admin.roles.edit')}
                       </Button>
                     </Td>
                   </Tr>
@@ -90,7 +92,7 @@ export function AdminRolesPanel({
           </TableContainer>
         </QueryFeedback>
         <Text fontSize="xs" color="gray.500" mt={3}>
-          Un rol solo puede otorgar permisos que el administrador ya posee.
+          {t('admin.roles.note')}
         </Text>
       </SectionCard>
     </TabPanel>

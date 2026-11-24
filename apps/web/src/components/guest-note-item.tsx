@@ -2,11 +2,13 @@
 
 import { Badge, Box, Button, HStack, Text } from '@chakra-ui/react';
 import {
-  INSTRUCTION_CATEGORY_LABELS,
   INSTRUCTION_PRIORITY_COLORS,
-  INSTRUCTION_PRIORITY_LABELS,
   formatDateTime,
+  guestNotePurposeLabel,
+  instructionCategoryLabel,
+  instructionPriorityLabel,
 } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { GuestNote } from '@/lib/types';
 import { StatusBadge } from './ui';
 
@@ -21,6 +23,8 @@ export function GuestNoteItem({
   busy: boolean;
   onToggle: (note: GuestNote) => void;
 }) {
+  const { t, locale } = useI18n();
+
   return (
     <Box
       borderWidth="1px"
@@ -33,23 +37,18 @@ export function GuestNoteItem({
         <HStack wrap="wrap">
           <StatusBadge
             color={INSTRUCTION_PRIORITY_COLORS[note.priority]}
-            label={INSTRUCTION_PRIORITY_LABELS[note.priority]}
+            label={instructionPriorityLabel(locale, note.priority)}
           />
-          <Badge colorScheme="gray">{INSTRUCTION_CATEGORY_LABELS[note.category]}</Badge>
+          <Badge colorScheme="gray">{instructionCategoryLabel(locale, note.category)}</Badge>
           {!note.isActive && (
             <Badge colorScheme="gray" textTransform="none">
-              Inactiva
+              {t('guestNotes.item.inactive')}
             </Badge>
           )}
         </HStack>
         {canManage && (
-          <Button
-            size="xs"
-            variant="ghost"
-            isLoading={busy}
-            onClick={() => onToggle(note)}
-          >
-            {note.isActive ? 'Desactivar' : 'Reactivar'}
+          <Button size="xs" variant="ghost" isLoading={busy} onClick={() => onToggle(note)}>
+            {note.isActive ? t('guestNotes.item.deactivate') : t('guestNotes.item.reactivate')}
           </Button>
         )}
       </HStack>
@@ -57,9 +56,11 @@ export function GuestNoteItem({
         {note.body}
       </Text>
       <Text fontSize="xs" color="gray.500" mt={1}>
-        {note.purpose !== null ? `${note.purpose} · ` : ''}
+        {note.purpose !== null ? `${guestNotePurposeLabel(locale, note.purpose)} · ` : ''}
         {formatDateTime(note.createdAt)}
-        {note.expiresAt !== null ? ` · expira ${formatDateTime(note.expiresAt)}` : ''}
+        {note.expiresAt !== null
+          ? t('guestNotes.item.expires', { date: formatDateTime(note.expiresAt) })
+          : ''}
       </Text>
     </Box>
   );

@@ -3,6 +3,7 @@
 import { Badge, Box, Divider, HStack, SimpleGrid, Stack, Text } from '@chakra-ui/react';
 import { QueryFeedback, SectionCard } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { CashierData } from '../_hooks/use-cashier-data';
 import type { CashierClose } from '../_hooks/use-cashier-close';
 import type { CashierMovement } from '../_hooks/use-cashier-movement';
@@ -24,15 +25,16 @@ export function CashierSessionCard({
   movement: CashierMovement;
   close: CashierClose;
 }) {
+  const { t } = useI18n();
   const { sessions, openSession, cup } = data;
 
   return (
     <SectionCard>
       <HStack justify="space-between" mb={4}>
         <Box>
-          <Text fontWeight="semibold">Caja</Text>
+          <Text fontWeight="semibold">{t('cashier.session.title')}</Text>
           <Text fontSize="xs" color="textSecondary">
-            Una sola sesión abierta por propiedad.
+            {t('cashier.session.subtitle')}
           </Text>
         </Box>
         {openSession !== null && (

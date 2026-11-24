@@ -18,6 +18,7 @@ import {
   Stack,
 } from '@chakra-ui/react';
 import { Field } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import type { Role } from '@/lib/types';
 import type { MemberEditor } from '../_hooks/use-member-editor';
 
@@ -28,42 +29,43 @@ export function MemberModal({
   editor: MemberEditor;
   roles: Role[] | undefined;
 }) {
+  const { t } = useI18n();
   const editing = editor.editing !== null;
 
   return (
     <Modal isOpen={editor.modal.isOpen} onClose={editor.modal.onClose} size="lg">
       <ModalOverlay />
       <ModalContent as="form" onSubmit={(event) => void editor.save(event)}>
-        <ModalHeader>{editor.editing === null ? 'Nuevo miembro' : 'Editar membresía'}</ModalHeader>
+        <ModalHeader>
+          {editor.editing === null
+            ? t('admin.memberModal.titleCreate')
+            : t('admin.memberModal.titleEdit')}
+        </ModalHeader>
         <ModalCloseButton />
         <ModalBody>
           <Stack spacing={4}>
-            <Field label="Email" isRequired>
+            <Field label={t('admin.memberModal.email')} isRequired>
               <Input
                 type="email"
                 value={editor.form.email}
-                onChange={(event) =>
-                  editor.setForm({ ...editor.form, email: event.target.value })
-                }
+                onChange={(event) => editor.setForm({ ...editor.form, email: event.target.value })}
                 isDisabled={editing}
                 required
               />
             </Field>
-            <Field label="Nombre" helper="Si el usuario no existe, se crea con una invitación.">
+            <Field label={t('admin.memberModal.name')} helper={t('admin.memberModal.nameHelper')}>
               <Input
                 value={editor.form.name}
                 onChange={(event) => editor.setForm({ ...editor.form, name: event.target.value })}
                 isDisabled={editing}
               />
             </Field>
-            <Field label="Rol de organización">
+            <Field label={t('admin.memberModal.role')}>
               <Select
                 value={editor.form.roleId}
-                onChange={(event) =>
-                  editor.setForm({ ...editor.form, roleId: event.target.value })
-                }
+                onChange={(event) => editor.setForm({ ...editor.form, roleId: event.target.value })}
               >
-                <option value="">Sin rol de organización</option>
+                <option value="">{t('admin.memberModal.noRole')}</option>
                 {roles?.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.name}
@@ -72,16 +74,16 @@ export function MemberModal({
               </Select>
             </Field>
             {editing && (
-              <Field label="Estado">
+              <Field label={t('admin.memberModal.status')}>
                 <Select
                   value={editor.form.status}
                   onChange={(event) =>
                     editor.setForm({ ...editor.form, status: event.target.value })
                   }
                 >
-                  <option value="ACTIVE">Activo</option>
-                  <option value="SUSPENDED">Suspendido</option>
-                  <option value="DISABLED">Deshabilitado</option>
+                  <option value="ACTIVE">{t('admin.memberModal.statusActive')}</option>
+                  <option value="SUSPENDED">{t('admin.memberModal.statusSuspended')}</option>
+                  <option value="DISABLED">{t('admin.memberModal.statusDisabled')}</option>
                 </Select>
               </Field>
             )}
@@ -89,7 +91,7 @@ export function MemberModal({
               <Alert status="success" borderRadius="md">
                 <AlertIcon />
                 <AlertDescription fontSize="xs">
-                  Invitación generada. Token de un solo uso:
+                  {t('admin.memberModal.invitation')}
                   <Code display="block" mt={1} wordBreak="break-all">
                     {editor.invitationToken}
                   </Code>
@@ -100,10 +102,12 @@ export function MemberModal({
         </ModalBody>
         <ModalFooter>
           <Button variant="ghost" mr={3} onClick={editor.modal.onClose}>
-            {editor.invitationToken !== null ? 'Cerrar' : 'Cancelar'}
+            {editor.invitationToken !== null
+              ? t('admin.memberModal.close')
+              : t('admin.memberModal.cancel')}
           </Button>
           <Button type="submit" colorScheme="brand" isLoading={editor.saving}>
-            {editor.editing === null ? 'Crear membresía' : 'Guardar'}
+            {editor.editing === null ? t('admin.memberModal.create') : t('admin.memberModal.save')}
           </Button>
         </ModalFooter>
       </ModalContent>

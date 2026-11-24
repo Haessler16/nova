@@ -28,18 +28,22 @@ pnpm build
 
 ### Orden recomendado de PRs
 
-| Orden | Fase                                       | Riesgo   | Valor                    |
-| ----- | ------------------------------------------ | -------- | ------------------------ |
-| 1     | F0 CI verde + higiene                      | Muy bajo | Desbloquea todo lo demás |
-| 2     | F1 Clock inyectable                        | Bajo     | Tests deterministas      |
-| 3     | F5 Guardrails ESLint (modo `warn`)         | Bajo     | Evita regresiones        |
-| 4     | F2 Partir `front-office.service.ts`        | Medio    | Mantenibilidad           |
-| 5     | F3 Partir páginas web grandes              | Medio    | Mantenibilidad           |
-| 6     | F6 Tests de UI en CI                       | Bajo     | Red de seguridad         |
-| 7     | F7 Supply chain y cobertura                | Bajo     | Seguridad                |
-| 8     | F4 Defensa en profundidad del tenant (RLS) | Alto     | Seguridad de datos       |
-| 9     | F8 Docs                                    | Bajo     | Claridad                 |
-| 10    | F9 LGPD operativa                          | Alto     | Cumplimiento             |
+Estado revisado el 2026-11-24 contra el código y contra la `Phase 12` de
+`docs/IMPLEMENTATION_PLAN.md`. Las fases de refactor ya están en `main`; lo que queda abierto es
+seguridad (F4), privacidad (F9) y el escaneo de secretos de F7.
+
+| Orden | Fase                                       | Riesgo   | Valor                    | Estado                                |
+| ----- | ------------------------------------------ | -------- | ------------------------ | ------------------------------------- |
+| 1     | F0 CI verde + higiene                      | Muy bajo | Desbloquea todo lo demás | Hecho                                 |
+| 2     | F1 Clock inyectable                        | Bajo     | Tests deterministas      | Hecho                                 |
+| 3     | F5 Guardrails ESLint (modo `warn`)         | Bajo     | Evita regresiones        | Hecho (reglas en `error`)             |
+| 4     | F2 Partir `front-office.service.ts`        | Medio    | Mantenibilidad           | Hecho                                 |
+| 5     | F3 Partir páginas web grandes              | Medio    | Mantenibilidad           | Hecho                                 |
+| 6     | F6 Tests de UI en CI                       | Bajo     | Red de seguridad         | Hecho (job de Playwright configurado) |
+| 7     | F7 Supply chain y cobertura                | Bajo     | Seguridad                | Parcial (falta `secrets.yml`)         |
+| 8     | F4 Defensa en profundidad del tenant (RLS) | Alto     | Seguridad de datos       | Pendiente (ADR-060 propuesta)         |
+| 9     | F8 Docs                                    | Bajo     | Claridad                 | Hecho (2026-11-24)                    |
+| 10    | F9 LGPD operativa                          | Alto     | Cumplimiento             | Pendiente (ADR-061 propuesta)         |
 
 ---
 
@@ -87,7 +91,16 @@ Si falla, corrige **el test o el código según corresponda** y documenta cuál 
 
 ## F1 — `Clock` inyectable (fechas deterministas)
 
-**Problema medido:** hay ~95 llamadas a `new Date()` / `Date.now()` en `apps/api/src` (11 en `front-office.service.ts`, 7 en `session.service.ts`, 6 en `auth.service.ts`…). La auditoría ya registró tests que dependían de la hora UTC.
+**Estado: implementado.** `apps/api/src/common/time/` contiene `clock.ts` (`Clock` abstracto +
+`SystemClock`), `clock.module.ts` (`@Global`, registrado en `AppModule`) y `fake-clock.ts`
+(`set`/`advance`, usado por los specs). La migración cubrió el orden previsto —`front-office`,
+`night-audit`, `folio`, `documents`, `room-assignment-leases`, `auth/*`— y se extendió a
+`reservations`, `instructions`, `admin`, `exports`, `health`, `observability` y `pilot`: hoy
+`new Date()` sin argumentos aparece en `apps/api/src` sólo dentro de `clock.ts`. En la web quedan
+tres usos de cliente (`todayISO` como fallback, la clave de idempotencia y el default de
+`datetime-local`), documentados en `docs/audit/APP_STATE_2026-11-24.md`.
+
+**Problema medido (punto de partida):** hay ~95 llamadas a `new Date()` / `Date.now()` en `apps/api/src` (11 en `front-office.service.ts`, 7 en `session.service.ts`, 6 en `auth.service.ts`…). La auditoría ya registró tests que dependían de la hora UTC.
 
 ### T-04 Crear `Clock`
 
@@ -195,7 +208,7 @@ Escribe al menos estos casos para `computeOperationalDay`/check-in: antes/despu�
 
 **Objetivo:** que lo corregido no vuelva a degradarse. Primero en `warn` para no bloquear; subir a `error` cuando F1/F2 terminen. **Estado: `error` desde que `eslint src` quedó en 0 warnings** (reservations, reports, reservation-party, rooms, night-audit, admin, auth, folio e instructions partidos).
 
-`apps/api/.eslintrc.js` (añadir a `rules`)
+`apps/api/.eslintrc.cjs` (añadir a `rules`)
 
 ```js
 rules: {
@@ -229,9 +242,18 @@ Para la web (`apps/web/.eslintrc.json`), añade `max-lines` a 300 en `warn` para
 
 ---
 
-## F2 — Partir `front-office.service.ts` (2.271 líneas)
+## F2 — Partir `front-office.service.ts` (2.271 líneas en la medición original)
 
-**Estado actual** (métodos públicos y su posición): `overview` (428), `checkInReadiness` (689), `checkIn` (836), `checkoutReadiness` (1119), `checkOut` (1199), `roomMoveCandidates` (1423), `moveRoom` (1585), `noShow` (1729), `listIncidents` (1833), `createIncident` (1856), `resolveIncident` (1955). Helpers privados: `readCheckoutFolios`, `loadProperty`, `lockReservation`, `lockStay`, `lockRoom`, `assertRoomInProperty`.
+**Estado: implementado.** `front-office.service.ts` tiene hoy **136 líneas** y es una fachada que
+delega en `application/` (`overview.query.ts`, `check-in.use-case.ts`, `check-out.use-case.ts`,
+`room-move.use-case.ts`, `no-show.use-case.ts`, `incidents.service.ts`, `check-in-readiness.query.ts`,
+`front-office.contracts.ts`) e `infrastructure/` (`row-locks.ts`, `property-loader.ts`). El
+controller (128 líneas) y el módulo (32) conservan su uso de `FrontOfficeService`. La extracción se
+validó con typecheck, lint, tests unitarios y build; **las suites e2e no se corrieron en el entorno
+local de la revisión** (sin PostgreSQL/Redis), que es la condición que este plan exige para dar el
+refactor por cerrado.
+
+**Punto de partida medido** (métodos públicos y su posición): `overview` (428), `checkInReadiness` (689), `checkIn` (836), `checkoutReadiness` (1119), `checkOut` (1199), `roomMoveCandidates` (1423), `moveRoom` (1585), `noShow` (1729), `listIncidents` (1833), `createIncident` (1856), `resolveIncident` (1955). Helpers privados: `readCheckoutFolios`, `loadProperty`, `lockReservation`, `lockStay`, `lockRoom`, `assertRoomInProperty`.
 
 **Regla:** refactor puro. Misma firma pública, mismos errores, mismos códigos. Un commit por extracción, tests e2e verdes en cada commit.
 
@@ -381,13 +403,21 @@ Repite para `CheckOutUseCase`, `RoomMoveUseCase`, `NoShowUseCase`, `OverviewQuer
 - `grep -rn "FrontOfficeService" apps/api/src` muestra que controller y módulo no cambiaron su uso.
 - Pasar las reglas de F5 de `warn` a `error` para estos archivos.
 
-Después, aplica el mismo patrón al siguiente archivo más grande (`reservations.service.ts`, 1.208 líneas), solo si el tiempo lo permite.
+Después, aplica el mismo patrón al siguiente archivo más grande (`reservations.service.ts`, 1.208
+líneas en la medición original). **Hecho:** hoy tiene 433 líneas, con `reservations.guards.ts`,
+`reservation-lifecycle.service.ts` y `reservation-dates.ts` como archivos separados.
 
 ---
 
 ## F3 — Partir las páginas web grandes
 
-**Medido:** `front-office/page.tsx` 2.283 líneas, `reservations/page.tsx` 1.841, `inventory/rooms/page.tsx` 1.619. Todos son `'use client'` y concentran estado, fetch, formularios y modales.
+**Estado: implementado.** Las tres páginas quedaron como composición sobre `_components/`,
+`_hooks/` y `_lib/`: `front-office/page.tsx` 12 líneas (23 componentes), `reservations/page.tsx`
+12 líneas (15 componentes) e `inventory/rooms/page.tsx` 140 líneas. Los `data-testid`, roles y
+textos que usan los specs de Playwright se conservaron; la validación fue typecheck, lint, tests y
+build, sin render autenticado en navegador.
+
+**Medido en el punto de partida:** `front-office/page.tsx` 2.283 líneas, `reservations/page.tsx` 1.841, `inventory/rooms/page.tsx` 1.619. Todos eran `'use client'` y concentraban estado, fetch, formularios y modales.
 
 ### Estructura objetivo (ejemplo para Front Office)
 
@@ -485,7 +515,12 @@ export function useFrontOfficeOverview() {
 
 ## F6 — Tests de UI en CI
 
-**Problema medido:** solo hay 3 specs de Playwright (`front-office-checkin`, `inventory-validation`, `reservation-party`), el CI no los ejecuta y `apps/web` no tiene script `test` ni tests de componentes.
+**Estado: implementado.** Hay 4 specs de Playwright en `apps/web/e2e/`
+(`front-office-checkin`, `inventory-validation`, `reservation-party`, `action-dialog`), el CI tiene
+el job `Web e2e (Playwright)` además del paso `Web unit tests`, y `apps/web` corre Vitest. Los specs
+no se ejecutaron en el entorno de la revisión del 2026-11-24.
+
+**Problema medido en el punto de partida:** solo había 3 specs de Playwright (`front-office-checkin`, `inventory-validation`, `reservation-party`), el CI no los ejecutaba y `apps/web` no tenía script `test` ni tests de componentes.
 
 ### T-09 Ejecutar Playwright en CI
 
@@ -596,6 +631,11 @@ it('muestra llegadas y abre el flujo de check-in', async () => {
 ---
 
 ## F7 — Supply chain y cobertura
+
+**Estado: parcial.** T-11 y T-12 (auditoría) están hechos: `.github/dependabot.yml` existe y el job
+`verify` corre `pnpm audit --prod --audit-level=high`. T-13 también: el umbral vive en
+`apps/api/jest.config.js` con ratchet 14/15/13/14. **Falta** el workflow `secrets.yml` con gitleaks
+que pide T-12; no existe en `.github/workflows/`.
 
 ### T-11 Dependabot
 

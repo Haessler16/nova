@@ -4,17 +4,15 @@ import { useToast } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { CashSession } from '@/lib/types';
 import type { FieldErrors } from '@/lib/validation';
 import { hasErrors } from '@/lib/validation';
-import {
-  EMPTY_MOVEMENT_FORM,
-  movementFormErrors,
-  type MovementForm,
-} from '../_lib/cashier-forms';
+import { EMPTY_MOVEMENT_FORM, movementFormErrors, type MovementForm } from '../_lib/cashier-forms';
 
 export function useCashierMovement(session: CashSession | null, onRegistered: () => void) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
 
   const [saving, setSaving] = useState(false);
@@ -26,7 +24,7 @@ export function useCashierMovement(session: CashSession | null, onRegistered: ()
     if (session === null) {
       return;
     }
-    const nextErrors = movementFormErrors(form);
+    const nextErrors = movementFormErrors(form, t);
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -43,12 +41,12 @@ export function useCashierMovement(session: CashSession | null, onRegistered: ()
           idempotencyKey: `cash-movement-ui-${crypto.randomUUID()}`,
         },
       });
-      toast({ title: 'Movimiento registrado', status: 'success' });
+      toast({ title: t('cashier.movement.toast.ok'), status: 'success' });
       setForm((current) => ({ ...current, amount: '', description: '' }));
       onRegistered();
     } catch (cause) {
       toast({
-        title: 'No se pudo registrar el movimiento',
+        title: t('cashier.movement.toast.error'),
         description: errorMessage(cause),
         status: 'error',
       });

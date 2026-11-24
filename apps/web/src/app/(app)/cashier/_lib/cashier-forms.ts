@@ -1,3 +1,4 @@
+import type { I18nValue } from '@/lib/i18n';
 import type { CashMovementType, CashSession, OperationalClose } from '@/lib/types';
 import {
   buildErrors,
@@ -7,7 +8,9 @@ import {
   reasonField,
   requiredText,
   type FieldErrors,
+  type ValidationCopy,
 } from '@/lib/validation';
+import { validationCopy } from '../../reservations/_lib/reservation-labels';
 
 export const MOVEMENT_TYPES: CashMovementType[] = ['CASH_IN', 'CASH_OUT', 'REFUND', 'ADJUSTMENT'];
 
@@ -69,42 +72,75 @@ export const EMPTY_AUDIT_FORM: AuditForm = {
   notes: '',
 };
 
-export function openFormErrors(form: OpenCashForm): FieldErrors {
+type Translate = I18nValue['t'];
+
+function copyOf(t: Translate): ValidationCopy {
+  return validationCopy(t);
+}
+
+export function openFormErrors(form: OpenCashForm, t: Translate): FieldErrors {
+  const copy = copyOf(t);
   return buildErrors([
-    ['open.name', requiredText(form.name, 'El nombre de la sesión', { max: 120 })],
-    ['open.operationalDate', calendarDateField(form.operationalDate, 'El día operativo')],
-    ['open.openingAmount', moneyField(form.openingAmount, 'El fondo inicial')],
+    ['open.name', requiredText(form.name, t('cashier.forms.sessionName'), { max: 120 }, copy)],
+    [
+      'open.operationalDate',
+      calendarDateField(form.operationalDate, t('cashier.forms.operationalDate'), copy),
+    ],
+    [
+      'open.openingAmount',
+      moneyField(form.openingAmount, t('cashier.forms.openingAmount'), {}, copy),
+    ],
   ]);
 }
 
-export function movementFormErrors(form: MovementForm): FieldErrors {
+export function movementFormErrors(form: MovementForm, t: Translate): FieldErrors {
+  const copy = copyOf(t);
   return buildErrors([
-    ['movement.amount', moneyField(form.amount, 'El importe', { allowZero: false })],
-    ['movement.description', optionalText(form.description, 'El detalle', { max: 4000 })],
+    [
+      'movement.amount',
+      moneyField(form.amount, t('cashier.forms.amount'), { allowZero: false }, copy),
+    ],
+    [
+      'movement.description',
+      optionalText(form.description, t('cashier.forms.detail'), { max: 4000 }, copy),
+    ],
   ]);
 }
 
-export function closeFormErrors(form: CloseCashForm): FieldErrors {
+export function closeFormErrors(form: CloseCashForm, t: Translate): FieldErrors {
+  const copy = copyOf(t);
   return buildErrors([
-    ['close.closingAmount', moneyField(form.closingAmount, 'El efectivo contado')],
-    ['close.varianceReason', optionalText(form.varianceReason, 'El motivo de diferencia', { max: 500 })],
-    ['close.notes', optionalText(form.notes, 'Las notas', { max: 4000 })],
+    [
+      'close.closingAmount',
+      moneyField(form.closingAmount, t('cashier.forms.closingAmount'), {}, copy),
+    ],
+    [
+      'close.varianceReason',
+      optionalText(form.varianceReason, t('cashier.forms.varianceReason'), { max: 500 }, copy),
+    ],
+    ['close.notes', optionalText(form.notes, t('cashier.forms.notes'), { max: 4000 }, copy)],
   ]);
 }
 
-export function auditFormErrors(form: AuditForm): FieldErrors {
+export function auditFormErrors(form: AuditForm, t: Translate): FieldErrors {
+  const copy = copyOf(t);
   return buildErrors([
-    ['audit.operationalDate', calendarDateField(form.operationalDate, 'El día operativo')],
+    [
+      'audit.operationalDate',
+      calendarDateField(form.operationalDate, t('cashier.forms.operationalDate'), copy),
+    ],
     [
       'audit.forceReason',
       form.force
-        ? reasonField(form.forceReason, 'El motivo del cierre forzado')
-        : optionalText(form.forceReason, 'El motivo', { max: 500 }),
+        ? reasonField(form.forceReason, t('cashier.forms.forceReason'), {}, copy)
+        : optionalText(form.forceReason, t('cashier.forms.reason'), { max: 500 }, copy),
     ],
-    ['audit.notes', optionalText(form.notes, 'Las notas', { max: 4000 })],
+    ['audit.notes', optionalText(form.notes, t('cashier.forms.notes'), { max: 4000 }, copy)],
   ]);
 }
 
-export function reopenErrors(reason: string): FieldErrors {
-  return buildErrors([['reopen.reason', reasonField(reason)]]);
+export function reopenErrors(reason: string, t: Translate): FieldErrors {
+  return buildErrors([
+    ['reopen.reason', reasonField(reason, t('cashier.forms.reason'), {}, copyOf(t))],
+  ]);
 }

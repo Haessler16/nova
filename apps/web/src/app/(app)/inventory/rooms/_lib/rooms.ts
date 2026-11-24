@@ -1,4 +1,5 @@
 import { splitAttributes } from '@/lib/format';
+import type { I18nValue } from '@/lib/i18n';
 import type {
   IncidentSeverity,
   IncidentType,
@@ -13,7 +14,10 @@ import {
   datetimeLocalField,
   reasonField,
   type FieldErrors,
+  type RoomFieldLabels,
+  type ValidationCopy,
 } from '@/lib/validation';
+import { validationCopy } from '../../../reservations/_lib/reservation-labels';
 
 export interface RoomsData {
   rooms: Room[];
@@ -100,13 +104,14 @@ export function emptyBlockForm(): BlockForm {
   };
 }
 
-export function blockFormErrors(form: BlockForm): FieldErrors {
+export function blockFormErrors(form: BlockForm, t: I18nValue['t']): FieldErrors {
+  const copy = validationCopy(t);
   return buildErrors([
-    ['reason', reasonField(form.reason)],
-    ['startsAt', datetimeLocalField(form.startsAt, 'El inicio del bloqueo')],
+    ['reason', reasonField(form.reason, t('rooms.blocks.validationReason'), {}, copy)],
+    ['startsAt', datetimeLocalField(form.startsAt, t('rooms.blocks.validationStart'), copy)],
     [
       'endsAt',
-      datetimeLocalField(form.endsAt, 'El fin del bloqueo') ??
+      datetimeLocalField(form.endsAt, t('rooms.blocks.validationEnd'), copy) ??
         blockRangeField(form.startsAt, form.endsAt),
     ],
   ]);
@@ -127,6 +132,26 @@ function baseRoomBody(form: RoomForm): {
     ...(form.floor.trim() !== '' ? { floor: form.floor.trim() } : {}),
     ...(form.building.trim() !== '' ? { building: form.building.trim() } : {}),
     attributes: splitAttributes(form.attributes),
+  };
+}
+
+export function roomValidationOptions(t: I18nValue['t']): {
+  copy: ValidationCopy;
+  labels: RoomFieldLabels;
+} {
+  return {
+    copy: validationCopy(t),
+    labels: {
+      numberRequired: t('rooms.validation.numberRequired'),
+      numberInvalid: t('rooms.validation.numberInvalid'),
+      roomTypeRequired: t('rooms.validation.roomTypeRequired'),
+      floor: t('rooms.validation.floor'),
+      building: t('rooms.validation.building'),
+      attributes: {
+        tooMany: (max) => t('rooms.validation.attributesTooMany', { max }),
+        tooLong: (max) => t('rooms.validation.attributesTooLong', { max }),
+      },
+    },
   };
 }
 

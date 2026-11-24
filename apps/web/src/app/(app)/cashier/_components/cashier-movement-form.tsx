@@ -2,25 +2,22 @@
 
 import { Box, Button, Input, Select, Stack, Text } from '@chakra-ui/react';
 import { Field } from '@/components/ui';
-import { CASH_MOVEMENT_LABELS } from '@/lib/format';
+import { cashMovementLabel } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { CashMovementType } from '@/lib/types';
 import { MOVEMENT_TYPES } from '../_lib/cashier-forms';
 import type { CashierMovement } from '../_hooks/use-cashier-movement';
 
-export function CashierMovementForm({
-  movement,
-  cup,
-}: {
-  movement: CashierMovement;
-  cup: string;
-}) {
+export function CashierMovementForm({ movement, cup }: { movement: CashierMovement; cup: string }) {
+  const { t, locale } = useI18n();
+
   return (
     <Box as="form" onSubmit={(event) => void movement.submit(event)}>
       <Stack spacing={3}>
         <Text fontWeight="semibold" fontSize="sm">
-          Registrar movimiento
+          {t('cashier.movement.title')}
         </Text>
-        <Field label="Tipo" isRequired>
+        <Field label={t('cashier.movement.type')} isRequired>
           <Select
             size="sm"
             value={movement.form.type}
@@ -33,16 +30,16 @@ export function CashierMovementForm({
           >
             {MOVEMENT_TYPES.map((type) => (
               <option key={type} value={type}>
-                {CASH_MOVEMENT_LABELS[type]}
+                {cashMovementLabel(locale, type)}
               </option>
             ))}
           </Select>
         </Field>
         <Field
-          label={`Importe (${cup})`}
+          label={t('cashier.movement.amount', { currency: cup })}
           isRequired
           error={movement.errors['movement.amount']}
-          helper="Hasta dos decimales."
+          helper={t('cashier.open.amountHelper')}
         >
           <Input
             size="sm"
@@ -57,7 +54,10 @@ export function CashierMovementForm({
             required
           />
         </Field>
-        <Field label="Detalle" error={movement.errors['movement.description']}>
+        <Field
+          label={t('cashier.movement.description')}
+          error={movement.errors['movement.description']}
+        >
           <Input
             size="sm"
             value={movement.form.description}
@@ -77,7 +77,7 @@ export function CashierMovementForm({
           alignSelf="flex-start"
           isLoading={movement.saving}
         >
-          Registrar
+          {t('cashier.movement.submit')}
         </Button>
       </Stack>
     </Box>

@@ -131,16 +131,20 @@ export function moneyField(
   value: string,
   label: string,
   options: { allowZero?: boolean } = {},
+  copy?: ValidationCopy,
 ): string | null {
   const trimmed = value.trim();
   if (trimmed === '') {
-    return `${label} es obligatorio.`;
+    return (copy?.moneyRequired ?? ((text) => `${text} es obligatorio.`))(label);
   }
   if (!MONEY_PATTERN.test(trimmed)) {
-    return `${label} debe ser un importe con hasta dos decimales (ej. 150.00).`;
+    return (
+      copy?.moneyFormat ??
+      ((text) => `${text} debe ser un importe con hasta dos decimales (ej. 150.00).`)
+    )(label);
   }
   if (options.allowZero === false && Number(trimmed) === 0) {
-    return `${label} debe ser mayor que cero.`;
+    return (copy?.moneyPositive ?? ((text) => `${text} debe ser mayor que cero.`))(label);
   }
   return null;
 }
@@ -303,23 +307,40 @@ export function reservationCodeField(value: string, copy?: ValidationCopy): stri
 }
 
 /** Comma-separated room attributes: at most 20 items of 64 characters. */
-export function attributesField(value: string): string | null {
+export interface AttributeMessages {
+  tooMany: (max: number) => string;
+  tooLong: (max: number) => string;
+}
+
+const ES_ATTRIBUTE_MESSAGES: AttributeMessages = {
+  tooMany: (max) => `Máximo ${max} atributos.`,
+  tooLong: (max) => `Cada atributo admite hasta ${max} caracteres.`,
+};
+
+export function attributesField(
+  value: string,
+  messages: AttributeMessages = ES_ATTRIBUTE_MESSAGES,
+): string | null {
   const items = value
     .split(',')
     .map((item) => item.trim())
     .filter((item) => item !== '');
   if (items.length > MAX_ROOM_ATTRIBUTES) {
-    return `Máximo ${MAX_ROOM_ATTRIBUTES} atributos.`;
+    return messages.tooMany(MAX_ROOM_ATTRIBUTES);
   }
   if (items.some((item) => item.length > MAX_ATTRIBUTE_LENGTH)) {
-    return `Cada atributo admite hasta ${MAX_ATTRIBUTE_LENGTH} caracteres.`;
+    return messages.tooLong(MAX_ATTRIBUTE_LENGTH);
   }
   return null;
 }
 
-export function datetimeLocalField(value: string, label: string): string | null {
+export function datetimeLocalField(
+  value: string,
+  label: string,
+  copy?: ValidationCopy,
+): string | null {
   if (value.trim() === '') {
-    return `${label} es obligatorio.`;
+    return copy === undefined ? `${label} es obligatorio.` : copy.required(label);
   }
   if (!DATE_TIME_LOCAL_PATTERN.test(value) || Number.isNaN(Date.parse(value))) {
     return `${label} debe ser una fecha y hora válidas.`;
@@ -362,6 +383,9 @@ export interface ValidationCopy {
   emailRequired?: string;
   emailInvalid?: string;
   phoneInvalid?: string;
+  moneyRequired?: (label: string) => string;
+  moneyFormat?: (label: string) => string;
+  moneyPositive?: (label: string) => string;
 }
 
 const ES_VALIDATION_COPY: ValidationCopy = {
@@ -492,31 +516,54 @@ export function validateRoomType(
   return errors;
 }
 
-/** Mirrors CreateRoomDto / UpdateRoomDto. */
-export function validateRoom(input: {
-  number: string;
-  roomTypeId: string;
+export interface RoomFieldLabels {
+  numberRequired: string;
+  numberInvalid: string;
+  roomTypeRequired: string;
   floor: string;
   building: string;
-  attributes: string;
-}): FieldErrors {
+  attributes: AttributeMessages;
+}
+
+const ES_ROOM_LABELS: RoomFieldLabels = {
+  numberRequired: 'El número es obligatorio.',
+  numberInvalid: 'Hasta 32 letras, números, puntos, guiones, guiones bajos o barras.',
+  roomTypeRequired: 'Elegí un tipo de habitación.',
+  floor: 'El piso',
+  building: 'El edificio',
+  attributes: ES_ATTRIBUTE_MESSAGES,
+};
+
+/** Mirrors CreateRoomDto / UpdateRoomDto. */
+export function validateRoom(
+  input: {
+    number: string;
+    roomTypeId: string;
+    floor: string;
+    building: string;
+    attributes: string;
+  },
+  options: { copy?: ValidationCopy; labels?: RoomFieldLabels } = {},
+): FieldErrors {
+  const copy = options.copy ?? ES_VALIDATION_COPY;
+  const labels = options.labels ?? ES_ROOM_LABELS;
   const errors: FieldErrors = {};
   const number = input.number.trim();
   collect(
     errors,
     'number',
     number === ''
-      ? 'El número es obligatorio.'
+      ? labels.numberRequired
       : ROOM_NUMBER_PATTERN.test(number)
         ? null
-        : 'Hasta 32 letras, números, puntos, guiones, guiones bajos o barras.',
+        : labels.numberInvalid,
   );
   if (input.roomTypeId.trim() === '') {
-    errors.roomTypeId = 'Elegí un tipo de habitación.';
+    errors.roomTypeId = labels.roomTypeRequired;
   }
-  collect(errors, 'floor', optionalText(input.floor, 'El piso', { max: 32 }));
-  collect(errors, 'building', optionalText(input.building, 'El edificio', { max: 64 }));
-  collect(errors, 'attributes', attributesField(input.attributes));
+  collect(errors, 'floor', optionalText(input.floor, labels.floor, { max: 32 }, copy));
+  collect(errors, 'building', optionalText(input.building, labels.building, { max: 64 }, copy));
+  collect(errors, 'attributes', attributesField(input.attributes, labels.attributes));
   return errors;
 }
 

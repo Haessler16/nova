@@ -2,6 +2,7 @@
 
 import { Box, Stack, Text } from '@chakra-ui/react';
 import { SectionCard } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import type { OperationalClose } from '@/lib/types';
 import type { CashierAudit } from '../_hooks/use-cashier-audit';
 import { CashierAuditForm } from './cashier-audit-form';
@@ -16,14 +17,15 @@ export function CashierCloseDayCard({
   audit: CashierAudit;
   onReopen: (target: OperationalClose) => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <SectionCard>
       <Box mb={4}>
-        <Text fontWeight="semibold">Cierre del día operativo</Text>
+        <Text fontWeight="semibold">{t('cashier.daily.title')}</Text>
 
         <Text fontSize="xs" color="textSecondary">
-          Night audit: exige caja cerrada, folios resueltos y llegadas o estancias pendientes
-          resueltas. Podés forzar el cierre con un motivo auditado.
+          {t('cashier.daily.description')}
         </Text>
       </Box>
 
@@ -39,12 +41,15 @@ export function CashierCloseDayCard({
           bg="warning.50"
         >
           <Text fontSize="sm" fontWeight="semibold" color="warning.700" mb={2}>
-            Bloqueos detectados
+            {t('cashier.daily.blockers')}
           </Text>
           <Stack spacing={1}>
             {audit.blockers.map((blocker) => (
               <Text key={blocker.code} fontSize="xs" color="warning.700">
-                {blocker.message} ({blocker.count})
+                {t('cashier.daily.blockerLine', {
+                  message: blocker.message,
+                  count: blocker.count,
+                })}
               </Text>
             ))}
           </Stack>

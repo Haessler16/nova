@@ -4,16 +4,14 @@ import { useToast } from '@chakra-ui/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { FieldErrors } from '@/lib/validation';
 import { hasErrors } from '@/lib/validation';
-import {
-  EMPTY_OPEN_FORM,
-  openFormErrors,
-  type OpenCashForm,
-} from '../_lib/cashier-forms';
+import { EMPTY_OPEN_FORM, openFormErrors, type OpenCashForm } from '../_lib/cashier-forms';
 
 export function useCashierOpen(operationalDate: string | undefined, onOpened: () => void) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
 
   const [saving, setSaving] = useState(false);
@@ -26,15 +24,15 @@ export function useCashierOpen(operationalDate: string | undefined, onOpened: ()
       return;
     }
     setForm((current) => ({
-      name: current.name === '' ? `Caja ${date}` : current.name,
+      name: current.name === '' ? t('cashier.open.nameDefault', { date }) : current.name,
       operationalDate: current.operationalDate === '' ? date : current.operationalDate,
       openingAmount: current.openingAmount,
     }));
-  }, [operationalDate]);
+  }, [operationalDate, t]);
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
-    const nextErrors = openFormErrors(form);
+    const nextErrors = openFormErrors(form, t);
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -51,11 +49,11 @@ export function useCashierOpen(operationalDate: string | undefined, onOpened: ()
           idempotencyKey: `cash-open-ui-${crypto.randomUUID()}`,
         },
       });
-      toast({ title: 'Caja abierta', status: 'success' });
+      toast({ title: t('cashier.open.toast.ok'), status: 'success' });
       onOpened();
     } catch (cause) {
       toast({
-        title: 'No se pudo abrir la caja',
+        title: t('cashier.open.toast.error'),
         description: errorMessage(cause),
         status: 'error',
       });

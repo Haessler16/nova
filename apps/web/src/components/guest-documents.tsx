@@ -4,6 +4,7 @@ import { Button, useToast } from '@chakra-ui/react';
 import { useState } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { Reservation } from '@/lib/types';
 import { ReservationDocuments } from './documents-panel';
 
@@ -18,6 +19,7 @@ interface GuestDocumentsProps {
  * the existing document modal to avoid stacking two Chakra modals.
  */
 export function GuestDocuments({ guestId, guestName }: GuestDocumentsProps) {
+  const { t } = useI18n();
   const toast = useToast();
   const { organizationId, propertyId } = useSession();
 
@@ -40,9 +42,8 @@ export function GuestDocuments({ guestId, guestName }: GuestDocumentsProps) {
 
       if (eligible.length === 0) {
         toast({
-          title: 'Sin reservas disponibles',
-          description:
-            'Los documentos necesitan una reserva confirmada o en estadía para este huésped.',
+          title: t('guestDocuments.toastEmptyTitle'),
+          description: t('guestDocuments.toastEmptyDescription'),
           status: 'warning',
         });
         return;
@@ -52,7 +53,7 @@ export function GuestDocuments({ guestId, guestName }: GuestDocumentsProps) {
       setSelected(eligible[0] ?? null);
     } catch (cause) {
       toast({
-        title: 'No se pudieron cargar las reservas',
+        title: t('guestDocuments.toastError'),
         description: errorMessage(cause),
         status: 'error',
       });
@@ -66,11 +67,11 @@ export function GuestDocuments({ guestId, guestName }: GuestDocumentsProps) {
       <Button
         size="xs"
         variant="ghost"
-        aria-label={`Documentos de ${guestName}`}
+        aria-label={t('guestDocuments.ariaLabel', { name: guestName })}
         isLoading={loading}
         onClick={() => void openDocuments()}
       >
-        Documentos
+        {t('guestDocuments.trigger')}
       </Button>
 
       {selected !== null && (

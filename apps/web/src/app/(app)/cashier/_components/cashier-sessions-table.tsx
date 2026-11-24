@@ -1,50 +1,43 @@
 'use client';
 
-import {
-  Table,
-  TableContainer,
-  Tbody,
-  Td,
-  Text,
-  Th,
-  Thead,
-  Tr,
-} from '@chakra-ui/react';
+import { Table, TableContainer, Tbody, Td, Text, Th, Thead, Tr } from '@chakra-ui/react';
 import { QueryFeedback, SectionCard, StatusBadge } from '@/components/ui';
 import {
   CASH_SESSION_STATUS_COLORS,
-  CASH_SESSION_STATUS_LABELS,
+  cashSessionStatusLabel,
   formatCalendarDate,
   formatMoney,
 } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { CashierData } from '../_hooks/use-cashier-data';
 
 export function CashierSessionsTable({ data }: { data: CashierData }) {
+  const { t, locale } = useI18n();
   const { sessions } = data;
   const sessionItems = sessions.data?.items ?? [];
 
   return (
     <SectionCard>
       <Text fontWeight="semibold" mb={3}>
-        Sesiones de caja
+        {t('cashier.sessions.title')}
       </Text>
       <QueryFeedback
         loading={sessions.loading}
         error={sessions.error}
         onRetry={sessions.reload}
         isEmpty={sessionItems.length === 0}
-        emptyText="Todavía no hay sesiones de caja."
+        emptyText={t('cashier.sessions.empty')}
       >
         <TableContainer>
           <Table size="sm">
             <Thead>
               <Tr>
-                <Th>Día</Th>
-                <Th>Nombre</Th>
-                <Th isNumeric>Apertura</Th>
-                <Th isNumeric>Cierre</Th>
-                <Th isNumeric>Diferencia</Th>
-                <Th>Estado</Th>
+                <Th>{t('cashier.sessions.day')}</Th>
+                <Th>{t('cashier.sessions.name')}</Th>
+                <Th isNumeric>{t('cashier.sessions.opening')}</Th>
+                <Th isNumeric>{t('cashier.sessions.closing')}</Th>
+                <Th isNumeric>{t('cashier.sessions.variance')}</Th>
+                <Th>{t('cashier.sessions.status')}</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -70,7 +63,7 @@ export function CashierSessionsTable({ data }: { data: CashierData }) {
                   <Td>
                     <StatusBadge
                       color={CASH_SESSION_STATUS_COLORS[session.status]}
-                      label={CASH_SESSION_STATUS_LABELS[session.status]}
+                      label={cashSessionStatusLabel(locale, session.status)}
                     />
                   </Td>
                 </Tr>

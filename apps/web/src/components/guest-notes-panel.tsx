@@ -4,6 +4,7 @@ import { Box, Button, HStack, Stack, Text, useToast } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { GuestNote } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 import { GuestNoteForm, EMPTY_GUEST_NOTE_DRAFT, type GuestNoteDraft } from './guest-note-form';
@@ -17,6 +18,7 @@ interface GuestNotesPanelProps {
 
 export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
 
   const [showInactive, setShowInactive] = useState(false);
@@ -48,16 +50,14 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
           priority: draft.priority,
           body: draft.body.trim(),
           purpose: draft.purpose,
-          ...(draft.expiresAt !== ''
-            ? { expiresAt: new Date(draft.expiresAt).toISOString() }
-            : {}),
+          ...(draft.expiresAt !== '' ? { expiresAt: new Date(draft.expiresAt).toISOString() } : {}),
         },
       });
       setDraft(EMPTY_GUEST_NOTE_DRAFT);
       notes.reload();
     } catch (cause) {
       toast({
-        title: 'No se pudo guardar la nota',
+        title: t('guestNotes.toastCreateError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -78,7 +78,7 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
       notes.reload();
     } catch (cause) {
       toast({
-        title: 'No se pudo actualizar la nota',
+        title: t('guestNotes.toastToggleError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,
@@ -92,13 +92,13 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
     <SectionCard>
       <HStack justify="space-between" align="center" mb={3} wrap="wrap">
         <Box>
-          <Text fontWeight="semibold">Notas persistentes del huésped</Text>
+          <Text fontWeight="semibold">{t('guestNotes.title')}</Text>
           <Text fontSize="xs" color="gray.500">
-            No se copian automáticamente a las reservas.
+            {t('guestNotes.subtitle')}
           </Text>
         </Box>
         <Button size="xs" variant="ghost" onClick={() => setShowInactive((current) => !current)}>
-          {showInactive ? 'Ocultar inactivas' : 'Ver inactivas'}
+          {showInactive ? t('guestNotes.hideInactive') : t('guestNotes.showInactive')}
         </Button>
       </HStack>
 
@@ -107,7 +107,7 @@ export function GuestNotesPanel({ guestId, canManage }: GuestNotesPanelProps) {
         error={notes.error}
         onRetry={notes.reload}
         isEmpty={(notes.data?.items.length ?? 0) === 0}
-        emptyText="Sin notas registradas."
+        emptyText={t('guestNotes.empty')}
       >
         <Stack spacing={2}>
           {notes.data?.items.map((note) => (

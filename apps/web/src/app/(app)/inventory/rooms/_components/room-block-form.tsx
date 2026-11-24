@@ -1,13 +1,16 @@
 'use client';
 
 import { Box, Button, HStack, Input, Select, Stack, Text } from '@chakra-ui/react';
+import { useI18n } from '@/lib/i18n';
 import type { RoomBlocks } from '../_hooks/use-room-blocks';
 
 export function RoomBlockForm({ blocks }: { blocks: RoomBlocks }) {
+  const { t } = useI18n();
+
   return (
     <Box as="form" onSubmit={(event) => void blocks.create(event)} borderTopWidth="1px" pt={3}>
       <Text fontSize="sm" fontWeight="medium" mb={2}>
-        Nuevo bloqueo
+        {t('rooms.blocks.new')}
       </Text>
       <Stack spacing={3}>
         <Select
@@ -15,12 +18,12 @@ export function RoomBlockForm({ blocks }: { blocks: RoomBlocks }) {
           value={blocks.form.type}
           onChange={(event) => blocks.setForm({ ...blocks.form, type: event.target.value })}
         >
-          <option value="OUT_OF_ORDER">Fuera de orden</option>
-          <option value="OUT_OF_SERVICE">Fuera de servicio</option>
+          <option value="OUT_OF_ORDER">{t('rooms.blocks.typeOutOfOrder')}</option>
+          <option value="OUT_OF_SERVICE">{t('rooms.blocks.typeOutOfService')}</option>
         </Select>
         <Input
           size="sm"
-          placeholder="Motivo (3–500)"
+          placeholder={t('rooms.blocks.reasonPlaceholder')}
           value={blocks.form.reason}
           onChange={(event) => blocks.setForm({ ...blocks.form, reason: event.target.value })}
           isInvalid={blocks.errors.reason !== undefined}
@@ -34,21 +37,19 @@ export function RoomBlockForm({ blocks }: { blocks: RoomBlocks }) {
         <HStack>
           <Box flex="1">
             <Text fontSize="xs" color="textSecondary" mb={1}>
-              Inicio
+              {t('rooms.blocks.start')}
             </Text>
             <Input
               size="sm"
               type="datetime-local"
               value={blocks.form.startsAt}
-              onChange={(event) =>
-                blocks.setForm({ ...blocks.form, startsAt: event.target.value })
-              }
+              onChange={(event) => blocks.setForm({ ...blocks.form, startsAt: event.target.value })}
               required
             />
           </Box>
           <Box flex="1">
             <Text fontSize="xs" color="textSecondary" mb={1}>
-              Fin
+              {t('rooms.blocks.end')}
             </Text>
             <Input
               size="sm"
@@ -65,7 +66,7 @@ export function RoomBlockForm({ blocks }: { blocks: RoomBlocks }) {
           </Text>
         )}
         <Button type="submit" size="sm" colorScheme="brand" isLoading={blocks.saving}>
-          Crear bloqueo
+          {t('rooms.blocks.create')}
         </Button>
       </Stack>
     </Box>

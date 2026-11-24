@@ -4,7 +4,8 @@ import { useToast } from '@chakra-ui/react';
 import { useState } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
-import { HOUSEKEEPING_LABELS } from '@/lib/format';
+import { housekeepingLabel } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { HousekeepingState, Room } from '@/lib/types';
 
 export function useRoomHousekeeping(
@@ -13,6 +14,7 @@ export function useRoomHousekeeping(
   bumpDetail: () => void,
 ) {
   const { tenant } = useSession();
+  const { t, locale } = useI18n();
   const toast = useToast();
 
   const [transitioning, setTransitioning] = useState(false);
@@ -36,13 +38,16 @@ export function useRoomHousekeeping(
           ...(reason.trim() !== '' ? { reason: reason.trim() } : {}),
         },
       });
-      toast({ title: `Housekeeping: ${HOUSEKEEPING_LABELS[state]}`, status: 'success' });
+      toast({
+        title: t('rooms.housekeeping.toastOk', { state: housekeepingLabel(locale, state) }),
+        status: 'success',
+      });
       setReason('');
       reload();
       bumpDetail();
     } catch (cause) {
       toast({
-        title: 'Transición rechazada',
+        title: t('rooms.housekeeping.toastError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 7000,

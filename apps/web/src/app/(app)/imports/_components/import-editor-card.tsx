@@ -3,6 +3,7 @@
 import { Button, HStack, Input, Stack, Text, Textarea } from '@chakra-ui/react';
 import type { ChangeEvent } from 'react';
 import { SectionCard } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 
 export const CSV_TEMPLATE = [
   'fullName,email,phone,documentType,documentNumber,notes',
@@ -30,16 +31,17 @@ export function ImportEditorCard({
   onPreview: () => void;
   onCommit: () => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <SectionCard>
       <Stack spacing={4}>
         <HStack justify="space-between" wrap="wrap" spacing={2}>
           <Text fontSize="sm" color="gray.600">
-            Columnas: fullName, email, phone, documentType, documentNumber, notes. Máximo 500
-            filas y 512 KB. Delimitador coma o punto y coma.
+            {t('imports.editor.columns')}
           </Text>
           <Button size="xs" variant="ghost" onClick={() => onChangeCsv(CSV_TEMPLATE)}>
-            Usar plantilla
+            {t('imports.editor.useTemplate')}
           </Button>
         </HStack>
 
@@ -47,7 +49,7 @@ export function ImportEditorCard({
           type="file"
           accept=".csv,text/csv"
           size="sm"
-          aria-label="Archivo CSV de huéspedes"
+          aria-label={t('imports.editor.fileLabel')}
           onChange={onFile}
         />
 
@@ -58,7 +60,7 @@ export function ImportEditorCard({
           fontFamily="mono"
           fontSize="sm"
           placeholder={CSV_TEMPLATE}
-          aria-label="Contenido CSV"
+          aria-label={t('imports.editor.contentLabel')}
         />
 
         <HStack>
@@ -69,7 +71,7 @@ export function ImportEditorCard({
             isDisabled={!canPreview}
             isLoading={busy === 'preview'}
           >
-            Vista previa
+            {t('imports.editor.preview')}
           </Button>
           <Button
             size="sm"
@@ -78,10 +80,10 @@ export function ImportEditorCard({
             isDisabled={!canCommit}
             isLoading={busy === 'commit'}
           >
-            Confirmar importación
+            {t('imports.editor.commit')}
           </Button>
           <Text fontSize="xs" color="gray.500">
-            Clave de tenant: {tenantKey}
+            {t('imports.editor.tenantKey', { key: tenantKey })}
           </Text>
         </HStack>
       </Stack>

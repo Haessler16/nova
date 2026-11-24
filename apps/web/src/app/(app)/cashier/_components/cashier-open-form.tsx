@@ -3,13 +3,16 @@
 import { Box, Button, Input, Stack } from '@chakra-ui/react';
 import { DateField } from '@/components/date-field';
 import { Field } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import type { CashierOpen } from '../_hooks/use-cashier-session';
 
 export function CashierOpenForm({ open, cup }: { open: CashierOpen; cup: string }) {
+  const { t } = useI18n();
+
   return (
     <Box as="form" onSubmit={(event) => void open.submit(event)}>
       <Stack spacing={3}>
-        <Field label="Nombre de la sesión" isRequired error={open.errors['open.name']}>
+        <Field label={t('cashier.open.name')} isRequired error={open.errors['open.name']}>
           <Input
             size="sm"
             value={open.form.name}
@@ -21,25 +24,25 @@ export function CashierOpenForm({ open, cup }: { open: CashierOpen; cup: string 
           />
         </Field>
         <Field
-          label="Día operativo"
+          label={t('cashier.open.operationalDate')}
           isRequired
           error={open.errors['open.operationalDate']}
-          helper="No puede ser posterior al día operativo actual."
+          helper={t('cashier.open.operationalDateHelper')}
         >
           <DateField
             value={open.form.operationalDate}
-            placeholder="dd/mm/aaaa"
-            ariaLabel="Día operativo de la sesión"
+            placeholder={t('dateField.placeholder')}
+            ariaLabel={t('cashier.open.operationalDateAria')}
             onChange={(operationalDate) =>
               open.setForm((current) => ({ ...current, operationalDate }))
             }
           />
         </Field>
         <Field
-          label={`Fondo inicial (${cup})`}
+          label={t('cashier.open.openingAmount', { currency: cup })}
           isRequired
           error={open.errors['open.openingAmount']}
-          helper="Hasta dos decimales."
+          helper={t('cashier.open.amountHelper')}
         >
           <Input
             size="sm"
@@ -54,13 +57,8 @@ export function CashierOpenForm({ open, cup }: { open: CashierOpen; cup: string 
             required
           />
         </Field>
-        <Button
-          type="submit"
-          colorScheme="brand"
-          alignSelf="flex-start"
-          isLoading={open.saving}
-        >
-          Abrir caja
+        <Button type="submit" colorScheme="brand" alignSelf="flex-start" isLoading={open.saving}>
+          {t('cashier.open.submit')}
         </Button>
       </Stack>
     </Box>

@@ -3,6 +3,7 @@
 import { useDisclosure, useToast } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { Membership, Role } from '@/lib/types';
 import type { AdminTenant } from '../_lib/admin';
 
@@ -11,6 +12,7 @@ export function useMemberEditor(
   roles: Role[] | undefined,
   reload: () => void,
 ) {
+  const { t } = useI18n();
   const toast = useToast();
   const modal = useDisclosure();
 
@@ -66,7 +68,7 @@ export function useMemberEditor(
           },
         });
         setInvitationToken(result.invitation?.token ?? null);
-        toast({ title: 'Membresía creada', status: 'success' });
+        toast({ title: t('admin.memberEditor.toastCreated'), status: 'success' });
         reload();
       } else {
         await api<unknown>(`/api/v1/admin/memberships/${editing.id}`, {
@@ -77,13 +79,13 @@ export function useMemberEditor(
             ...(form.roleId !== '' ? { roleId: form.roleId } : {}),
           },
         });
-        toast({ title: 'Membresía actualizada', status: 'success' });
+        toast({ title: t('admin.memberEditor.toastUpdated'), status: 'success' });
         modal.onClose();
         reload();
       }
     } catch (cause) {
       toast({
-        title: 'No se pudo guardar',
+        title: t('admin.memberEditor.toastError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,

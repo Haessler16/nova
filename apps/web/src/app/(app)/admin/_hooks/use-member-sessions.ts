@@ -3,11 +3,13 @@
 import { useDisclosure, useToast } from '@chakra-ui/react';
 import { useState } from 'react';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { Membership, SessionSummary } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 import type { AdminTenant } from '../_lib/admin';
 
 export function useMemberSessions(tenant: AdminTenant) {
+  const { t } = useI18n();
   const toast = useToast();
   const modal = useDisclosure();
 
@@ -36,10 +38,14 @@ export function useMemberSessions(tenant: AdminTenant) {
         method: 'DELETE',
         tenant,
       });
-      toast({ title: 'Sesión revocada', status: 'success' });
+      toast({ title: t('admin.sessions.toastRevoked'), status: 'success' });
       sessions.reload();
     } catch (cause) {
-      toast({ title: 'No se pudo revocar', description: errorMessage(cause), status: 'error' });
+      toast({
+        title: t('admin.sessions.toastError'),
+        description: errorMessage(cause),
+        status: 'error',
+      });
     }
   }
 

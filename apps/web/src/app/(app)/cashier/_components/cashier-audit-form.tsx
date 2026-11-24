@@ -3,17 +3,24 @@
 import { Box, Button, Checkbox, Stack, Textarea } from '@chakra-ui/react';
 import { DateField } from '@/components/date-field';
 import { Field } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
 import type { CashierAudit } from '../_hooks/use-cashier-audit';
 
 export function CashierAuditForm({ audit }: { audit: CashierAudit }) {
+  const { t } = useI18n();
+
   return (
     <Box as="form" onSubmit={(event) => void audit.submit(event)}>
       <Stack spacing={3}>
-        <Field label="Día operativo" isRequired error={audit.errors['audit.operationalDate']}>
+        <Field
+          label={t('cashier.audit.operationalDate')}
+          isRequired
+          error={audit.errors['audit.operationalDate']}
+        >
           <DateField
             value={audit.form.operationalDate}
-            placeholder="dd/mm/aaaa"
-            ariaLabel="Día operativo del cierre"
+            placeholder={t('dateField.placeholder')}
+            ariaLabel={t('cashier.audit.operationalDateAria')}
             onChange={(operationalDate) =>
               audit.setForm((current) => ({ ...current, operationalDate }))
             }
@@ -26,11 +33,11 @@ export function CashierAuditForm({ audit }: { audit: CashierAudit }) {
             audit.setForm((current) => ({ ...current, force: event.target.checked }))
           }
         >
-          Forzar cierre aunque existan bloqueos
+          {t('cashier.audit.force')}
         </Checkbox>
         {audit.form.force && (
           <Field
-            label="Motivo del cierre forzado"
+            label={t('cashier.audit.forceReason')}
             isRequired
             error={audit.errors['audit.forceReason']}
           >
@@ -49,7 +56,7 @@ export function CashierAuditForm({ audit }: { audit: CashierAudit }) {
             />
           </Field>
         )}
-        <Field label="Notas">
+        <Field label={t('cashier.audit.notes')}>
           <Textarea
             size="sm"
             rows={2}
@@ -60,13 +67,8 @@ export function CashierAuditForm({ audit }: { audit: CashierAudit }) {
             }
           />
         </Field>
-        <Button
-          type="submit"
-          colorScheme="brand"
-          alignSelf="flex-start"
-          isLoading={audit.saving}
-        >
-          Cerrar día operativo
+        <Button type="submit" colorScheme="brand" alignSelf="flex-start" isLoading={audit.saving}>
+          {t('cashier.audit.submit')}
         </Button>
       </Stack>
     </Box>

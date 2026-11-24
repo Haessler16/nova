@@ -4,6 +4,7 @@ import { useDisclosure, useToast } from '@chakra-ui/react';
 import { useState } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { OperationalClose } from '@/lib/types';
 import type { FieldErrors } from '@/lib/validation';
 import { hasErrors } from '@/lib/validation';
@@ -11,6 +12,7 @@ import { reopenErrors } from '../_lib/cashier-forms';
 
 export function useCashierReopen(onReopened: () => void) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
   const modal = useDisclosure();
 
@@ -35,7 +37,7 @@ export function useCashierReopen(onReopened: () => void) {
     if (target === null) {
       return;
     }
-    const nextErrors = reopenErrors(reason);
+    const nextErrors = reopenErrors(reason, t);
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -51,14 +53,14 @@ export function useCashierReopen(onReopened: () => void) {
           idempotencyKey: `night-audit-reopen-ui-${crypto.randomUUID()}`,
         },
       });
-      toast({ title: 'Día operativo reabierto', status: 'success' });
+      toast({ title: t('cashier.reopen.toast.ok'), status: 'success' });
       modal.onClose();
       onReopened();
     } catch (cause) {
       const message = errorMessage(cause);
       setApiError(message);
       toast({
-        title: 'No se pudo reabrir el día',
+        title: t('cashier.reopen.toast.error'),
         description: message,
         status: 'error',
       });

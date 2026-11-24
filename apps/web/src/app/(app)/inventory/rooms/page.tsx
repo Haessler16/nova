@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { PageHeader, QueryFeedback, SectionCard } from '@/components/ui';
 import { useSession } from '@/context/session';
+import { useI18n } from '@/lib/i18n';
 import type { Room } from '@/lib/types';
 import { RoomCreateModal } from './_components/room-create-modal';
 import { RoomDetailDrawer } from './_components/room-detail-drawer';
@@ -21,6 +22,7 @@ import { useRoomLeases } from './_hooks/use-room-leases';
 import { useRoomsList } from './_hooks/use-rooms-list';
 
 function RoomsContent() {
+  const { t } = useI18n();
   const { actor } = useSession();
   const rooms = useRoomsList();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -38,12 +40,7 @@ function RoomsContent() {
   const housekeeping = useRoomHousekeeping(selectedRoomId, rooms.reload, detail.bumpDetail);
   const blocks = useRoomBlocks(selectedRoomId, rooms.reload, detail.bumpDetail);
   const incidents = useRoomIncidents(selectedRoomId);
-  const leases = useRoomLeases(
-    selectedRoom,
-    selectedRoomId,
-    rooms.reloadSilent,
-    detail.bumpDetail,
-  );
+  const leases = useRoomLeases(selectedRoom, selectedRoomId, rooms.reloadSilent, detail.bumpDetail);
 
   function openDetail(room: Room): void {
     setSelectedRoomId(room.id);
@@ -56,11 +53,11 @@ function RoomsContent() {
   return (
     <>
       <PageHeader
-        title="Habitaciones"
-        description="Inventario físico, housekeeping, bloqueos e historial. Housekeeping y estado operativo son dimensiones separadas."
+        title={t('rooms.title')}
+        description={t('rooms.description')}
         actions={
           <Button colorScheme="brand" size="sm" onClick={editor.openCreate}>
-            Nueva habitación
+            {t('rooms.newRoom')}
           </Button>
         }
       />
@@ -84,7 +81,7 @@ function RoomsContent() {
           error={rooms.error}
           onRetry={rooms.reload}
           isEmpty={(rooms.data?.rooms.length ?? 0) === 0}
-          emptyText="No hay habitaciones que coincidan con los filtros."
+          emptyText={t('rooms.empty')}
         >
           <RoomsTable
             rooms={rooms.data?.rooms ?? []}

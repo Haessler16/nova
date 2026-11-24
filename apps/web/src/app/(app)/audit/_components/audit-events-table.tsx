@@ -13,6 +13,7 @@ import {
   Tr,
 } from '@chakra-ui/react';
 import { formatDateTime } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { AuditEvent } from '@/lib/types';
 
 export function AuditEventsTable({
@@ -22,16 +23,18 @@ export function AuditEventsTable({
   items: AuditEvent[];
   onSelect: (event: AuditEvent) => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <TableContainer>
       <Table size="sm">
         <Thead>
           <Tr>
-            <Th>Fecha</Th>
-            <Th>Acción</Th>
-            <Th>Entidad</Th>
-            <Th>Actor</Th>
-            <Th>Correlación</Th>
+            <Th>{t('audit.table.date')}</Th>
+            <Th>{t('audit.table.action')}</Th>
+            <Th>{t('audit.table.entity')}</Th>
+            <Th>{t('audit.table.actor')}</Th>
+            <Th>{t('audit.table.correlation')}</Th>
             <Th />
           </Tr>
         </Thead>
@@ -61,7 +64,9 @@ export function AuditEventsTable({
               </Td>
               <Td>
                 <Text fontFamily="mono" fontSize="xs">
-                  {event.actorUserId !== null ? `${event.actorUserId.slice(0, 8)}…` : 'sistema'}
+                  {event.actorUserId !== null
+                    ? `${event.actorUserId.slice(0, 8)}…`
+                    : t('audit.system')}
                 </Text>
               </Td>
               <Td>
@@ -71,7 +76,7 @@ export function AuditEventsTable({
               </Td>
               <Td>
                 <Button size="xs" variant="ghost" onClick={() => onSelect(event)}>
-                  Detalle
+                  {t('audit.table.detail')}
                 </Button>
               </Td>
             </Tr>

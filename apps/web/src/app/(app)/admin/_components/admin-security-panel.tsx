@@ -18,6 +18,7 @@ import {
 } from '@chakra-ui/react';
 import { QueryFeedback, SectionCard } from '@/components/ui';
 import { SEVERITY_COLORS, formatDateTime } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { SecurityEvent } from '@/lib/types';
 import type { AdminData } from '../_hooks/use-admin-data';
 
@@ -28,6 +29,7 @@ export function AdminSecurityPanel({
   data: AdminData;
   onSelect: (event: SecurityEvent) => void;
 }) {
+  const { t } = useI18n();
   const { securityEvents, severityFilter, setSeverityFilter, typeFilter, setTypeFilter } = data;
 
   return (
@@ -37,11 +39,11 @@ export function AdminSecurityPanel({
           <Select
             size="sm"
             width="180px"
-            aria-label="Severidad"
+            aria-label={t('admin.security.severity')}
             value={severityFilter}
             onChange={(event) => setSeverityFilter(event.target.value)}
           >
-            <option value="">Todas las severidades</option>
+            <option value="">{t('admin.security.allSeverities')}</option>
             <option value="INFO">Info</option>
             <option value="WARNING">Warning</option>
             <option value="CRITICAL">Critical</option>
@@ -49,15 +51,17 @@ export function AdminSecurityPanel({
           <Input
             size="sm"
             width="260px"
-            placeholder="Tipo exacto, ej. auth.login_failed"
+            placeholder={t('admin.security.typePlaceholder')}
             value={typeFilter}
             onChange={(event) => setTypeFilter(event.target.value)}
           />
           <Button size="sm" variant="outline" onClick={securityEvents.reload}>
-            Actualizar
+            {t('admin.security.refresh')}
           </Button>
           <Text fontSize="xs" color="gray.500" ml="auto">
-            {securityEvents.data?.items.length ?? 0} eventos
+            {t('admin.security.eventsCount', {
+              count: securityEvents.data?.items.length ?? 0,
+            })}
           </Text>
         </HStack>
         <QueryFeedback
@@ -65,16 +69,16 @@ export function AdminSecurityPanel({
           error={securityEvents.error}
           onRetry={securityEvents.reload}
           isEmpty={(securityEvents.data?.items.length ?? 0) === 0}
-          emptyText="No hay eventos de seguridad."
+          emptyText={t('admin.security.empty')}
         >
           <TableContainer>
             <Table size="sm">
               <Thead>
                 <Tr>
-                  <Th>Fecha</Th>
-                  <Th>Severidad</Th>
-                  <Th>Tipo</Th>
-                  <Th>Usuario</Th>
+                  <Th>{t('admin.security.date')}</Th>
+                  <Th>{t('admin.security.severityCol')}</Th>
+                  <Th>{t('admin.security.type')}</Th>
+                  <Th>{t('admin.security.user')}</Th>
                   <Th />
                 </Tr>
               </Thead>
@@ -101,7 +105,7 @@ export function AdminSecurityPanel({
                     </Td>
                     <Td>
                       <Button size="xs" variant="ghost" onClick={() => onSelect(event)}>
-                        Detalle
+                        {t('admin.security.detail')}
                       </Button>
                     </Td>
                   </Tr>

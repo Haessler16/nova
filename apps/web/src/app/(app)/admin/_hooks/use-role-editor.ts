@@ -3,10 +3,12 @@
 import { useDisclosure, useToast } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { Role } from '@/lib/types';
 import type { AdminTenant } from '../_lib/admin';
 
 export function useRoleEditor(tenant: AdminTenant, reload: () => void) {
+  const { t } = useI18n();
   const toast = useToast();
   const modal = useDisclosure();
 
@@ -40,20 +42,20 @@ export function useRoleEditor(tenant: AdminTenant, reload: () => void) {
             permissions: form.permissions,
           },
         });
-        toast({ title: 'Rol creado', status: 'success' });
+        toast({ title: t('admin.roleEditor.toastCreated'), status: 'success' });
       } else {
         await api<Role>(`/api/v1/admin/roles/${editing.id}`, {
           method: 'PATCH',
           tenant,
           body: { name: form.name.trim(), permissions: form.permissions },
         });
-        toast({ title: 'Rol actualizado', status: 'success' });
+        toast({ title: t('admin.roleEditor.toastUpdated'), status: 'success' });
       }
       modal.onClose();
       reload();
     } catch (cause) {
       toast({
-        title: 'No se pudo guardar el rol',
+        title: t('admin.roleEditor.toastError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,

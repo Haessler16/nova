@@ -4,6 +4,7 @@ import { useToast } from '@chakra-ui/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { OperationalDay, PropertyDetail } from '@/lib/types';
 import { useAsyncData } from '@/lib/use-async-data';
 
@@ -23,6 +24,7 @@ const EMPTY_FORM: PropertySettingsForm = {
 
 export function usePropertySettings() {
   const { tenant, refresh } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
   const { data, loading, error, reload } = useAsyncData<{
     property: PropertyDetail;
@@ -63,12 +65,12 @@ export function usePropertySettings() {
           operationalDayStart: form.operationalDayStart.trim(),
         },
       });
-      toast({ title: 'Configuración actualizada', status: 'success' });
+      toast({ title: t('settings.toast.saved'), status: 'success' });
       reload();
       await refresh();
     } catch (cause) {
       toast({
-        title: 'No se pudo guardar',
+        title: t('settings.toast.error'),
         description: errorMessage(cause),
         status: 'error',
         duration: 7000,

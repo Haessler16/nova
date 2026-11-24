@@ -2,7 +2,8 @@
 
 import { Badge, Box, Button, HStack, Stack, Text } from '@chakra-ui/react';
 import { QueryFeedback } from '@/components/ui';
-import { BLOCK_STATUS_LABELS, BLOCK_TYPE_LABELS, formatDateTime } from '@/lib/format';
+import { blockStatusLabel, blockTypeLabel, formatDateTime } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { RoomBlocks } from '../_hooks/use-room-blocks';
 import type { RoomDetail } from '../_hooks/use-room-detail';
 import { RoomBlockForm } from './room-block-form';
@@ -14,17 +15,19 @@ export function RoomBlocksSection({
   detail: RoomDetail['detail'];
   blocks: RoomBlocks;
 }) {
+  const { t, locale } = useI18n();
+
   return (
     <Box>
       <Text fontWeight="semibold" mb={2}>
-        Bloqueos
+        {t('rooms.blocks.title')}
       </Text>
       <QueryFeedback
         loading={detail.loading}
         error={detail.error}
         onRetry={detail.reload}
         isEmpty={(detail.data?.blocks.length ?? 0) === 0}
-        emptyText="Sin bloqueos registrados."
+        emptyText={t('rooms.blocks.empty')}
       >
         <Stack spacing={2} mb={4}>
           {detail.data?.blocks.map((block) => (
@@ -40,10 +43,10 @@ export function RoomBlocksSection({
               <Box>
                 <HStack spacing={2}>
                   <Badge colorScheme={block.type === 'OUT_OF_ORDER' ? 'danger' : 'warning'}>
-                    {BLOCK_TYPE_LABELS[block.type]}
+                    {blockTypeLabel(locale, block.type)}
                   </Badge>
                   <Badge colorScheme={block.status === 'ACTIVE' ? 'mint' : 'gray'}>
-                    {BLOCK_STATUS_LABELS[block.status]}
+                    {blockStatusLabel(locale, block.status)}
                   </Badge>
                 </HStack>
                 <Text fontSize="sm" mt={1}>
@@ -55,7 +58,7 @@ export function RoomBlocksSection({
               </Box>
               {block.status === 'ACTIVE' && (
                 <Button size="xs" variant="outline" onClick={() => void blocks.release(block)}>
-                  Liberar
+                  {t('rooms.blocks.release')}
                 </Button>
               )}
             </HStack>

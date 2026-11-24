@@ -4,16 +4,15 @@ import { useToast } from '@chakra-ui/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage, isApiError } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { NightAuditBlocker } from '@/lib/types';
 import type { FieldErrors } from '@/lib/validation';
 import { hasErrors } from '@/lib/validation';
 import { EMPTY_AUDIT_FORM, auditFormErrors, type AuditForm } from '../_lib/cashier-forms';
 
-export function useCashierAudit(
-  operationalDate: string | undefined,
-  onClosed: () => void,
-) {
+export function useCashierAudit(operationalDate: string | undefined, onClosed: () => void) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
 
   const [saving, setSaving] = useState(false);
@@ -34,7 +33,7 @@ export function useCashierAudit(
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
-    const nextErrors = auditFormErrors(form);
+    const nextErrors = auditFormErrors(form, t);
     setErrors(nextErrors);
     if (hasErrors(nextErrors)) {
       return;
@@ -53,7 +52,7 @@ export function useCashierAudit(
           idempotencyKey: `night-audit-ui-${crypto.randomUUID()}`,
         },
       });
-      toast({ title: 'Día operativo cerrado', status: 'success' });
+      toast({ title: t('cashier.audit.toast.ok'), status: 'success' });
       setForm((current) => ({
         ...current,
         force: false,
@@ -66,13 +65,13 @@ export function useCashierAudit(
         const details = cause.details as { blockers?: NightAuditBlocker[] } | undefined;
         setBlockers(details?.blockers ?? []);
         toast({
-          title: 'El día tiene bloqueos pendientes',
-          description: 'Revisá la lista y, si corresponde, forzá el cierre con un motivo.',
+          title: t('cashier.audit.toast.blocked'),
+          description: t('cashier.audit.toast.blockedDescription'),
           status: 'warning',
         });
       } else {
         toast({
-          title: 'No se pudo cerrar el día operativo',
+          title: t('cashier.audit.toast.error'),
           description: errorMessage(cause),
           status: 'error',
         });

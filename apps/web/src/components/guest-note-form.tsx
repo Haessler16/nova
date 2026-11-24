@@ -2,7 +2,12 @@
 
 import { Button, HStack, Input, Select, Textarea } from '@chakra-ui/react';
 import type { FormEvent } from 'react';
-import { INSTRUCTION_CATEGORY_LABELS, INSTRUCTION_PRIORITY_LABELS } from '@/lib/format';
+import {
+  guestNotePurposeLabel,
+  instructionCategoryLabel,
+  instructionPriorityLabel,
+} from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { InstructionCategory, InstructionPriority } from '@/lib/types';
 import { Field } from './ui';
 
@@ -33,13 +38,7 @@ const CATEGORY_OPTIONS: InstructionCategory[] = [
 
 const PRIORITY_OPTIONS: InstructionPriority[] = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'];
 
-const PURPOSE_OPTIONS = [
-  { value: 'PREFERENCE', label: 'Preferencia' },
-  { value: 'ALERT', label: 'Alerta operativa' },
-  { value: 'ACCESSIBILITY', label: 'Accesibilidad' },
-  { value: 'BILLING', label: 'Facturación' },
-  { value: 'OTHER', label: 'Otro' },
-];
+const PURPOSE_OPTIONS = ['PREFERENCE', 'ALERT', 'ACCESSIBILITY', 'BILLING', 'OTHER'] as const;
 
 export function GuestNoteForm({
   draft,
@@ -52,14 +51,16 @@ export function GuestNoteForm({
   saving: boolean;
   onSubmit: (event: FormEvent) => void;
 }) {
+  const { t, locale } = useI18n();
+
   return (
     <form onSubmit={onSubmit}>
-      <Field label="Nueva nota del huésped">
+      <Field label={t('guestNotes.form.title')}>
         <Textarea
           rows={2}
           value={draft.body}
           onChange={(event) => onChange({ ...draft, body: event.target.value })}
-          placeholder="Preferencia, alerta o información persistente."
+          placeholder={t('guestNotes.form.placeholder')}
         />
       </Field>
       <HStack mt={2} spacing={2}>
@@ -73,7 +74,7 @@ export function GuestNoteForm({
         >
           {CATEGORY_OPTIONS.map((category) => (
             <option key={category} value={category}>
-              {INSTRUCTION_CATEGORY_LABELS[category]}
+              {instructionCategoryLabel(locale, category)}
             </option>
           ))}
         </Select>
@@ -87,7 +88,7 @@ export function GuestNoteForm({
         >
           {PRIORITY_OPTIONS.map((priority) => (
             <option key={priority} value={priority}>
-              {INSTRUCTION_PRIORITY_LABELS[priority]}
+              {instructionPriorityLabel(locale, priority)}
             </option>
           ))}
         </Select>
@@ -98,27 +99,24 @@ export function GuestNoteForm({
           isLoading={saving}
           isDisabled={draft.body.trim().length < 2}
         >
-          Guardar
+          {t('guestNotes.form.save')}
         </Button>
       </HStack>
       <HStack mt={2} spacing={2} align="end" wrap="wrap">
-        <Field label="Propósito">
+        <Field label={t('guestNotes.form.purpose')}>
           <Select
             size="sm"
             value={draft.purpose}
             onChange={(event) => onChange({ ...draft, purpose: event.target.value })}
           >
             {PURPOSE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+              <option key={option} value={option}>
+                {guestNotePurposeLabel(locale, option)}
               </option>
             ))}
           </Select>
         </Field>
-        <Field
-          label="Expira"
-          helper="Opcional. Se guarda como instante; la interfaz usa la zona horaria del navegador."
-        >
+        <Field label={t('guestNotes.form.expires')} helper={t('guestNotes.form.expiresHelper')}>
           <Input
             size="sm"
             type="datetime-local"

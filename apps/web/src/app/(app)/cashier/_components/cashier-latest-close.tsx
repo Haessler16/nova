@@ -4,10 +4,11 @@ import { Box, Button, HStack, Text } from '@chakra-ui/react';
 import { StatusBadge } from '@/components/ui';
 import {
   OPERATIONAL_CLOSE_COLORS,
-  OPERATIONAL_CLOSE_LABELS,
   formatCalendarDate,
   formatMoney,
+  operationalCloseStatusLabel,
 } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { OperationalClose } from '@/lib/types';
 
 export function CashierLatestClose({
@@ -17,6 +18,8 @@ export function CashierLatestClose({
   close: OperationalClose;
   onReopen: (target: OperationalClose) => void;
 }) {
+  const { t, locale } = useI18n();
+
   return (
     <Box mb={4} p={3} borderWidth="1px" borderColor="line" borderRadius="lg" bg="gray.50">
       <HStack justify="space-between" align="flex-start" spacing={3}>
@@ -26,15 +29,19 @@ export function CashierLatestClose({
           </Text>
           <Text fontSize="xs" color="textSecondary">
             {close.snapshot.forced
-              ? 'Cierre forzado con motivo registrado.'
-              : 'Cierre sin bloqueos.'}{' '}
-            Saldo de folios abiertos:{' '}
-            {formatMoney(close.snapshot.totals.openFolioBalance, close.snapshot.currencyCode)}
+              ? t('cashier.latestClose.forced')
+              : t('cashier.latestClose.clean')}{' '}
+            {t('cashier.latestClose.openBalance', {
+              amount: formatMoney(
+                close.snapshot.totals.openFolioBalance,
+                close.snapshot.currencyCode,
+              ),
+            })}
           </Text>
         </Box>
         <StatusBadge
           color={OPERATIONAL_CLOSE_COLORS[close.status]}
-          label={OPERATIONAL_CLOSE_LABELS[close.status]}
+          label={operationalCloseStatusLabel(locale, close.status)}
         />
       </HStack>
       {close.status === 'CLOSED' && (
@@ -45,7 +52,7 @@ export function CashierLatestClose({
           mt={3}
           onClick={() => onReopen(close)}
         >
-          Reabrir día
+          {t('cashier.latestClose.reopen')}
         </Button>
       )}
     </Box>

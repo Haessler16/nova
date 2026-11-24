@@ -23,6 +23,9 @@ export function validationCopy(t: Translator): ValidationCopy {
     emailRequired: t('validation.emailRequired'),
     emailInvalid: t('validation.emailInvalid'),
     phoneInvalid: t('validation.phoneInvalid'),
+    moneyRequired: (label) => t('validation.moneyRequired', { label }),
+    moneyFormat: (label) => t('validation.moneyFormat', { label }),
+    moneyPositive: (label) => t('validation.moneyPositive', { label }),
   };
 }
 

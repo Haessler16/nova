@@ -2,21 +2,20 @@
 
 import { Box, Button, Divider, HStack, IconButton, SimpleGrid, Text } from '@chakra-ui/react';
 import { useEffect, useMemo, useState } from 'react';
+import { useI18n } from '@/lib/i18n';
 import { ChevronLeftIcon, ChevronRightIcon } from './icons';
 
-const WEEKDAYS = ['lu', 'ma', 'mi', 'ju', 'vi', 'sá', 'do'] as const;
-const MONTH_FORMATTER = new Intl.DateTimeFormat('es-AR', {
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'UTC',
-});
-const DAY_FORMATTER = new Intl.DateTimeFormat('es-AR', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'UTC',
-});
+/** Monday-first short weekday labels, derived from the active locale. */
+function weekdayLabels(intlLocale: string): string[] {
+  const formatter = new Intl.DateTimeFormat(intlLocale, {
+    weekday: 'short',
+    timeZone: 'UTC',
+  });
+  // 2024-01-01 is a Monday; the grid is Monday-first.
+  return Array.from({ length: 7 }, (_, index) =>
+    formatter.format(new Date(Date.UTC(2024, 0, 1 + index, 12))).replace(/\.$/, ''),
+  );
+}
 
 interface MonthView {
   year: number;
@@ -48,6 +47,16 @@ export function DateCalendar({
   onSelect: (iso: string) => void;
   onClear: () => void;
 }) {
+  const { t, intlLocale } = useI18n();
+  const monthFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(intlLocale, {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }),
+    [intlLocale],
+  );
   const [view, setView] = useState<MonthView>(() =>
     monthOf(parseCalendar(value !== '' ? value : today)),
   );
@@ -59,7 +68,7 @@ export function DateCalendar({
   }, [isOpen, value, today]);
 
   const monthLabel = capitalize(
-    MONTH_FORMATTER.format(new Date(Date.UTC(view.year, view.month, 1, 12))),
+    monthFormatter.format(new Date(Date.UTC(view.year, view.month, 1, 12))),
   );
   const previousMonthLastDay = toIso(new Date(Date.UTC(view.year, view.month, 0, 12)));
   const nextMonthFirstDay = toIso(new Date(Date.UTC(view.year, view.month + 1, 1, 12)));
@@ -77,7 +86,7 @@ export function DateCalendar({
       <HStack justify="space-between" mb={3}>
         <IconButton
           type="button"
-          aria-label="Mes anterior"
+          aria-label={t('dateField.previousMonth')}
           icon={<ChevronLeftIcon boxSize={4} />}
           size="xs"
           variant="ghost"
@@ -90,7 +99,7 @@ export function DateCalendar({
         </Text>
         <IconButton
           type="button"
-          aria-label="Mes siguiente"
+          aria-label={t('dateField.nextMonth')}
           icon={<ChevronRightIcon boxSize={4} />}
           size="xs"
           variant="ghost"
@@ -107,7 +116,7 @@ export function DateCalendar({
       <HStack justify="space-between">
         {isClearable ? (
           <Button type="button" size="xs" variant="ghost" color="gray.500" onClick={onClear}>
-            Limpiar
+            {t('dateField.clear')}
           </Button>
         ) : (
           <Box />
@@ -120,7 +129,7 @@ export function DateCalendar({
           isDisabled={todayDisabled}
           onClick={() => onSelect(today)}
         >
-          Hoy
+          {t('dateField.today')}
         </Button>
       </HStack>
     </>
@@ -142,12 +151,25 @@ function MonthGrid({
   max?: string;
   onSelect: (iso: string) => void;
 }) {
+  const { t, intlLocale } = useI18n();
   const cells = useMemo(() => buildMonthCells(view), [view]);
+  const weekdays = useMemo(() => weekdayLabels(intlLocale), [intlLocale]);
+  const dayFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(intlLocale, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }),
+    [intlLocale],
+  );
 
   return (
     <>
       <SimpleGrid columns={7} spacing="1" mb={1}>
-        {WEEKDAYS.map((weekday) => (
+        {weekdays.map((weekday) => (
           <Text
             key={weekday}
             textAlign="center"
@@ -180,19 +202,13 @@ function MonthGrid({
               fontSize="sm"
               fontWeight={selected ? 'semibold' : 'normal'}
               color={
-                selected
-                  ? 'white'
-                  : disabled
-                    ? 'gray.400'
-                    : cell.inMonth
-                      ? 'gray.400'
-                      : 'gray.800'
+                selected ? 'white' : disabled ? 'gray.400' : cell.inMonth ? 'gray.400' : 'gray.800'
               }
               bg={selected ? 'brand.800' : isToday ? 'brand.700' : undefined}
               borderWidth={isToday && !selected ? '1px' : undefined}
               borderColor="brand.400"
               isDisabled={disabled}
-              aria-label={capitalize(DAY_FORMATTER.format(parseCalendar(cell.iso)))}
+              aria-label={capitalize(dayFormatter.format(parseCalendar(cell.iso)))}
               aria-pressed={selected}
               _hover={
                 disabled

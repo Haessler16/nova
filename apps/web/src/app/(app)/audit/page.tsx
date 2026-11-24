@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { PropertyGate } from '@/components/app-shell';
 import { ErrorAlert, PageHeader, QueryFeedback, SectionCard } from '@/components/ui';
 import { useSession } from '@/context/session';
+import { useI18n } from '@/lib/i18n';
 import { useAuditFeedStore } from '@/stores/audit-feed';
 import type { AuditEvent } from '@/lib/types';
 import { EMPTY_FILTERS, type AuditFilters } from './audit-filters';
@@ -14,6 +15,7 @@ import { AuditFilterBar } from './_components/audit-filter-bar';
 
 function AuditContent() {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const organizationId = tenant.organizationId;
   const propertyId = tenant.propertyId;
   const metadataModal = useDisclosure();
@@ -68,10 +70,7 @@ function AuditContent() {
 
   return (
     <>
-      <PageHeader
-        title="Auditoría"
-        description="Eventos append-only de la propiedad, ordenados por fecha descendente. Filtrable por acción, entidad, actor y rango de fechas para soporte y conciliación. El rango usa la zona horaria de la propiedad e incluye ambos días."
-      />
+      <PageHeader title={t('audit.title')} description={t('audit.description')} />
 
       <SectionCard>
         <AuditFilterBar
@@ -87,7 +86,7 @@ function AuditContent() {
           error={error}
           onRetry={() => void load({ tenantKey, tenant: { organizationId, propertyId }, filters })}
           isEmpty={items.length === 0}
-          emptyText="No hay eventos de auditoría para los filtros."
+          emptyText={t('audit.empty')}
         >
           <AuditEventsTable items={items} onSelect={openDetail} />
 
@@ -105,7 +104,7 @@ function AuditContent() {
                 onClick={() => void loadMore({ organizationId, propertyId })}
                 isLoading={loadingMore}
               >
-                Cargar más
+                {t('audit.loadMore')}
               </Button>
             </HStack>
           )}

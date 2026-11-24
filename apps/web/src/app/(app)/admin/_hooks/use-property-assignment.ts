@@ -3,10 +3,12 @@
 import { useDisclosure, useToast } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import type { Membership } from '@/lib/types';
 import type { AdminTenant } from '../_lib/admin';
 
 export function usePropertyAssignment(tenant: AdminTenant, reload: () => void) {
+  const { t } = useI18n();
   const toast = useToast();
   const modal = useDisclosure();
 
@@ -26,7 +28,7 @@ export function usePropertyAssignment(tenant: AdminTenant, reload: () => void) {
       return;
     }
     if (form.propertyId === '' || form.roleId === '') {
-      toast({ title: 'Elegí propiedad y rol', status: 'warning' });
+      toast({ title: t('admin.assignment.toastRequired'), status: 'warning' });
       return;
     }
     setSaving(true);
@@ -36,12 +38,12 @@ export function usePropertyAssignment(tenant: AdminTenant, reload: () => void) {
         tenant,
         body: { userId: member.userId, roleId: form.roleId },
       });
-      toast({ title: 'Asignación creada', status: 'success' });
+      toast({ title: t('admin.assignment.toastCreated'), status: 'success' });
       modal.onClose();
       reload();
     } catch (cause) {
       toast({
-        title: 'No se pudo asignar',
+        title: t('admin.assignment.toastError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 8000,

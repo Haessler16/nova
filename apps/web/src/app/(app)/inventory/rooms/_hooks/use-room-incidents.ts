@@ -4,10 +4,12 @@ import { useToast } from '@chakra-ui/react';
 import { useState, type FormEvent } from 'react';
 import { useSession } from '@/context/session';
 import { api, errorMessage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import { EMPTY_INCIDENT, type IncidentDraft } from '../_lib/rooms';
 
 export function useRoomIncidents(selectedRoomId: string | null) {
   const { tenant } = useSession();
+  const { t } = useI18n();
   const toast = useToast();
 
   const [saving, setSaving] = useState(false);
@@ -23,7 +25,7 @@ export function useRoomIncidents(selectedRoomId: string | null) {
       return;
     }
     if (form.title.trim().length < 3 || form.description.trim().length < 3) {
-      toast({ title: 'Completá título y descripción', status: 'warning' });
+      toast({ title: t('rooms.incidents.toastRequired'), status: 'warning' });
       return;
     }
     setSaving(true);
@@ -39,11 +41,11 @@ export function useRoomIncidents(selectedRoomId: string | null) {
           description: form.description.trim(),
         },
       });
-      toast({ title: 'Incidencia registrada', status: 'success' });
+      toast({ title: t('rooms.incidents.toastOk'), status: 'success' });
       setForm(EMPTY_INCIDENT);
     } catch (cause) {
       toast({
-        title: 'No se pudo registrar la incidencia',
+        title: t('rooms.incidents.toastError'),
         description: errorMessage(cause),
         status: 'error',
         duration: 7000,

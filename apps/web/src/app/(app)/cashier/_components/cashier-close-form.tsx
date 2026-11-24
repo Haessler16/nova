@@ -3,6 +3,7 @@
 import { Box, Button, Input, Stack, Text, Textarea } from '@chakra-ui/react';
 import { Field } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
+import { useI18n } from '@/lib/i18n';
 import type { CashSession } from '@/lib/types';
 import type { CashierClose } from '../_hooks/use-cashier-close';
 
@@ -15,17 +16,21 @@ export function CashierCloseForm({
   session: CashSession;
   cup: string;
 }) {
+  const { t } = useI18n();
+
   return (
     <Box as="form" onSubmit={() => void close.submit()}>
       <Stack spacing={3}>
         <Text fontWeight="semibold" fontSize="sm">
-          Cerrar y arquear
+          {t('cashier.close.title')}
         </Text>
         <Field
-          label={`Efectivo contado (${cup})`}
+          label={t('cashier.close.closingAmount', { currency: cup })}
           isRequired
           error={close.errors['close.closingAmount']}
-          helper={`Esperado: ${formatMoney(session.expectedCashAmount, cup)}`}
+          helper={t('cashier.close.expectedHint', {
+            amount: formatMoney(session.expectedCashAmount, cup),
+          })}
         >
           <Input
             size="sm"
@@ -41,9 +46,9 @@ export function CashierCloseForm({
           />
         </Field>
         <Field
-          label="Motivo de diferencia"
+          label={t('cashier.close.varianceReason')}
           error={close.errors['close.varianceReason']}
-          helper="Obligatorio si el contado difiere del esperado."
+          helper={t('cashier.close.varianceHelper')}
         >
           <Input
             size="sm"
@@ -57,7 +62,7 @@ export function CashierCloseForm({
             }
           />
         </Field>
-        <Field label="Notas">
+        <Field label={t('cashier.close.notes')}>
           <Textarea
             size="sm"
             rows={2}
@@ -78,7 +83,7 @@ export function CashierCloseForm({
           alignSelf="flex-start"
           isLoading={close.saving}
         >
-          Cerrar caja
+          {t('cashier.close.submit')}
         </Button>
       </Stack>
     </Box>

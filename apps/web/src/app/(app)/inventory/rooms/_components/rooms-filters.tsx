@@ -1,6 +1,7 @@
 'use client';
 
 import { Button, HStack, Input, Stack, Text } from '@chakra-ui/react';
+import { useI18n } from '@/lib/i18n';
 import type { RoomListFacets, RoomType } from '@/lib/types';
 import type { RoomsFilters } from '../_lib/rooms';
 import { RoomsFilterSelects } from './rooms-filter-selects';
@@ -26,6 +27,8 @@ export function RoomsFilterBar({
   facets: RoomListFacets | undefined;
   total: number;
 }) {
+  const { t } = useI18n();
+
   return (
     <Stack spacing={3} mb={4}>
       <HStack wrap="wrap" spacing={2}>
@@ -39,12 +42,12 @@ export function RoomsFilterBar({
             <Input
               size="sm"
               width="220px"
-              placeholder="Número, piso, edificio…"
+              placeholder={t('rooms.filters.searchPlaceholder')}
               value={searchInput}
               onChange={(event) => onSearchInput(event.target.value)}
             />
             <Button size="sm" type="submit" variant="outline">
-              Buscar
+              {t('rooms.filters.search')}
             </Button>
           </HStack>
         </form>
@@ -55,11 +58,11 @@ export function RoomsFilterBar({
           facets={facets}
         />
         <Button size="sm" variant="ghost" onClick={onClear}>
-          Limpiar
+          {t('rooms.filters.clear')}
         </Button>
       </HStack>
       <Text fontSize="xs" color="textSecondary">
-        {total} habitaciones cargadas (máximo 100 por consulta).
+        {t('rooms.filters.loaded', { count: total })}
       </Text>
     </Stack>
   );
