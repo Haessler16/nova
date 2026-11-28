@@ -47,7 +47,7 @@ jobs:
       AUDIT_METADATA_MAX_BYTES: '8192'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
         with:
@@ -142,7 +142,7 @@ jobs:
       PLAYWRIGHT_API_URL: http://localhost:3001
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
         with:
